@@ -14,3 +14,4 @@ android/keystore.properties
 *.keystore
 android/keys.properties
 desktop/src/main/builtin.json
+*.jks

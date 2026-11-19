@@ -445,8 +445,8 @@ fun ReadAloudBar() {
             Box(Modifier.fillMaxHeight().fillMaxWidth(if (ReadAloud.total > 0) (ReadAloud.index + 1f) / ReadAloud.total else 0f).background(C.agent))
         }
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp).height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Ic.GraphicEq, null, Modifier.size(18.dp), tint = C.agent)
-            Spacer(Modifier.width(12.dp))
+            VoiceOrb(0f, if (ReadAloud.playing) "speak" else "think", 40.dp)
+            Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(ReadAloud.title.ifBlank { "Reading aloud" }, color = C.text, fontSize = 13.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
                 Text(if (ReadAloud.playing) "Playing · ${ReadAloud.index + 1} of ${ReadAloud.total}" else "Paused", color = C.faint, fontSize = 12.sp)

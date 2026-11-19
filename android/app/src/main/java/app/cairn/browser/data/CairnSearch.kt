@@ -155,7 +155,13 @@ $lang"""
         // Only Cairn's own page may call the API (no cross-site use of the user's AI quota).
         val origin = req.requestHeaders["Origin"] ?: req.requestHeaders["origin"]
         val path = u.path.orEmpty()
-        if (path.startsWith("/api/") && origin != null && origin != "https://$HOST") return text(403, "text/plain", "Forbidden")
+        if (path.startsWith("/api/")) {
+            // Cross-site GETs (<img>, <script>, no-cors fetch) carry no Origin, so also require same-origin fetch metadata.
+            val h = req.requestHeaders.mapKeys { it.key.lowercase() }
+            val site = h["sec-fetch-site"]; val ref = h["referer"].orEmpty()
+            val same = origin == "https://$HOST" || (origin == null && (site == "same-origin" || (site == null && ref.startsWith("https://$HOST/"))))
+            if (!same) return text(403, "text/plain", "Forbidden")
+        }
         return when {
             path == "/" || path.isEmpty() -> page(u.getQueryParameter("q").orEmpty(), dark)
             path == "/api/results" -> {

@@ -420,6 +420,38 @@ private fun AnswerView(m: AiMsg) {
     }
     var open by remember(m.key) { mutableStateOf(false) }
     Column {
+        // Perplexity-style: the sources come first, as numbered cards, then the cited answer.
+        if (m.sources.isNotEmpty() && !m.error) {
+            Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Ic.Globe, null, Modifier.size(14.dp), tint = C.muted); Spacer(Modifier.width(6.dp))
+                Text("Sources", color = C.muted, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .2.sp)
+            }
+            androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(m.sources.take(8).size) { i ->
+                    val c = m.sources[i]
+                    val a = remember(m.key, i) { Animatable(if (m.revealed) 1f else 0f) }
+                    LaunchedEffect(m.key, i) { delay(40L * i); a.animateTo(1f, spring(dampingRatio = .8f, stiffness = 380f)) }
+                    Column(Modifier.graphicsLayer { alpha = a.value; translationY = (1 - a.value) * 24f }.width(156.dp).height(78.dp).clip(RoundedCornerShape(14.dp))
+                        .background(C.surface).border(1.dp, C.line, RoundedCornerShape(14.dp)).clickable { openSource(c.url) }.padding(10.dp)) {
+                        Text(c.title, color = C.text, fontSize = 12.5.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Favicon(c.url, size = 13.dp, corner = 3.dp); Spacer(Modifier.width(6.dp))
+                            Text(siteName(c.host), color = C.faint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text("${c.n}", color = C.faint, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(CircleShape).background(C.bg).padding(horizontal = 5.dp, vertical = 1.dp))
+                        }
+                    }
+                }
+                if (m.sources.size > 8) item {
+                    Box(Modifier.width(78.dp).height(78.dp).clip(RoundedCornerShape(14.dp)).background(C.surface).clickable { open = true }, contentAlignment = Alignment.Center) {
+                        Text("+${m.sources.size - 8} more", color = C.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+            Row(Modifier.padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Logo(14.dp, lift = 0f); Spacer(Modifier.width(6.dp))
+                Text("Answer", color = C.muted, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .2.sp)
+            }
+        }
         Markdown(if (m.revealed) m.markdown else m.markdown.take(shown), color = if (m.error) C.muted else C.text, cites = m.sources, onCite = { c -> openSource(c.url) })
         if (m.setup) Row(Modifier.padding(top = 10.dp)) {
             if (!Prefs.isSignedIn) { PrimaryButton("Sign in") { Ui.assistant = false; Ui.go("settings/account") }; Spacer(Modifier.width(8.dp)) }

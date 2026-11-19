@@ -61,7 +61,10 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // Never ship a release signed with the public debug key. CI without keystore secrets still builds an
+            // unsigned release APK; set CAIRN_ALLOW_DEBUG_SIGNING=1 only for local test installs.
+            signingConfig = signingConfigs.findByName("release")
+                ?: if (System.getenv("CAIRN_ALLOW_DEBUG_SIGNING") == "1") signingConfigs.getByName("debug") else null
         }
     }
     compileOptions {

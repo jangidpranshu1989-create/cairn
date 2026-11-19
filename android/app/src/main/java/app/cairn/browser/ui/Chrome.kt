@@ -341,13 +341,9 @@ fun VoiceOverlay() {
         BackHandler { Voice.cancel() }
         Box(Modifier.fillMaxSize().background(C.scrim).clickable { Voice.finish() }, contentAlignment = Alignment.BottomCenter) {
             Column(Modifier.padding(16.dp).navigationBarsPadding().fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(C.surface).padding(vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                val lvl by animateFloatAsState(Voice.level, cairnSpring(600f, .7f), label = "lvl")
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
-                    Box(Modifier.size((64 + 52 * lvl).dp).clip(CircleShape).background(C.agent.copy(alpha = .14f)))
-                    Box(Modifier.size((64 + 26 * lvl).dp).clip(CircleShape).background(C.agent.copy(alpha = .22f)))
-                    Box(Modifier.size(64.dp).clip(CircleShape).background(C.agent), contentAlignment = Alignment.Center) {
-                        if (Voice.phase == Voice.Phase.Transcribing) AgentDots(C.accentInk) else Icon(Ic.Mic, null, Modifier.size(26.dp), tint = Color(0xFF1C1C1F))
-                    }
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(150.dp)) {
+                    VoiceOrb(Voice.level, if (Voice.phase == Voice.Phase.Transcribing) "think" else "listen", 150.dp)
+                    if (Voice.phase != Voice.Phase.Transcribing) Icon(Ic.Mic, null, Modifier.size(24.dp), tint = Color(0xFF1C1C1F).copy(alpha = .75f))
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(if (Voice.phase == Voice.Phase.Transcribing) "Transcribing…" else "Listening", color = C.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)

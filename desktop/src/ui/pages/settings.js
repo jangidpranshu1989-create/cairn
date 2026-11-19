@@ -56,7 +56,18 @@
     await api('history:clear', { since: r ? Date.now() - r : 0, cookies: $('#clrCookies').checked, cache: $('#clrCache').checked });
     toast('Browsing data cleared');
   };
-  api('cloud:base').then(b => { $('#privacyLink').href = b.replace(/\/$/, '') + '/privacy.html'; });
+  const PERM_NAMES = { geolocation: 'Location', camera: 'Camera', microphone: 'Microphone', notifications: 'Notifications', 'clipboard-read': 'Clipboard', midi: 'MIDI', openExternal: 'Open apps' };
+  function renderPerms() {
+    const sp = S.sitePermissions || {}; const el = $('#permList'); const sites = Object.keys(sp).filter(o => Object.keys(sp[o]).length);
+    if (!sites.length) { el.innerHTML = '<div class="opt"><div class="l"><small>Sites you allow or block (location, camera, microphone, notifications) appear here.</small></div></div>'; return; }
+    el.innerHTML = sites.map(o => `<div class="opt"><div class="l"><b>${esc(o.replace(/^https?:\/\//, ''))}</b><small>${Object.entries(sp[o]).map(([k, v]) => `${PERM_NAMES[k] || k}: ${v ? 'Allowed' : 'Blocked'}`).join(' · ')}</small></div><button class="btn" data-reset="${esc(o)}">Reset</button></div>`).join('');
+  }
+  renderPerms();
+  $('#permList').addEventListener('click', async (e) => {
+    const o = e.target.closest('[data-reset]')?.dataset.reset; if (!o) return;
+    const sp = { ...(S.sitePermissions || {}) }; delete sp[o]; await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; renderPerms(); toast('Permissions reset');
+  });
+  api('cloud:base').then(b => { $('#privacyLink').href = 'https://saarthi.app/privacy.html'; });
 
   // downloads
   const dl = () => $('#dlDir').textContent = S.downloadDir || 'Default Downloads folder (Saarthi files go to Downloads/Saarthi)';

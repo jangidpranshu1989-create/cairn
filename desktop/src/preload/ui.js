@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const ALLOWED_EVENTS = new Set(['tabs:update', 'agent:event', 'agent:prefill', 'agent:toggle', 'toast', 'shield', 'find:result', 'find:open', 'focus:omnibox',
-  'zoom', 'bookmark:toggle', 'pw:prompt', 'downloads:update', 'tool:busy', 'theme', 'settings:changed', 'cloud:session', 'cloud:online', 'fullscreen']);
+  'zoom', 'bookmark:toggle', 'pw:prompt', 'perm:prompt', 'perm:close', 'downloads:update', 'tool:busy', 'theme', 'settings:changed', 'cloud:session', 'cloud:online', 'fullscreen']);
 
 contextBridge.exposeInMainWorld('saarthi', {
   invoke: (ch, ...args) => ipcRenderer.invoke(ch, ...args),

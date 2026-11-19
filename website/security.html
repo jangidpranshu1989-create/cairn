@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security — Saarthi</title>
+<meta name="description" content="How Saarthi protects your accounts, passwords, payments and phone approvals, and how to report a vulnerability.">
+<meta name="theme-color" content="#0B0C0F">
+<meta property="og:title" content="Security — Saarthi">
+<meta property="og:description" content="How Saarthi protects your accounts, passwords, payments and phone approvals, and how to report a vulnerability.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://saarthi.app/assets/og.png">
+<meta property="og:url" content="https://saarthi.app/security.html">
+<link rel="canonical" href="https://saarthi.app/security.html">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/cabinet-grotesk-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/satoshi-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="hdr"><div class="wrap">
+  <a class="brand" href="index.html" aria-label="Saarthi home"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25L16 2.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M20.5 11.5c-1-1.3-2.6-2-4.4-2-2.6 0-4.4 1.4-4.4 3.3 0 4.4 9 2.3 9 6.6 0 2-1.9 3.3-4.6 3.3-1.9 0-3.6-.8-4.6-2.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>Saarthi</span></a>
+  <nav class="nav" aria-label="Main"><a href="features.html">Features</a><a href="download.html">Download</a><a href="pricing.html">Pricing</a><a href="security.html" aria-current="page">Security</a><a href="about.html">About</a></nav>
+  <div class="cta">
+    <a class="btn sm hide-m" href="contact.html">Contact</a>
+    <a class="btn sm primary" href="download.html">Download</a>
+    <button class="menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+  </div>
+</div></header>
+<nav class="mnav" id="mnav" aria-label="Mobile"><a href="features.html">Features</a><a href="download.html">Download</a><a href="pricing.html">Pricing</a><a href="security.html">Security</a><a href="about.html">About</a><a href="changelog.html">Changelog</a><a href="contact.html">Contact</a><a class="btn lg primary" href="download.html">Download Saarthi</a></nav>
+<main id="main">
+<section class="page-hero">
+  <div class="wrap">
+    <span class="eyebrow rv">Security</span>
+    <h1 class="rv">An agent you can <span class="em">trust with your cart.</span></h1>
+    <p class="lead rv">Saarthi is designed so that the most powerful thing it does — acting on websites for you — never turns into acting without you.</p>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:24px">
+  <div class="wrap">
+    <div class="cards">
+      <div class="card rv"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 11v3.5a6 6 0 0 1-1.5 4M8.5 9.5a4 4 0 0 1 7.5 2v2a10 10 0 0 1-1 4.5M6 12.5V11a6 6 0 0 1 9.8-4.6M18 10.5v3a13 13 0 0 1-.7 4.2M4.5 15V11a7.5 7.5 0 0 1 1.3-4.2"/></svg></span><h3>Human approval for payments</h3><p>The agent stops at every payment step. Approval needs your phone's biometrics, or an explicit click in the browser if no phone is paired. Requests expire after 3 minutes.</p></div>
+      <div class="card rv" style="--d:60ms"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></span><h3>Encrypted on your device</h3><p>Saved passwords and API keys are encrypted with your operating system keychain. Nothing is readable from the profile folder alone.</p></div>
+      <div class="card rv" style="--d:120ms"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16 7l2.5 2.5M14 9l2 2"/></svg></span><h3>Passkeys and strong sign-in</h3><p>WebAuthn passkeys, bcrypt password hashing, CAPTCHA after failed attempts, account lockout and rate limiting.</p></div>
+      <div class="card rv" style="--d:180ms"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7Z"/><circle cx="12" cy="12" r="3"/></svg></span><h3>Sensitive fields masked</h3><p>Password, card number, CVV and PIN values are masked before any page is described to the AI model.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec band">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="eyebrow">How it's built</span><h2>Security details.</h2></div>
+    <div class="tbl-wrap rv">
+      <table class="tbl">
+        <thead><tr><th>Area</th><th>Protection</th></tr></thead>
+        <tbody>
+          <tr><td>Browser sandbox</td><td>Websites run in sandboxed Chromium renderers with context isolation; browser pages use a strict IPC allowlist</td></tr>
+          <tr><td>Agent permissions</td><td>Configurable “ask before” policy: purchases only, or every action; you can stop any task instantly</td></tr>
+          <tr><td>Logins &amp; CAPTCHAs</td><td>Detected and handed back to you; the agent never types your passwords or solves CAPTCHAs for you</td></tr>
+          <tr><td>Sessions</td><td>Short-lived access tokens with rotating refresh tokens; see and revoke sessions from your account</td></tr>
+          <tr><td>Phone pairing</td><td>One-time QR codes that expire in 5 minutes; per-device tokens stored in the Android Keystore</td></tr>
+          <tr><td>Approval screen</td><td>Full-screen, screenshot-blocked, unlocked only by Android biometrics or device credential</td></tr>
+          <tr><td>File transfer</td><td>Per-account, authenticated download; deleted after delivery or 24 hours</td></tr>
+          <tr><td>Transport &amp; server</td><td>TLS everywhere, security headers (Helmet), strict CORS, input validation and request size limits</td></tr>
+          <tr><td>Tracker blocking</td><td>Saarthi Shield blocks known ad, tracker and cryptominer domains</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="disclosure">
+  <div class="wrap split">
+    <div class="copy rv">
+      <span class="eyebrow">Responsible disclosure</span>
+      <h2>Found a vulnerability? Tell us.</h2>
+      <p class="lead">Email <a class="tlink" href="mailto:security@saarthi.app">security@saarthi.app</a> with steps to reproduce. We acknowledge reports within 2 working days, keep you updated, and credit you on our changelog if you'd like.</p>
+    </div>
+    <div class="prose rv" style="--d:100ms">
+      <h3 style="margin-top:0">Please</h3>
+      <ul>
+        <li>Give us reasonable time to fix the issue before disclosing it publicly.</li>
+        <li>Only test against your own accounts and data.</li>
+        <li>Avoid privacy violations, data destruction and service disruption.</li>
+      </ul>
+      <h3>In scope</h3>
+      <ul>
+        <li>Saarthi desktop browser and Saarthi Companion for Android</li>
+        <li>api.saarthi.app and saarthi.app</li>
+      </ul>
+      <p>We won't take legal action against good-faith research that follows these guidelines.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+<footer class="ftr"><div class="wrap">
+  <div class="grid">
+    <div class="about"><a class="brand" href="index.html"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25L16 2.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M20.5 11.5c-1-1.3-2.6-2-4.4-2-2.6 0-4.4 1.4-4.4 3.3 0 4.4 9 2.3 9 6.6 0 2-1.9 3.3-4.6 3.3-1.9 0-3.6-.8-4.6-2.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>Saarthi</span></a><p>The agentic browser that understands Hindi, Hinglish and every language you think in. Made in India.</p></div>
+    <div><h4>Product</h4><ul><li><a href="features.html">Features</a></li><li><a href="download.html">Download</a></li><li><a href="pricing.html">Pricing</a></li><li><a href="changelog.html">Changelog</a></li></ul></div>
+    <div><h4>Platforms</h4><ul><li><a href="download.html#windows">Windows</a></li><li><a href="download.html#mac">macOS</a></li><li><a href="download.html#linux">Linux</a></li><li><a href="download.html#android">Android companion</a></li></ul></div>
+    <div><h4>Company</h4><ul><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li><li><a href="security.html">Security</a></li></ul></div>
+    <div><h4>Legal</h4><ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of service</a></li><li><a href="security.html#disclosure">Responsible disclosure</a></li></ul></div>
+  </div>
+  <div class="base"><span>© <span data-year>2026</span> Saarthi. All rights reserved.</span><span>v1.0.0 · Built with Groq &amp; NVIDIA NIM</span></div>
+</div></footer>
+<script src="assets/site.js" defer></script>
+</body>
+</html>

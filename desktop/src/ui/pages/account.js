@@ -43,7 +43,7 @@
     err.textContent = '';
     const email = f.email.value.trim(), password = f.password.value;
     if (!/^\S+@\S+\.\S+$/.test(email)) return err.textContent = 'Enter a valid email address';
-    if (mode === 'signup' && (password.length < 8 || !/[a-z]/i.test(password) || !/\d/.test(password))) return err.textContent = 'Password needs 8+ characters with a letter and a number';
+    if (mode === 'signup' && (password.length < 10 || !/[a-z]/i.test(password) || !/\d/.test(password))) return err.textContent = 'Password needs 10+ characters with a letter and a number';
     if (mode === 'signup' && !f.name.value.trim()) return err.textContent = 'Enter your name';
     const captcha = cap ? { captchaToken: cap.token, captchaAnswer: f.captcha.value.trim() } : {};
     go.disabled = true; go.textContent = 'Please wait…';
@@ -58,9 +58,17 @@
     const base = (await api('cloud:base')).replace(/\/$/, '');
     root.innerHTML = `<div class="card"><div class="me"><div class="av">${esc((u.name || u.email)[0].toUpperCase())}</div><div style="flex:1;min-width:0"><h2>${esc(u.name || 'Saarthi user')}</h2><div class="muted" style="overflow:hidden;text-overflow:ellipsis">${esc(u.email)}</div></div></div>
       <div class="perks"><div>${ICON('check')} Payment approvals on your phone</div><div>${ICON('check')} Send PDFs &amp; articles to your phone</div><div>${ICON('check')} Saarthi Cloud AI quota</div></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary" href="saarthi://settings#phone">${ICON('phone')} Pair a phone</a><button class="btn" id="pk">${ICON('key')} Manage passkeys</button><button class="btn danger" id="out">Sign out</button></div></div>`;
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary" href="saarthi://settings#phone">${ICON('phone')} Pair a phone</a><button class="btn" id="pk">${ICON('key')} Manage passkeys</button><button class="btn danger" id="out">Sign out</button></div></div>
+      <div class="card" style="margin-top:16px"><h3 style="margin:0 0 6px">Delete account</h3><p class="muted" style="margin:0 0 12px">Permanently deletes your Saarthi account, sessions, passkeys, paired devices, pending transfers and synced data from our server. Local browsing data on this computer is not affected.</p>
+      <form id="del" style="display:flex;gap:8px;flex-wrap:wrap"><input class="input" type="password" name="pw" placeholder="Confirm with your password" autocomplete="current-password" style="flex:1;min-width:200px"><button class="btn danger" type="submit">Delete permanently</button></form><div class="err" id="delErr" style="margin-top:8px"></div></div>`;
     $('#pk').onclick = () => api('nav:go', base + '/account.html');
     $('#out').onclick = async () => { await api('cloud:logout'); toast('Signed out'); render(); };
+    $('#del').onsubmit = async (e) => {
+      e.preventDefault(); const pw = e.target.pw.value; $('#delErr').textContent = '';
+      if (!pw) return $('#delErr').textContent = 'Enter your password to confirm';
+      if (!confirm('Delete your Saarthi account permanently? This cannot be undone.')) return;
+      try { await api('cloud:deleteAccount', pw); toast('Account deleted'); render(); } catch (x) { $('#delErr').textContent = cleanErr(x); }
+    };
   }
   render();
 })();

@@ -38,7 +38,8 @@ function snapshotFn(maxText) {
     if (tag === 'input' || tag === 'textarea' || tag === 'select') {
       const type = el.type || tag;
       const ph = clean(el.placeholder || el.getAttribute('aria-label') || el.name || '', 50);
-      const val = type === 'password' ? (el.value ? '••••' : '') : clean(el.value, 40);
+      const sensitive = type === 'password' || /^cc-/.test(el.autocomplete || '') || /card.?num|cvv|cvc|security.?code|\bpin\b|expiry|exp.?date/i.test(`${el.name} ${el.id} ${el.placeholder || ''} ${el.getAttribute('aria-label') || ''}`);
+      const val = sensitive ? (el.value ? '••••' : '') : clean(el.value, 40);
       let extra = '';
       if (tag === 'select') extra = ' options=' + JSON.stringify([...el.options].slice(0, 12).map(o => clean(o.text, 30)));
       if (type === 'checkbox' || type === 'radio') extra = el.checked ? ' checked' : ' unchecked';

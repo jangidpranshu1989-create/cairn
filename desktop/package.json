@@ -69,12 +69,25 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Saarthi"
+      "shortcutName": "Saarthi",
+      "artifactName": "Saarthi-Setup-${arch}.${ext}"
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "category": "public.app-category.productivity",
       "icon": "build/icon.png",
@@ -84,7 +97,8 @@
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Saarthi uses the microphone for voice commands.",
         "NSCameraUsageDescription": "Websites may request camera access."
-      }
+      },
+      "artifactName": "Saarthi-mac-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -93,7 +107,8 @@
       ],
       "category": "Network;WebBrowser",
       "icon": "build/icon.png",
-      "maintainer": "hello@saarthi.app"
+      "maintainer": "hello@saarthi.app",
+      "artifactName": "Saarthi-linux-${arch}.${ext}"
     },
     "publish": [
       {
@@ -101,6 +116,13 @@
         "owner": "saarthi-app",
         "repo": "saarthi"
       }
-    ]
-  }
+    ],
+    "appImage": {
+      "artifactName": "Saarthi-linux-x64.${ext}"
+    },
+    "deb": {
+      "artifactName": "Saarthi-linux-x64.${ext}"
+    }
+  },
+  "desktopName": "saarthi.desktop"
 }

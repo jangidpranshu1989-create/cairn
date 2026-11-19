@@ -104,6 +104,7 @@ async function sendToPhone(filePath, folder) {
 const devices = () => api('/devices');
 const pairStart = () => api('/devices/pair/start', { method: 'POST' });
 const removeDevice = (id) => api('/devices/' + id, { method: 'DELETE' });
+async function deleteAccount(password) { await api('/auth/account', { method: 'DELETE', body: { password } }); setSession(null); return { ok: true }; }
 
 module.exports = { events, api, isSignedIn, publicSession, login, signup, captcha, logout, handleAuthCallback, connect,
-  requestApproval, decideLocally, sendToPhone, devices, pairStart, removeDevice, base };
+  requestApproval, decideLocally, sendToPhone, devices, pairStart, removeDevice, deleteAccount, base };

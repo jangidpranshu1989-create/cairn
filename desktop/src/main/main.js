@@ -17,7 +17,7 @@ const PAGES = new Set(['newtab', 'settings', 'history', 'bookmarks', 'downloads'
 const isMac = process.platform === 'darwin';
 
 let win, tabs, agent, agentTabId = null;
-const pending = { asks: new Map(), confirms: new Map(), approvals: new Map(), pw: new Map() };
+const pending = { asks: new Map(), confirms: new Map(), approvals: new Map(), pw: new Map(), perms: new Map() };
 let downloads = new Map();
 
 function chromeUA() {
@@ -66,8 +66,19 @@ async function setupSession() {
     if (wc.getURL().startsWith('saarthi://')) return cb(true);
     const origin = (() => { try { return new URL(details.requestingUrl).host; } catch { return 'This site'; } })();
     const labels = { media: details.mediaTypes?.includes('video') ? 'use your camera' : 'use your microphone', geolocation: 'know your location', notifications: 'show notifications', 'clipboard-read': 'read your clipboard', midi: 'use MIDI devices', openExternal: 'open an external app' };
-    const { response } = await dialog.showMessageBox(win, { type: 'question', buttons: ['Allow', 'Block'], defaultId: 1, cancelId: 1, title: 'Permission request', message: `${origin} wants to ${labels[permission] || permission}` });
-    cb(response === 0);
+    const site = (() => { try { return new URL(details.requestingUrl).origin; } catch { return ''; } })();
+    const key = permission === 'media' ? (details.mediaTypes?.includes('video') ? 'camera' : 'microphone') : permission;
+    const st = store.get().settings;
+    const saved = st.data.sitePermissions?.[site]?.[key];
+    if (typeof saved === 'boolean') return cb(saved);
+    if (!labels[permission]) return cb(false);
+    const id = Math.random().toString(36).slice(2);
+    const timer = setTimeout(() => { if (pending.perms.delete(id)) { cb(false); send('perm:close', id); } }, 60000);
+    const tabId = tabs ? [...tabs.tabs.values()].find(t => t.view.webContents === wc)?.id : null;
+    const cancel = () => { const p = pending.perms.get(id); if (!p) return; pending.perms.delete(id); clearTimeout(p.timer); p.cb(false); send('perm:close', id); };
+    pending.perms.set(id, { cb, site, key, timer });
+    wc.once('did-navigate', cancel); wc.once('destroyed', cancel);
+    send('perm:prompt', { id, tabId, origin, text: `${origin} wants to ${labels[permission]}` });
   });
 
   ses.on('will-download', (_e, item, wc) => {
@@ -310,6 +321,7 @@ function registerIpc() {
   handle('agent:approve', (_e, id, ok) => { pending.approvals.get(id)?.(ok ? 'approved' : 'denied'); pending.approvals.delete(id); });
   handle('agent:status', () => llm.status());
   handle('page:tool', (_e, kind) => runPageTool(kind));
+  handle('voice:speak', async (_e, text) => llm.speech(text));
   handle('voice:transcribe', async (_e, buf, mime) => llm.transcribe(Buffer.from(buf), mime));
   handle('open:file-url', (_e, f) => safeFile(f) ? `saarthi://file?p=${encodeURIComponent(f)}` : null);
 
@@ -344,6 +356,7 @@ function registerIpc() {
   handle('cloud:devices', () => cloud.devices(), { internal: true });
   handle('cloud:pair', () => cloud.pairStart(), { internal: true });
   handle('cloud:removeDevice', (_e, id) => cloud.removeDevice(id), { internal: true });
+  handle('cloud:deleteAccount', (_e, pw) => cloud.deleteAccount(pw), { internal: true });
   handle('cloud:base', () => cloud.base());
   handle('cloud:passkeyPage', () => { tabs.create(cloud.base() + '/account.html?handoff=desktop'); });
 
@@ -380,6 +393,11 @@ function registerIpc() {
     const id = Math.random().toString(36).slice(2);
     pending.pw.set(id, { origin, username, password });
     send('pw:prompt', { id, origin, username, update: st === 'update' });
+  });
+  handle('perm:decide', (_e, id, allow, remember) => {
+    const p = pending.perms.get(id); pending.perms.delete(id); if (!p) return;
+    clearTimeout(p.timer); p.cb(!!allow);
+    if (remember && p.site) { const st = store.get().settings; st.data.sitePermissions = { ...(st.data.sitePermissions || {}) }; st.data.sitePermissions[p.site] = { ...(st.data.sitePermissions[p.site] || {}), [p.key]: !!allow }; st.save(); }
   });
   handle('pw:decide', (_e, id, action) => {
     const p = pending.pw.get(id); pending.pw.delete(id); if (!p) return;
@@ -528,7 +546,14 @@ app.whenReady().then(async () => {
   cloud.events.on('device_paired', (m) => send('toast', { text: `Phone paired: ${m.device.name}` }));
   cloud.events.on('transfer_delivered', (m) => send('toast', { text: `Saved on phone: ${m.savedTo}/${m.filename}` }));
   nativeTheme.on('updated', () => { if (store.get().settings.data.theme === 'system') applyTheme(); });
-  if (app.isPackaged) { try { require('electron-updater').autoUpdater.checkForUpdatesAndNotify(); } catch {} }
+  if (app.isPackaged && process.env.SAARTHI_NO_UPDATE !== '1') {
+    try {
+      const { autoUpdater } = require('electron-updater');
+      autoUpdater.logger = null;
+      autoUpdater.on('error', (e) => console.warn('[updater]', String(e?.message || e).split('\n')[0]));
+      autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    } catch {}
+  }
 });
 app.on('window-all-closed', () => { store.flushAll(); app.quit(); });
 app.on('before-quit', () => store.flushAll());

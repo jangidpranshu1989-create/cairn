@@ -74,6 +74,13 @@
   <button class="tb" id="menuBtn" title="Menu"><svg class="ic"><use href="#i-menu"/></svg></button>
 </nav>
 
+<div class="bar" id="permBar">
+  <svg class="ic" style="color:var(--agent)"><use href="#i-shield"/></svg>
+  <div class="grow" id="permText">Permission request</div>
+  <button class="btn" data-perm="block">Block</button>
+  <button class="btn" data-perm="once">Allow this time</button>
+  <button class="btn primary" data-perm="allow">Allow</button>
+</div>
 <div class="bar" id="pwBar">
   <svg class="ic" style="color:var(--accent)"><use href="#i-key"/></svg>
   <div class="grow" id="pwText">Save password?</div>

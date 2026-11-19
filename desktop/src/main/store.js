@@ -57,6 +57,7 @@ const DEFAULT_SETTINGS = {
   groqFastModel: 'openai/gpt-oss-20b',
   nvidiaModel: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
   nvidiaFastModel: 'nvidia/nemotron-3.5-bolt-e4b',
+  sitePermissions: {},           // { origin: { geolocation: true, camera: false, ... } }
   agentConfirm: 'purchases',     // purchases | every-action
   agentMaxSteps: 40,
   shoppingCountry: 'IN',
@@ -69,7 +70,7 @@ const DEFAULT_SETTINGS = {
   askWhereToSave: false,
   voiceName: '',
   speechRate: 1,
-  serverUrl: 'http://localhost:8787',
+  serverUrl: process.env.SAARTHI_SERVER || (app.isPackaged ? 'https://api.saarthi.app' : 'http://localhost:8787'),
   panelWidth: 420,
   restoreTabs: [],
 };

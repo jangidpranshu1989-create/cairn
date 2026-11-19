@@ -102,6 +102,9 @@ CREATE TABLE IF NOT EXISTS reset_tokens (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, name TEXT, email TEXT NOT NULL, topic TEXT, body TEXT, ip TEXT, created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT,
@@ -124,3 +127,13 @@ setInterval(() => {
   db.prepare("UPDATE approvals SET status='expired' WHERE status='pending' AND expires_at < ?").run(t);
   db.prepare('DELETE FROM reset_tokens WHERE expires_at < ?').run(t);
 }, 30_000).unref();
+// Retention policy (see privacy policy): approvals 30 days, contact messages & security log 12 months
+const DAY = 86_400_000;
+function retention() {
+  const t = now();
+  db.prepare('DELETE FROM approvals WHERE created_at < ?').run(t - 30 * DAY);
+  db.prepare('DELETE FROM messages WHERE created_at < ?').run(t - 365 * DAY);
+  db.prepare('DELETE FROM audit WHERE at < ?').run(t - 365 * DAY);
+  db.prepare('DELETE FROM usage WHERE day < ?').run(new Date(t - 90 * DAY).toISOString().slice(0, 10));
+}
+retention(); setInterval(retention, 6 * 3600_000).unref();

@@ -32,6 +32,21 @@ app.use('/api/approvals', approvalsRouter);
 app.use('/api/transfers', transfersRouter);
 app.use('/api/ai', aiRouter);
 
+// Public website: contact form + Pro waitlist (rate-limited, validated, stored for the team)
+const contactLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });
+app.post('/api/public/contact', contactLimiter, (req, res) => {
+  const b = req.body || {};
+  const kind = b.kind === 'waitlist' ? 'waitlist' : 'contact';
+  const email = String(b.email || '').trim().slice(0, 200);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Please enter a valid email address' });
+  if (b.website) return res.json({ ok: true }); // honeypot
+  const body = String(b.message || '').slice(0, 5000);
+  if (kind === 'contact' && body.trim().length < 5) return res.status(400).json({ error: 'Please write a short message' });
+  db.prepare('INSERT INTO messages (kind, name, email, topic, body, ip, created_at) VALUES (?,?,?,?,?,?,?)')
+    .run(kind, String(b.name || '').slice(0, 120), email, String(b.topic || '').slice(0, 60), body, req.ip, now());
+  res.json({ ok: true });
+});
+
 // Encrypted sync blobs (client encrypts before upload; server never sees plaintext passwords)
 const SYNC_KINDS = new Set(['bookmarks', 'settings', 'passwords', 'history']);
 app.get('/api/sync/:kind', requireAuth, (req, res) => {

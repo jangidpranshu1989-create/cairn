@@ -118,9 +118,19 @@ async function transcribe(buffer, mime, language) {
   return (await r.json()).text;
 }
 
+// Cloud TTS fallback (Groq Orpheus, English) for systems without a matching OS voice.
+async function speech(text, voice = 'hannah') {
+  const c = cfg();
+  if (!c.groqKey) throw new Error('No voice installed for this language. Add a Groq key (Settings → AI) or install system voices.');
+  const r = await fetch(`${PROVIDERS.groq.base}/audio/speech`, { method: 'POST', headers: { Authorization: `Bearer ${c.groqKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'canopylabs/orpheus-v1-english', voice, input: String(text).slice(0, 1200), response_format: 'wav' }), signal: AbortSignal.timeout(30000) });
+  if (!r.ok) throw new Error(`Speech failed (${r.status})`);
+  return Buffer.from(await r.arrayBuffer());
+}
+
 async function testKey(provider, key) {
   const r = await fetch(`${PROVIDERS[provider].base}/models`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15000) });
   return r.ok;
 }
 
-module.exports = { chat, complete, completeJSON, transcribe, status, testKey };
+module.exports = { chat, complete, completeJSON, transcribe, speech, status, testKey };

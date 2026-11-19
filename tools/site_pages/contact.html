@@ -1,0 +1,42 @@
+<!-- title: Contact — Saarthi
+desc: Get in touch with the Saarthi team for support, feedback, partnerships, press or security reports.
+-->
+<section class="page-hero">
+  <div class="wrap">
+    <span class="eyebrow rv">Contact</span>
+    <h1 class="rv">Talk to a human.</h1>
+    <p class="lead rv">Hindi, Hinglish or English — write however you like. We usually reply within one working day.</p>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:24px">
+  <div class="wrap split">
+    <form class="form rv" data-api="contact" novalidate>
+      <div class="row2">
+        <div class="field"><label for="c-name">Name</label><input class="input" id="c-name" name="name" autocomplete="name" maxlength="120"></div>
+        <div class="field"><label for="c-email">Email</label><input class="input" id="c-email" type="email" name="email" autocomplete="email" required maxlength="200"></div>
+      </div>
+      <div class="field"><label for="c-topic">Topic</label>
+        <select class="input" id="c-topic" name="topic">
+          <option value="support">Help with Saarthi</option>
+          <option value="feedback">Feedback or feature idea</option>
+          <option value="teams">Teams &amp; business</option>
+          <option value="press">Press</option>
+          <option value="privacy">Privacy request</option>
+          <option value="other">Something else</option>
+        </select>
+      </div>
+      <div class="field"><label for="c-msg">Message</label><textarea class="input" id="c-msg" name="message" rows="6" required maxlength="5000" placeholder="Tell us what's going on…"></textarea></div>
+      <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div><button class="btn lg primary" type="submit">Send message {{arrow}}</button></div>
+      <p class="form-msg" role="status" aria-live="polite"></p>
+    </form>
+    <div class="copy rv" style="--d:100ms">
+      <div class="cards" style="grid-template-columns:1fr">
+        <div class="card"><span class="ic">{{mail}}</span><h3>General</h3><p><a class="tlink" href="mailto:hello@saarthi.app">hello@saarthi.app</a></p></div>
+        <div class="card"><span class="ic">{{shield}}</span><h3>Security reports</h3><p><a class="tlink" href="mailto:security@saarthi.app">security@saarthi.app</a> · <a class="tlink" href="security.html#disclosure">guidelines</a></p></div>
+        <div class="card"><span class="ic">{{lock}}</span><h3>Privacy &amp; grievances</h3><p><a class="tlink" href="mailto:privacy@saarthi.app">privacy@saarthi.app</a> · responses within 30 days</p></div>
+      </div>
+    </div>
+  </div>
+</section>

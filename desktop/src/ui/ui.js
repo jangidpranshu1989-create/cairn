@@ -86,7 +86,7 @@
 
   S.on('tabs:update', (list) => {
     tabs = list; active = list.find(t => t.active);
-    renderTabs(); renderToolbar();
+    renderTabs(); renderToolbar(); if (typeof showPerm === 'function') showPerm();
   });
   S.invoke('tabs:list').then(l => { tabs = l; active = l.find(t => t.active); renderTabs(); renderToolbar(); });
 
@@ -259,6 +259,17 @@
   function closeFind() { findBar.classList.remove('show'); S.invoke('find:stop'); S.invoke('view:focus'); }
   S.on('find:result', (r) => { if (r.finalUpdate) $('#findCount').textContent = r.matches ? `${r.activeMatchOrdinal} of ${r.matches}` : 'No results'; });
   S.on('zoom', async (d) => { const z = await S.invoke('zoom', d); toast(`Zoom ${Math.round(z * 100)}%`, { ms: 1200 }); });
+
+  // Site permission bar (in-app, remembered per site)
+  let permQ = [];
+  function curPerm() { return permQ.find(p => !p.tabId || p.tabId === active?.id); }
+  function showPerm() { const p = curPerm(); $('#permBar').classList.toggle('show', !!p); if (p) $('#permText').textContent = p.text; }
+  S.on('perm:prompt', (p) => { permQ.push(p); showPerm(); });
+  S.on('perm:close', (id) => { permQ = permQ.filter(p => p.id !== id); showPerm(); });
+  $('#permBar').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-perm]')?.dataset.perm; const p = curPerm(); if (!a || !p) return;
+    S.invoke('perm:decide', p.id, a !== 'block', a !== 'once'); permQ = permQ.filter(x => x !== p); showPerm();
+  });
 
   // Password save bar
   let pwPrompt = null;
@@ -563,21 +574,39 @@
     togglePanel(true);
     next();
   }
+  let cloudAudio = null;
   function next() {
     if (!speaking || !queue.length) { if (speaking) stopSpeaking(); return; }
+    const v = pickVoice(ttsLang);
+    const native = v && (settings.voiceName === v.name || (v.lang || '').slice(0, 2) === ttsLang.slice(0, 2));
+    if (!native) {
+      // No OS voice for this language — use cloud speech for English, otherwise explain.
+      if (ttsLang.startsWith('en')) {
+        const chunk = queue.shift();
+        S.invoke('voice:speak', chunk).then((buf) => {
+          if (!speaking) return;
+          const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+          cloudAudio = new Audio(url); cloudAudio.playbackRate = Number($('#rate').value) || 1;
+          cloudAudio.onended = () => { URL.revokeObjectURL(url); if (speaking && !paused) next(); };
+          cloudAudio.play().catch(() => next());
+        }).catch((e) => { toast(cleanErr(e), { error: true }); stopSpeaking(); });
+        return;
+      }
+      if (!v) { toast('No voice installed for this language. Install Hindi/regional voices in your OS speech settings.', { error: true }); stopSpeaking(); return; }
+    }
     const u = new SpeechSynthesisUtterance(queue.shift());
-    const v = pickVoice(ttsLang); if (v) u.voice = v;
+    if (v) u.voice = v;
     u.lang = ttsLang; u.rate = Number($('#rate').value) || 1;
     u.onend = () => { if (speaking && !paused) next(); };
     u.onerror = () => { if (speaking) next(); };
     speechSynthesis.speak(u);
   }
-  function stopSpeaking() { speaking = false; queue = []; speechSynthesis.cancel(); player.classList.remove('show'); }
+  function stopSpeaking() { speaking = false; queue = []; speechSynthesis.cancel(); if (cloudAudio) { cloudAudio.pause(); cloudAudio = null; } player.classList.remove('show'); }
   $('#playStop').onclick = stopSpeaking;
   $('#playPause').onclick = () => {
     if (!speaking) return;
     paused = !paused;
-    paused ? speechSynthesis.pause() : speechSynthesis.resume();
+    if (cloudAudio) paused ? cloudAudio.pause() : cloudAudio.play(); else paused ? speechSynthesis.pause() : speechSynthesis.resume();
     player.classList.toggle('paused', paused);
     $('#playPause').innerHTML = icon(paused ? 'play' : 'pause', 16);
   };

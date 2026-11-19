@@ -1,0 +1,68 @@
+<!-- title: Security — Saarthi
+desc: How Saarthi protects your accounts, passwords, payments and phone approvals, and how to report a vulnerability.
+active: security.html
+-->
+<section class="page-hero">
+  <div class="wrap">
+    <span class="eyebrow rv">Security</span>
+    <h1 class="rv">An agent you can <span class="em">trust with your cart.</span></h1>
+    <p class="lead rv">Saarthi is designed so that the most powerful thing it does — acting on websites for you — never turns into acting without you.</p>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:24px">
+  <div class="wrap">
+    <div class="cards">
+      <div class="card rv"><span class="ic">{{finger}}</span><h3>Human approval for payments</h3><p>The agent stops at every payment step. Approval needs your phone's biometrics, or an explicit click in the browser if no phone is paired. Requests expire after 3 minutes.</p></div>
+      <div class="card rv" style="--d:60ms"><span class="ic">{{lock}}</span><h3>Encrypted on your device</h3><p>Saved passwords and API keys are encrypted with your operating system keychain. Nothing is readable from the profile folder alone.</p></div>
+      <div class="card rv" style="--d:120ms"><span class="ic">{{key}}</span><h3>Passkeys and strong sign-in</h3><p>WebAuthn passkeys, bcrypt password hashing, CAPTCHA after failed attempts, account lockout and rate limiting.</p></div>
+      <div class="card rv" style="--d:180ms"><span class="ic">{{eye}}</span><h3>Sensitive fields masked</h3><p>Password, card number, CVV and PIN values are masked before any page is described to the AI model.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec band">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="eyebrow">How it's built</span><h2>Security details.</h2></div>
+    <div class="tbl-wrap rv">
+      <table class="tbl">
+        <thead><tr><th>Area</th><th>Protection</th></tr></thead>
+        <tbody>
+          <tr><td>Browser sandbox</td><td>Websites run in sandboxed Chromium renderers with context isolation; browser pages use a strict IPC allowlist</td></tr>
+          <tr><td>Agent permissions</td><td>Configurable “ask before” policy: purchases only, or every action; you can stop any task instantly</td></tr>
+          <tr><td>Logins &amp; CAPTCHAs</td><td>Detected and handed back to you; the agent never types your passwords or solves CAPTCHAs for you</td></tr>
+          <tr><td>Sessions</td><td>Short-lived access tokens with rotating refresh tokens; see and revoke sessions from your account</td></tr>
+          <tr><td>Phone pairing</td><td>One-time QR codes that expire in 5 minutes; per-device tokens stored in the Android Keystore</td></tr>
+          <tr><td>Approval screen</td><td>Full-screen, screenshot-blocked, unlocked only by Android biometrics or device credential</td></tr>
+          <tr><td>File transfer</td><td>Per-account, authenticated download; deleted after delivery or 24 hours</td></tr>
+          <tr><td>Transport &amp; server</td><td>TLS everywhere, security headers (Helmet), strict CORS, input validation and request size limits</td></tr>
+          <tr><td>Tracker blocking</td><td>Saarthi Shield blocks known ad, tracker and cryptominer domains</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="disclosure">
+  <div class="wrap split">
+    <div class="copy rv">
+      <span class="eyebrow">Responsible disclosure</span>
+      <h2>Found a vulnerability? Tell us.</h2>
+      <p class="lead">Email <a class="tlink" href="mailto:security@saarthi.app">security@saarthi.app</a> with steps to reproduce. We acknowledge reports within 2 working days, keep you updated, and credit you on our changelog if you'd like.</p>
+    </div>
+    <div class="prose rv" style="--d:100ms">
+      <h3 style="margin-top:0">Please</h3>
+      <ul>
+        <li>Give us reasonable time to fix the issue before disclosing it publicly.</li>
+        <li>Only test against your own accounts and data.</li>
+        <li>Avoid privacy violations, data destruction and service disruption.</li>
+      </ul>
+      <h3>In scope</h3>
+      <ul>
+        <li>Saarthi desktop browser and Saarthi Companion for Android</li>
+        <li>api.saarthi.app and saarthi.app</li>
+      </ul>
+      <p>We won't take legal action against good-faith research that follows these guidelines.</p>
+    </div>
+  </div>
+</section>

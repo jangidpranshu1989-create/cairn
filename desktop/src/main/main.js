@@ -357,6 +357,11 @@ function registerIpc() {
 
   // cloud account & phone
   handle('cloud:session', () => cloud.publicSession());
+  handle('sync:status', () => require('./sync').status(), { internal: true });
+  handle('sync:now', () => require('./sync').syncNow(), { internal: true });
+  handle('sync:setOn', (_e, on) => require('./sync').setOn(on), { internal: true });
+  handle('sync:remoteTabs', () => require('./sync').remoteTabs(), { internal: true });
+  handle('vault:encrypted', () => require('electron').safeStorage.isEncryptionAvailable());
   handle('cloud:captcha', () => cloud.captcha(), { internal: true });
   handle('cloud:login', (_e, email, pw, cap) => cloud.login(email, pw, cap), { internal: true });
   handle('cloud:signup', (_e, payload) => cloud.signup(payload), { internal: true });
@@ -552,6 +557,14 @@ app.whenReady().then(async () => {
   applyTheme();
   setupSession().catch(e => console.error(e));
   cloud.connect();
+  const sync = require('./sync');
+  sync.init(cloud, tabs);
+  sync.events.on('settings', () => { applyTheme(); send('settings:changed', true); });
+  sync.events.on('status', (st) => send('sync:status', st));
+  sync.events.on('tabs', (t) => send('sync:remoteTabs', t));
+  cloud.events.on('sync_error', (m) => send('toast', { text: 'Sync: ' + m }));
+  if (!require('electron').safeStorage.isEncryptionAvailable())
+    setTimeout(() => send('toast', { text: 'Your OS keychain is unavailable, so saved passwords are stored unencrypted on this computer. Install/unlock a keyring (e.g. gnome-keyring) to protect them.' }), 4000);
   cloud.events.on('session', (s) => send('cloud:session', s));
   cloud.events.on('online', (o) => send('cloud:online', o));
   cloud.events.on('device_paired', (m) => send('toast', { text: `Phone paired: ${m.device.name}` }));

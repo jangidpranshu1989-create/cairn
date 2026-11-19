@@ -104,6 +104,21 @@
     } catch {}
   }
 
+  // sync
+  async function loadSync() {
+    const st = await api('sync:status').catch(() => null); if (!st) return;
+    $('#syncOn').checked = st.on;
+    const when = st.last ? new Date(st.last).toLocaleString() : 'never';
+    $('#syncInfo').textContent = !st.signedIn ? 'Sign in to your Cairn account to sync bookmarks, history, tabs, passwords and passkeys across devices.'
+      : !st.ready ? 'Sign in again with your password to unlock end-to-end encrypted sync on this computer.'
+      : st.error ? 'Last sync failed: ' + st.error : 'End-to-end encrypted. Last synced: ' + when;
+    const rt = await api('sync:remoteTabs').catch(() => []);
+    $('#remoteTabs').innerHTML = rt.map(d => `<div class="opt"><div class="l"><b>${ICON('phone')} ${esc(d.device)}</b><small>${d.tabs.filter(t => /^https?:/i.test(t.url)).slice(0, 8).map(t => `<a href="${esc(t.url)}">${esc(t.title || t.url)}</a>`).join(' · ')}${d.tabs.length > 8 ? ` · +${d.tabs.length - 8} more` : ''}</small></div></div>`).join('');
+  }
+  $('#syncOn').onchange = async (e) => { await api('sync:setOn', e.target.checked); loadSync(); };
+  $('#syncNow').onclick = async () => { $('#syncNow').disabled = true; const r = await api('sync:now').catch(e => ({ error: cleanErr(e) })); $('#syncNow').disabled = false; toast(r.ok ? 'Synced' : (r.error || 'Sync failed')); loadSync(); };
+  loadSync();
+
   const info = await api('app:info');
   $('#ver').textContent = 'Cairn ' + info.version; $('#verD').textContent = `Chromium ${info.chrome} · Electron ${info.electron} · ${info.platform}`;
   show();

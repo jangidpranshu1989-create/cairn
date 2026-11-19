@@ -106,6 +106,7 @@ class SyncService : Service() {
             "approval_request" -> m.optJSONObject("approval")?.let { onApproval(Approval.from(it)) }
             "approval_decided" -> m.optJSONObject("approval")?.optString("id")?.let { AppState.removeApproval(it); Notifier.cancelApproval(this, it) }
             "transfer_ready" -> m.optJSONObject("transfer")?.let { onTransfer(Transfer.from(it)) }
+            "sync_changed" -> if (m.optString("from") != (Prefs.deviceId ?: "")) app.cairn.browser.vault.Sync.soon(300)
             "device_removed" -> if (m.optString("id") == Prefs.deviceId) { Prefs.clearAccount(); AppState.paired.value = false; stopSelf() }
         }
     }
@@ -122,6 +123,7 @@ class SyncService : Service() {
     }
 
     private suspend fun catchUp() {
+        app.cairn.browser.vault.Sync.soon(500)
         runCatching { Api.pendingApprovals() }.onSuccess { list -> AppState.approvals.value = list; list.forEach(::onApproval) }
         runCatching { Api.pendingTransfers() }.onSuccess { it.forEach(::onTransfer) }
     }

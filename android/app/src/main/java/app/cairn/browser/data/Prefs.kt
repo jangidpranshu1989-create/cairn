@@ -97,7 +97,12 @@ object Prefs {
     var replyLanguage by str("replyLanguage", "auto")
     var shoppingCountry by str("shoppingCountry", "IN")
     var agentMaxSteps by int("agentMaxStepsV2", 45)
-    var agentUseProfile by bool("agentUseProfile", true)  // let tasks use your name, email, phone and address
+    var agentUseProfile by bool("agentUseProfile", true)
+    var savePasswords by bool("savePasswords", true)      // offer to save passwords and fill them back in
+    var cairnPasskeys by bool("cairnPasskeys", true)      // create/use synced Cairn passkeys (falls back to the system)
+    var syncOn by bool("syncOn", true)                    // sync bookmarks, history, tabs, passwords, passkeys, settings
+    var syncLast by long("syncLast", 0)
+    var anonAiToken by secret("anonAi")  // let tasks use your name, email, phone and address
     var agentConfirmEach by bool("agentConfirmEach", false)
     var ttsRate by int("ttsRate", 100)                   // percent
     var ttsVoice by str("ttsVoice", "")
@@ -149,6 +154,7 @@ object Prefs {
     /** Signs out of the Cairn account (keeps browser settings, history and API keys). */
     fun clearAccount() {
         deviceId = null; userJson = null; accessToken = null; refreshToken = null
+        runCatching { app.cairn.browser.vault.Sync.signOut() }
         p.edit().remove("files").apply()
     }
 }

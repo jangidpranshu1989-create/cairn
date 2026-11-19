@@ -131,6 +131,8 @@ object Api {
         runCatching { exec(Request.Builder().url(ep("/auth/logout")).header("Authorization", "Bearer $at").post("{}".toRequestBody(JSON)).build()).close() }
         Prefs.deviceId = d.getString("deviceId"); Prefs.userJson = d.getJSONObject("user").toString()
         Prefs.accessToken = d.getString("accessToken"); Prefs.refreshToken = d.getString("refreshToken")
+        // Unlock end-to-end encrypted sync with a key derived from the password (never sent anywhere).
+        runCatching { app.cairn.browser.vault.Sync.setupKey(email, password) }.onFailure { app.cairn.browser.vault.Sync.status.value = it.message ?: "Sync is locked" }
         if (rt.isEmpty()) Unit
     }
 
@@ -148,5 +150,32 @@ object Api {
         exec(Request.Builder().url(ep("/auth/forgot")).post(JSONObject().put("email", email.trim()).toString().toRequestBody(JSON)).build()).json()
     }
 
-    fun wsUrl(): String = Prefs.server.replaceFirst("http", "ws") + "/ws?token=" + (Prefs.accessToken ?: "")
+    /** WebSocket URL with a one-time 60-second ticket, so the access token never appears in a URL. */
+    fun wsUrl(): String {
+        val ticket = runCatching { JSONObject(authed { url(ep("/auth/ws-ticket")).post("{}".toRequestBody(JSON)) }.json()).optString("ticket") }.getOrNull()
+        val base = Prefs.server.replaceFirst("http", "ws") + "/ws"
+        return if (!ticket.isNullOrEmpty()) "$base?ticket=$ticket" else "$base?token=" + (Prefs.accessToken ?: "")
+    }
+
+    // ---------- End-to-end encrypted sync (/api/sync/v2) ----------
+    fun syncGet(path: String): JSONObject = JSONObject(authed { url(ep("/sync/v2$path")) }.json())
+    fun syncSend(path: String, method: String, body: JSONObject): Pair<Int, JSONObject> {
+        val r = authed { url(ep("/sync/v2$path")).method(method, body.toString().toRequestBody(JSON)) }
+        return r.use { it.code to (runCatching { JSONObject(it.body?.string().orEmpty()) }.getOrNull() ?: JSONObject()) }
+    }
+
+    /** Built-in AI without an account: a per-install anonymous token with a small daily quota on Cairn Cloud. */
+    fun anonToken(): String? {
+        Prefs.anonAiToken.takeIf { it.isNotEmpty() }?.let { return it }
+        return runCatching {
+            val r = exec(Request.Builder().url(ep("/ai/device")).post(JSONObject().put("platform", "android").toString().toRequestBody(JSON)).build())
+            JSONObject(r.json()).optString("token").takeIf { it.startsWith("anon_") }?.also { Prefs.anonAiToken = it }
+        }.getOrNull()
+    }
+    fun anonChat(body: JSONObject): JSONObject {
+        val t = anonToken() ?: throw ApiException(503, "Cairn Cloud unavailable")
+        val r = exec(Request.Builder().url(ep("/ai/chat")).header("Authorization", "Bearer $t").post(body.toString().toRequestBody(JSON)).build())
+        if (r.code == 401) { Prefs.anonAiToken = "" }
+        return JSONObject(r.json())
+    }
 }

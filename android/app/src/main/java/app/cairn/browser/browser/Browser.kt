@@ -300,6 +300,7 @@ object Browser {
         w.isScrollbarFadingEnabled = true
         w.overScrollMode = View.OVER_SCROLL_NEVER
         w.addJavascriptInterface(Downloads.Bridge(ctx, t), "CairnDownloads")
+        app.cairn.browser.vault.WebBridge.attach(w, t)
         val swipe = SwipeRefreshLayout(ctx).apply {
             addView(w, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             setOnRefreshListener { reload(t); postDelayed({ isRefreshing = false }, 900) }
@@ -334,6 +335,7 @@ object Browser {
             // about:blank is how a tab shows the New Tab page. Going back onto it must show the NTP, not an empty
             // white WebView (that looked like a crash).
             if (isBlankUrl(url)) { t.url = ""; t.title = ""; t.loading = false; t.error = null; t.progress = 100; return }
+            app.cairn.browser.vault.WebBridge.fillOffer.value?.takeIf { it.tab == t }?.let { app.cairn.browser.vault.WebBridge.fillOffer.value = null }
             t.loading = true; t.url = url; t.icon = favicon ?: BrowserDb.icon(url); t.blocked = 0; t.error = null; t.sensitive = false; t.translated = null
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
         }

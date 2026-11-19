@@ -451,31 +451,6 @@ fun ClearData() {
     }
 }
 
-@Composable
-fun PasswordSettings() {
-    val ctx = LocalContext.current
-    ScreenHeader("Passwords and passkeys", { Ui.back() })
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
-        Spacer(Modifier.height(4.dp))
-        Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(C.surface).padding(18.dp)) {
-            Icon(Ic.Key, null, tint = C.text); Spacer(Modifier.height(12.dp))
-            Text("Your passwords stay in your password manager", color = C.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(6.dp))
-            Text("Cairn uses Android's Autofill and Credential Manager, so passwords and passkeys from Samsung Pass, Proton Pass, 1Password, Bitwarden or any password manager you choose fill in automatically. Passkeys work on every site that supports them.",
-                color = C.muted, fontSize = 13.5.sp, lineHeight = 20.sp)
-        }
-        Spacer(Modifier.height(12.dp))
-        Group {
-            Row2(Ic.Settings, "Choose autofill service", "Pick which password manager fills forms", onClick = {
-                runCatching { ctx.startActivity(Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE).setData(Uri.parse("package:${ctx.packageName}"))) }
-                    .onFailure { runCatching { ctx.startActivity(Intent(Settings.ACTION_SETTINGS)) } }
-            }); Divider()
-            Row2(Ic.Fingerprint, "Check if a password leaked", "Have I Been Pwned · checked anonymously", onClick = { openUrl("https://haveibeenpwned.com/Passwords") })
-        }
-        Text("Cairn's assistant never reads or types your passwords. When a page needs a sign-in, it stops and asks you.", color = C.faint, fontSize = 12.5.sp, lineHeight = 18.sp, modifier = Modifier.padding(20.dp))
-    }
-}
-
 // ---------------------------------------------------------------- AI settings
 @Composable
 fun AiSettings() {

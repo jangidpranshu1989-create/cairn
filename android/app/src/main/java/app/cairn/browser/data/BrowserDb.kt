@@ -85,6 +85,21 @@ object BrowserDb {
     }
     fun deleteBookmark(id: Long) { db.delete("bookmarks", "id=?", arrayOf(id.toString())); changed() }
 
+    // ---------- Sync helpers (apply changes that arrived from other devices) ----------
+    fun upsertBookmark(url: String, title: String, folder: String, at: Long) {
+        val v = ContentValues().apply { put("url", url); put("title", title); put("folder", folder.ifBlank { "Mobile bookmarks" }); put("at", at) }
+        if (db.update("bookmarks", v, "url=?", arrayOf(url)) == 0) db.insert("bookmarks", null, v)
+        changed()
+    }
+    fun deleteBookmarkUrl(url: String) { db.delete("bookmarks", "url=?", arrayOf(url)); changed() }
+    fun mergeVisit(url: String, title: String, at: Long, visits: Int) {
+        val n = db.compileStatement("UPDATE history SET title=CASE WHEN ?='' THEN title ELSE ? END, at=MAX(at, ?), visits=MAX(visits, ?) WHERE url=?").apply {
+            bindString(1, title); bindString(2, title); bindLong(3, at); bindLong(4, visits.toLong()); bindString(5, url) }.executeUpdateDelete()
+        if (n == 0) db.insert("history", null, ContentValues().apply { put("url", url); put("title", title); put("at", at); put("visits", visits) })
+        changed()
+    }
+    fun deleteHistoryUrl(url: String) { db.delete("history", "url=?", arrayOf(url)); changed() }
+
     // ---------- Favicons ----------
     private val iconCache = android.util.LruCache<String, Bitmap>(120)
     fun saveIcon(url: String, bmp: Bitmap) {

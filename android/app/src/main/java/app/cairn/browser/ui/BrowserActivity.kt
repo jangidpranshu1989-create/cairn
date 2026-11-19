@@ -117,12 +117,15 @@ class BrowserActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        app.cairn.browser.service.AgentService.foreground = true
         Browser.current?.web?.onResume()
         if (Prefs.isPaired) SyncService.start(this, SyncService.ACTION_SYNC)
+        app.cairn.browser.vault.Sync.soon(800)
     }
 
     override fun onPause() {
         super.onPause()
+        app.cairn.browser.service.AgentService.foreground = false
         Browser.flushCookies()
         Browser.current?.let { Browser.capture(it) }
         Browser.persist()

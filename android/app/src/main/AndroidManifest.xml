@@ -115,6 +115,10 @@
             android:foregroundServiceType="remoteMessaging|dataSync" />
 
         <service
+            android:name=".service.AgentService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <service
             android:name=".service.ReadAloudService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />

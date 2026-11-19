@@ -160,6 +160,7 @@ HOW TO WORK
         fn("save_to_device", "Move the last saved file (PDF, screenshot) into a folder on the phone, e.g. \"Documents/Wikipedia\".", p("folder" to s("folder inside Download")), listOf("folder")),
         fn("request_approval", "REQUIRED before placing an order, paying, or any irreversible purchase. Shows an approval card that the user confirms with fingerprint/face/screen lock. Returns approved/denied.", p("kind" to en("payment", "purchase", "sensitive"), "title" to s("short, e.g. \"Pay ₹69,900 to Flipkart\""), "amount" to s("e.g. ₹69,900"), "merchant" to s("store"), "item" to s("item name")), listOf("kind", "title")),
         fn("ask_user", "Ask the user a question and wait for the answer (choose a variant, log in manually, solve a CAPTCHA, confirm address).", p("question" to s("question in the user's language")), listOf("question")),
+        fn("fill_login", "Sign in with a login saved in Cairn Passwords for the current site. The user confirms with fingerprint/screen lock; you never see the password. Then press the sign-in button."),
         fn("fill_profile", "Fill the current checkout / address / contact form from the user's saved Delivery Profile (first & last name, email, phone, address, PIN code, city, state). Use on every personal-details or address step, right after OTP/login."),
         fn("find_offers", "Find coupons, promo codes and bank/card offers on the current page and match them to the user's saved cards."),
         fn("apply_coupon", "Type a coupon code into the page's coupon field and apply it.", p("code" to s("coupon code")), listOf("code")),
@@ -310,6 +311,7 @@ HOW TO WORK
 
     private fun launch(block: suspend () -> Unit) {
         running = true; status = "Thinking…"; steps = null
+        runCatching { app.cairn.browser.service.AgentService.start(Browser.activity) }
         job = scope.launch {
             try { block() }
             catch (e: CancellationException) { items.add(AiMsg("Stopped.")) }
@@ -678,6 +680,18 @@ HOW TO WORK
                 approvedOnce = ok
                 step(if (ok) "ok" else "stop", if (ok) "Approved" else "Not approved")
                 return if (ok) "APPROVED. You may now perform the single final click (place order / pay)." else "NOT APPROVED (denied). Do not pay. Tell the user and stop."
+            }
+            "fill_login" -> {
+                val t = tab(); val w = web(); controlling = t
+                val logins = app.cairn.browser.vault.Vault.loginsFor(t.url)
+                if (logins.isEmpty()) return "No saved login for ${t.host}. Use ask_user so the user signs in on screen, then continue."
+                val l = if (logins.size == 1) logins[0] else logins.maxBy { it.updated }
+                step("lock", "Waiting for you to confirm sign-in as ${l.username.ifEmpty { "your saved account" }}")
+                val ok = withContext(Dispatchers.Main) { Browser.activity.authenticate("Let Cairn sign you in", "${l.username.ifEmpty { "Saved login" }} on ${t.host}") }
+                if (!ok) return "The user did not confirm. Ask them how to proceed."
+                withContext(Dispatchers.Main) { app.cairn.browser.vault.WebBridge.fill(w, l) }
+                step("fill", "Filled your saved login")
+                return "Filled username ${l.username.ifEmpty { "(none)" }} and password. Now click the sign-in / continue button."
             }
             "fill_profile" -> {
                 val pj = profile()

@@ -41,7 +41,14 @@ object Llm {
     /** The key used for a provider: the user's own key wins, otherwise the built-in one. */
     fun keyFor(p: String): String = (if (p == "groq") Prefs.groqKey else Prefs.nvidiaKey).ifBlank { if (Prefs.aiMode == "byok") "" else builtIn[p].orEmpty() }
 
-    val configured get() = Prefs.isSignedIn || hasBuiltIn || Prefs.groqKey.isNotBlank() || Prefs.nvidiaKey.isNotBlank()
+    val configured get() = Prefs.isSignedIn || hasBuiltIn || Prefs.aiMode == "builtin" || Prefs.groqKey.isNotBlank() || Prefs.nvidiaKey.isNotBlank()
+
+    /** Cairn Cloud as the built-in backstop: account quota when signed in, otherwise an anonymous per-install token. */
+    private fun cloudChat(body: JSONObject): JSONObject {
+        val j = if (Prefs.isSignedIn) Api.aiChat(body) else Api.anonChat(body)
+        lastProvider = j.optString("_provider", "cloud")
+        return j.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+    }
 
     private fun ownProviders(): List<String> {
         val have = listOf("groq", "nvidia").filter { keyFor(it).isNotBlank() }
@@ -64,7 +71,12 @@ object Llm {
             }
         }
         val providers = ownProviders()
-        if (providers.isEmpty()) throw NoAiException()
+        val cloudBody = { JSONObject().put("messages", messages).put("tier", tier).put("maxTokens", maxTokens).put("temperature", temperature).put("stream", false).also { b -> if (tools != null) b.put("tools", tools); if (json) b.put("json", true) } }
+        if (providers.isEmpty()) {
+            // Built-in mode works with zero setup: no keys in this build → Cairn Cloud serves the request.
+            if (Prefs.aiMode != "byok") try { return@runInterruptible cloudChat(cloudBody()) } catch (e: java.io.InterruptedIOException) { throw e } catch (e: Exception) { throw if (e is ApiException && e.status == 429) e else NoAiException() }
+            throw NoAiException()
+        }
         var last: Exception? = null
         for (p in providers) {
             val model = if (p == "groq") (if (tier == "fast") Prefs.groqFastModel else Prefs.groqModel) else (if (tier == "fast") Prefs.nvidiaFastModel else Prefs.nvidiaModel)
@@ -87,6 +99,8 @@ object Llm {
                 }
             } catch (e: java.io.InterruptedIOException) { throw e } catch (e: Exception) { last = e }
         }
+        // Every direct provider failed (rate limit, revoked key, outage): try Cairn Cloud before giving up.
+        if (Prefs.aiMode != "byok" && !useCloud) runCatching { return@runInterruptible cloudChat(cloudBody()) }
         throw last ?: Exception("AI request failed")
     }
 

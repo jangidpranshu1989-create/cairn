@@ -171,6 +171,7 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
         }
         Column(Modifier.fillMaxWidth().background(C.chrome).then(if (imeVisible) Modifier else Modifier.navigationBarsPadding())
             .animateContentSize(spring(dampingRatio = .86f, stiffness = 520f)), horizontalAlignment = Alignment.CenterHorizontally) {
+            VaultBar(tab)
             AnimatedVisibility(Ui.find && tab != null, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { tab?.let { Floating { FindBar(it) } } }
             AnimatedVisibility(ReadAloud.active && !Ui.find, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { Floating { ReadAloudBar() } }
             if (!imeVisible && !Ui.find) {

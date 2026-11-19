@@ -26,6 +26,7 @@ M = dict(
  Home='house', PanelBottom='panel-bottom', ArrowDown='arrow-down', Sun='sun', Monitor='monitor', Text='text', ScanText='scan-text', Radar='radar', Zap='zap', Book='book-open',
  UserRound='user-round', MapPin='map-pin', Phone='phone', Building='building-2', Percent='percent', BadgePercent='badge-percent', Landmark='landmark', CircleDot='circle-dot',
  Maximize='maximize-2', Minimize='minimize-2', GripH='grip-horizontal', Library='library-big', Calendar='calendar', Undo='undo-2', Feather='feather', Filter='list-filter',
+ Paperclip='paperclip', Camera='camera', ThumbUp='thumbs-up', ThumbDown='thumbs-down', Volume='volume-2', FileText='file-text', Images='images', FollowUp='corner-down-right', Link='link', Globe='globe',
 )
 FILLED = {'Star'}
 def f(v): return float(v) if v is not None else 0.0

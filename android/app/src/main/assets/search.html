@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="{{LANG}}" data-theme="{{THEME}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>{{Q}} · Cairn Search</title>
+<style>
+@font-face{font-family:Inter;src:url(/font/regular) format("truetype");font-weight:400;font-display:swap}
+@font-face{font-family:Inter;src:url(/font/medium) format("truetype");font-weight:500;font-display:swap}
+@font-face{font-family:Inter;src:url(/font/semibold) format("truetype");font-weight:600;font-display:swap}
+@font-face{font-family:InterDisplay;src:url(/font/display) format("truetype");font-weight:600;font-display:swap}
+:root{--bg:#1C1C1F;--surface:#232326;--raised:#2A2A2E;--line:#34343A;--text:#EEEDEA;--muted:#A3A19B;--faint:#75736E;--accent:#D9C3A0;--accent-ink:#1C1C1F;--link:#E6D5B8;--pill:#3A352D}
+[data-theme=light]{--bg:#FAFAF8;--surface:#FFFFFF;--raised:#F2F1EE;--line:#E4E2DD;--text:#1E1E20;--muted:#5F5D58;--faint:#8D8A84;--accent:#7A6340;--accent-ink:#FFFFFF;--link:#6B5535;--pill:#EFE7DA}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:400 15.5px/1.6 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:760px;margin:0 auto;padding:18px 18px 64px}
+.top{display:flex;align-items:center;gap:10px;color:var(--faint);font-size:12.5px;font-weight:500;letter-spacing:.02em;margin-bottom:10px}
+.top svg{width:16px;height:16px}
+h1{font:600 clamp(23px,6vw,30px)/1.22 InterDisplay,Inter,sans-serif;letter-spacing:-.018em;margin:0 0 18px;overflow-wrap:anywhere}
+.label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);margin:22px 0 10px;letter-spacing:.01em}
+.label svg{width:16px;height:16px;opacity:.9}
+.label .count{margin-left:auto;font-weight:500;color:var(--faint)}
+/* sources strip */
+.sources{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:0 18px 2px;scroll-snap-type:x proximity}
+.sources::-webkit-scrollbar{display:none}
+.src{flex:0 0 150px;scroll-snap-align:start;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 11px;min-height:78px;display:flex;flex-direction:column;justify-content:space-between;transition:background .15s}
+.src:active{background:var(--raised)}
+.src .t{font-size:12.5px;line-height:1.35;font-weight:500;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.src .s{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);margin-top:8px;white-space:nowrap;overflow:hidden}
+.src .s b{font-weight:600;color:var(--muted)}
+.fav{width:16px;height:16px;border-radius:4px;flex:none;background:var(--raised);object-fit:cover}
+/* answer */
+.answer{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px 17px 12px}
+.answer .body{font-size:15.5px;line-height:1.65;overflow-wrap:anywhere}
+.answer .body p{margin:0 0 10px}
+.answer .body h3{font:600 15.5px/1.4 Inter,sans-serif;margin:14px 0 6px}
+.answer .body ul,.answer .body ol{margin:4px 0 10px;padding-left:20px}
+.answer .body li{margin:3px 0}
+.answer .body strong{font-weight:600}
+.answer .body code{font:13px ui-monospace,monospace;background:var(--raised);padding:1px 5px;border-radius:5px}
+.cite{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin:0 1px;border-radius:9px;background:var(--pill);color:var(--link);font-size:11px;font-weight:600;line-height:1;vertical-align:2px;cursor:pointer}
+.cite:active{filter:brightness(1.2)}
+.caret{display:inline-block;width:7px;height:15px;border-radius:2px;background:var(--accent);vertical-align:-2px;margin-left:2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.acts{display:flex;align-items:center;gap:4px;margin-top:8px;border-top:1px solid var(--line);padding-top:9px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 11px;border:0;border-radius:17px;background:transparent;color:var(--muted);font:500 13px Inter,sans-serif;cursor:pointer}
+.btn:active{background:var(--raised)}
+.btn svg{width:17px;height:17px}
+.btn.primary{margin-left:auto;background:var(--accent);color:var(--accent-ink);font-weight:600;padding:0 14px}
+.note{color:var(--muted);font-size:14px}
+/* results */
+.res{padding:14px 0;border-bottom:1px solid var(--line)}
+.res:last-child{border-bottom:0}
+.res .h{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--faint);min-width:0}
+.res .h .fav{width:22px;height:22px;border-radius:6px;padding:3px;background:var(--surface);border:1px solid var(--line)}
+.res .h .meta{min-width:0;line-height:1.3}
+.res .h .site{color:var(--text);font-weight:500;font-size:13px}
+.res .h .u{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.res .tt{display:block;font:600 16.5px/1.35 Inter,sans-serif;color:var(--link);margin:7px 0 4px;letter-spacing:-.005em}
+.res .sn{font-size:14px;color:var(--muted);line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.related{display:flex;flex-direction:column}
+.rel{display:flex;align-items:center;gap:10px;padding:12px 2px;border-bottom:1px solid var(--line);font-size:14.5px}
+.rel svg{width:16px;height:16px;color:var(--faint);flex:none}
+.rel span{flex:1}
+/* skeletons */
+.sk{background:linear-gradient(90deg,var(--surface) 0,var(--raised) 40%,var(--surface) 80%);background-size:300% 100%;animation:sh 1.3s ease-in-out infinite;border-radius:8px}
+@keyframes sh{0%{background-position:100% 0}100%{background-position:0 0}}
+.skl{height:12px;margin:9px 0}
+.empty{text-align:center;padding:48px 10px;color:var(--muted)}
+.empty b{display:block;color:var(--text);font-size:17px;margin-bottom:6px}
+.foot{margin-top:34px;text-align:center;color:var(--faint);font-size:11.5px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:9px 16px;border-radius:20px;font-size:13px;font-weight:500;opacity:0;transition:.2s;pointer-events:none}
+.toast.on{opacity:1;transform:translateX(-50%)}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="top"><svg viewBox="0 0 24 24" fill="currentColor"><ellipse cx="12" cy="18.2" rx="8.2" ry="3.1"/><ellipse cx="12.4" cy="11.9" rx="5.9" ry="2.6"/><ellipse cx="11.8" cy="6.4" rx="3.7" ry="2.1"/></svg>Cairn Search</div>
+  <h1 id="q">{{Q}}</h1>
+
+  <section id="srcSec">
+    <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Sources<span class="count" id="srcCount"></span></div>
+    <div class="sources" id="sources">
+      <div class="src sk"></div><div class="src sk"></div><div class="src sk"></div>
+    </div>
+  </section>
+
+  <section id="ansSec">
+    <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>Answer</div>
+    <div class="answer">
+      <div class="body" id="answer"><div class="sk skl" style="width:92%"></div><div class="sk skl" style="width:84%"></div><div class="sk skl" style="width:60%"></div></div>
+      <div class="acts hide" id="acts">
+        <button class="btn" id="copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></svg>Copy</button>
+        <button class="btn" id="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M8 8l4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>Share</button>
+        <a class="btn primary" id="ask" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Ask a follow-up</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.6 2.6 14.4 0 17M12 3.5c-2.6 2.6-2.6 14.4 0 17"/></svg>Web</div>
+    <div id="results">
+      <div class="res"><div class="sk skl" style="width:40%"></div><div class="sk skl" style="height:16px;width:80%"></div><div class="sk skl" style="width:95%"></div></div>
+      <div class="res"><div class="sk skl" style="width:35%"></div><div class="sk skl" style="height:16px;width:70%"></div><div class="sk skl" style="width:90%"></div></div>
+      <div class="res"><div class="sk skl" style="width:45%"></div><div class="sk skl" style="height:16px;width:76%"></div><div class="sk skl" style="width:88%"></div></div>
+    </div>
+  </section>
+
+  <section id="relSec" class="hide">
+    <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>Related</div>
+    <div class="related" id="related"></div>
+  </section>
+  <div class="foot">Answers are generated by AI from the sources shown. Check important details.</div>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+(function(){
+  var Q = document.getElementById('q').textContent.trim();
+  var $ = function(id){ return document.getElementById(id); };
+  var results = [], answerText = '';
+  var esc = function(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  window.letterIcon = function(img){ var h = img.getAttribute('data-h') || '?'; var c = h.replace(/^www\./,'').charAt(0).toUpperCase();
+    img.onerror = null; img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#3A3A3F"/><text x="16" y="21.5" font-family="Inter,Arial,sans-serif" font-size="16" font-weight="600" fill="#EEEDEA" text-anchor="middle">' + c + '</text></svg>'); };
+  var icon = function(h){ return '<img class="fav" loading="lazy" alt="" data-h="' + esc(h) + '" src="/icon?h=' + encodeURIComponent(h) + '" onerror="letterIcon(this)">'; };
+  var toast = function(m){ var t = $('toast'); t.textContent = m; t.classList.add('on'); setTimeout(function(){ t.classList.remove('on'); }, 1600); };
+  var arrow = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 17L17 7M9 7h8v8"/></svg>';
+  var pretty = function(u){ try { var x = new URL(u); return x.hostname.replace(/^www\./,'') + (x.pathname.length > 1 ? ' › ' + decodeURIComponent(x.pathname).split('/').filter(Boolean).slice(0,2).join(' › ') : ''); } catch(e){ return u; } };
+
+  $('ask').href = 'cairn://ask?q=' + encodeURIComponent(Q);
+  if (window.cairn && window.cairn.invoke) $('ask').onclick = function(e){ e.preventDefault(); window.cairn.invoke('ui:ask', Q); };
+
+  function md(src, live){
+    src = src.replace(/【(\d{1,2})(?:†[^】]*)?】/g, '[$1]').replace(/\[(\d{1,2})†[^\]]*\]/g, '[$1]');
+    var lines = src.replace(/\r/g,'').split('\n'), html = '', list = null;
+    var inline = function(s){
+      s = esc(s).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>');
+      return s.replace(/\[(\d{1,2})\]/g, function(m, n){
+        var r = results[+n - 1]; if (!r) return '';
+        return '<a class="cite" href="' + esc(r.url) + '" title="' + esc(r.site + ' — ' + r.title) + '">' + n + '</a>';
+      });
+    };
+    var close = function(){ if (list){ html += '</' + list + '>'; list = null; } };
+    lines.forEach(function(l){
+      var t = l.trim(), m;
+      if (!t){ close(); return; }
+      if ((m = t.match(/^#{1,4}\s+(.*)/))){ close(); html += '<h3>' + inline(m[1]) + '</h3>'; return; }
+      if ((m = t.match(/^[-*•]\s+(.*)/))){ if (list !== 'ul'){ close(); html += '<ul>'; list = 'ul'; } html += '<li>' + inline(m[1]) + '</li>'; return; }
+      if ((m = t.match(/^\d+[.)]\s+(.*)/))){ if (list !== 'ol'){ close(); html += '<ol>'; list = 'ol'; } html += '<li>' + inline(m[1]) + '</li>'; return; }
+      close(); html += '<p>' + inline(t) + '</p>';
+    });
+    close();
+    if (live) html = html.replace(/(<\/(p|li|h3)>)(?![\s\S]*<\/(p|li|h3)>)/, '<span class="caret"></span>$1');
+    return html || (live ? '<span class="caret"></span>' : '');
+  }
+
+  function renderSources(){
+    $('srcCount').textContent = results.length ? results.length + ' sites' : '';
+    $('sources').innerHTML = results.slice(0, 8).map(function(r){
+      return '<a class="src" href="' + esc(r.url) + '"><span class="t">' + esc(r.title) + '</span><span class="s">' + icon(r.host) + '<b>' + esc(r.site) + '</b>&nbsp;·&nbsp;' + r.n + '</span></a>';
+    }).join('');
+  }
+  function renderResults(){
+    $('results').innerHTML = results.map(function(r){
+      return '<div class="res"><a class="h" href="' + esc(r.url) + '">' + icon(r.host) + '<span class="meta"><span class="site">' + esc(r.site) + '</span><span class="u">' + esc(pretty(r.url)) + '</span></span></a>' +
+        '<a class="tt" href="' + esc(r.url) + '">' + esc(r.title) + '</a>' + (r.snippet ? '<div class="sn">' + esc(r.snippet) + '</div>' : '') + '</div>';
+    }).join('');
+  }
+  function renderRelated(list){
+    if (!list || !list.length) return;
+    $('relSec').classList.remove('hide');
+    $('related').innerHTML = list.map(function(s){
+      return '<a class="rel" href="/?q=' + encodeURIComponent(s) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><span>' + esc(s) + '</span>' + arrow + '</a>';
+    }).join('');
+  }
+  function noResults(msg){
+    $('srcSec').classList.add('hide'); $('ansSec').classList.add('hide');
+    $('results').innerHTML = '<div class="empty"><b>' + esc(msg) + '</b>Check your spelling, try fewer words, or <a href="" style="color:var(--link);font-weight:600">try again</a>.</div>';
+  }
+
+  function streamAnswer(){
+    var el = $('answer');
+    fetch('/api/answer?q=' + encodeURIComponent(Q)).then(function(res){
+      var reader = res.body.getReader(), dec = new TextDecoder(), pending = false;
+      var paint = function(){ pending = false; el.innerHTML = md(answerText, true); };
+      function pump(){
+        return reader.read().then(function(x){
+          if (x.done){
+            if (answerText.indexOf('\u0000ERR:') >= 0){ el.innerHTML = '<p class="note">' + esc(answerText.split('\u0000ERR:')[1]) + '</p>'; return; }
+            el.innerHTML = md(answerText, false); $('acts').classList.remove('hide'); return;
+          }
+          answerText = (answerText + dec.decode(x.value, { stream: true })).replace(/【(\d{1,2})(?:†[^】]*)?】/g, '[$1]');
+          if (!pending){ pending = true; requestAnimationFrame(paint); }
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function(){ el.innerHTML = '<p class="note">The answer couldn\'t load. The results below are still live.</p>'; });
+  }
+
+  fetch('/api/results?q=' + encodeURIComponent(Q)).then(function(r){ return r.json(); }).then(function(j){
+    if (j.nav){ location.replace(j.nav); return; }
+    results = j.results || [];
+    if (!results.length){ noResults('No results for “' + Q + '”'); return; }
+    renderSources(); renderResults(); renderRelated(j.related);
+    if (j.answers) streamAnswer(); else $('ansSec').classList.add('hide');
+  }).catch(function(){ noResults('You seem to be offline'); });
+
+  $('copy').onclick = function(){
+    var plain = answerText.replace(/\[(\d{1,2})\]/g, '[$1]') + '\n\nSources:\n' + results.slice(0, 8).map(function(r){ return '[' + r.n + '] ' + r.title + ' — ' + r.url; }).join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(plain) : Promise.reject()).then(function(){ toast('Copied with sources'); }, function(){
+      var ta = document.createElement('textarea'); ta.value = plain; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied with sources');
+    });
+  };
+  $('share').onclick = function(){
+    var text = Q + '\n\n' + answerText.replace(/\[(\d{1,2})\]/g, '') ;
+    if (navigator.share) navigator.share({ title: Q, text: text }).catch(function(){}); else $('copy').onclick();
+  };
+})();
+</script>
+</body>
+</html>

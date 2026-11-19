@@ -54,6 +54,11 @@ object BrowserDb {
             buildList { while (c.moveToNext()) add(HistoryItem(c.getLong(0), c.getString(1), c.getString(2) ?: "", c.getLong(3), c.getInt(4))) }
         }
     }
+    /** Distinct hosts the user has visited, most-visited first (for navigational typing). */
+    fun topHosts(limit: Int = 400): List<String> =
+        db.rawQuery("SELECT url FROM history ORDER BY visits DESC, at DESC LIMIT 2000", null).use { c ->
+            val seen = LinkedHashSet<String>(); while (c.moveToNext() && seen.size < limit) { android.net.Uri.parse(c.getString(0)).host?.let { if (it.isNotEmpty()) seen.add(it) } }; seen.toList()
+        }
     fun topSites(limit: Int = 8): List<HistoryItem> =
         db.rawQuery("SELECT id,url,title,at,visits FROM history ORDER BY visits DESC, at DESC LIMIT 60", null).use { c ->
             val seen = HashSet<String>()

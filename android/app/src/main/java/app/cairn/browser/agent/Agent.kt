@@ -24,8 +24,11 @@ import java.util.concurrent.TimeUnit
 
 // ---------------- Conversation items rendered by the Assistant sheet ----------------
 sealed class Item { val key = java.util.UUID.randomUUID().toString() }
-class UserMsg(val text: String, val page: String? = null, val mentions: List<String> = emptyList()) : Item()
-class AiMsg(val markdown: String, val error: Boolean = false, val setup: Boolean = false) : Item()
+class UserMsg(val text: String, val page: String? = null, val mentions: List<String> = emptyList(), val attachments: List<Attachment> = emptyList()) : Item()
+class AiMsg(val markdown: String, val error: Boolean = false, val setup: Boolean = false, val sources: List<Cite> = emptyList(), val prompt: String = "") : Item() {
+    val followUps = mutableStateListOf<String>()
+    var revealed by mutableStateOf(error || setup)   // typewriter reveal runs once, on first display
+}
 class StepsItem : Item() { val steps = mutableStateListOf<Step>(); var done by mutableStateOf(false) }
 data class Step(val icon: String, val text: String)
 class ProductsItem(val headline: String?, val query: String, items: List<Product>, stores: List<StoreStatus>, live: Boolean = false) : Item() {
@@ -69,6 +72,15 @@ object Agent {
     private var lastSummary: SummaryItem? = null
     private var lastFile: Downloads.Saved? = null
     private var userText = ""
+    private var lastPrompt = ""
+    private var lastMentions: List<Tab> = emptyList()
+    /** Sources used in the current turn. Every tool result labels them [n]; the reply cites them and shows them as links. */
+    private val cites = mutableListOf<Cite>()
+    private fun cite(title: String, url: String): Int {
+        val u = url.substringBefore('#')
+        cites.firstOrNull { it.url.substringBefore('#') == u }?.let { return it.n }
+        val c = Cite(cites.size + 1, title.ifBlank { hostOf(url) }.take(140), url); cites += c; return c.n
+    }
 
     private fun step(icon: String, text: String) {
         status = text
@@ -87,13 +99,15 @@ object Agent {
         val lang = Llm.langInstruction(userText)
         val profile = profile()
         val cards = cards()
-        return """You are Cairn, the AI agent built into the Cairn web browser for Android. You complete tasks for the user by operating the browser with tools. Today is ${java.text.DateFormat.getDateInstance().format(java.util.Date())}. Default shopping country: ${Prefs.shoppingCountry}.
+        return """You are Cairn, the AI agent built into the Cairn web browser for Android. You complete tasks for the user by operating the browser with tools. Today is ${java.text.DateFormat.getDateInstance(java.text.DateFormat.LONG, java.util.Locale.ENGLISH).format(java.util.Date())}. Default shopping country: ${Prefs.shoppingCountry}.
 
 $lang This rule overrides everything else, including the language of web pages and tool results. Keep replies short, warm and practical — this is a phone screen. Use Markdown (bold, bullets, links as [text](url)).
 Delivery profile on file: ${if (profile.length() > 0) "yes (${listOf("first", "last", "email", "phone", "city").filter { profile.optString(it).isNotBlank() }.joinToString()})" else "no"}. Saved cards for offers: ${cards.ifEmpty { listOf("none") }.joinToString()}.
 
 HOW TO WORK
 - Act fast and prefer the most direct tool. Never invent prices, links or facts — only report what tools returned.
+- LIVE SOURCES: for any question about facts, news, people, places, products, prices, sports, weather, how-to or anything that may have changed, call web_search FIRST — even if you think you know. Tool results label sources [1], [2]…; cite them inline right after each claim, like "… 48 MP camera [2]." or "[1][3]". Use only numbers that appear in tool results, never make up sources, and do not add your own list of sources or links at the end — Cairn shows the sources under your reply. Small talk, maths and writing tasks need no search.
+- [Attached …] blocks in the user's message are photos or files the user uploaded (already read for you). Answer about them directly; search the web if the user asks about what they show (e.g. "where can I buy this", "what is this").
 - Shopping ("sabse sasta", cheapest, best price): call compare_prices with a precise product name (include storage/size if given). Product cards are shown automatically. Then recommend the cheapest TRUSTWORTHY option (trust ≥ 70, not flagged) with price, store and link, plus 1-2 alternatives. Mention flags honestly.
 - "Add to cart": open_url the chosen product URL, read_page, then click the Add to Cart button (click_text "Add to Cart" works on most stores). Verify with read_page.
 - Checkout: go cart → checkout. If login/OTP/CAPTCHA appears, use ask_user (the user handles it on screen, then replies "done"). On every address / contact / personal-details step call fill_profile FIRST (it fills name, email, phone and address from the user's encrypted Delivery Profile), then read_page, then continue. Before paying, call find_offers to surface coupons and bank offers for the user's cards, and apply_coupon when a code is available. Stop at the payment page. Before the FINAL "Place order"/"Pay" click you MUST call request_approval with amount, merchant and item; click the final button only if APPROVED. Never type card numbers, CVV, UPI PIN or OTPs yourself.
@@ -161,12 +175,13 @@ HOW TO WORK
     private val FINAL_ACTION = Regex("place (your )?order|pay(ment)?\\s*(now|securely|₹|rs\\.?|\\$|£|€|\\d)|confirm (order|purchase|payment)|complete (purchase|order|payment)|proceed to pay|make payment|submit order|pay with|authorize payment", RegexOption.IGNORE_CASE)
 
     // ---------------- Entry points ----------------
-    fun run(text: String, mentions: List<Tab> = emptyList()) {
+    fun run(text: String, mentions: List<Tab> = emptyList(), attachments: List<Attachment> = emptyList()) {
         if (running) return
         val tab = Browser.current
         agentTab = tab
+        cites.clear(); lastPrompt = text; lastMentions = mentions
         val page = tab?.takeIf { !it.isNtp }?.let { it.title.ifBlank { it.host } }
-        items.add(UserMsg(text, page, mentions.map { it.title.ifBlank { it.host } }))
+        items.add(UserMsg(text.ifBlank { if (attachments.size == 1) "Look at this" else "Look at these" }, page, mentions.map { it.title.ifBlank { it.host } }, attachments))
         userText = text
         if (messages.length() == 0) messages.put(JSONObject().put("role", "system").put("content", systemPrompt()))
         else messages.put(0, JSONObject().put("role", "system").put("content", systemPrompt()))
@@ -177,10 +192,46 @@ HOW TO WORK
                 val w = m.web ?: continue
                 step("at", "Reading @${m.title.ifBlank { m.host }.take(40)}")
                 val art = runCatching { PageTools.article(w) }.getOrNull() ?: continue
-                ctx.append("\n\n[Tab \"${art.title}\" ${art.url}]\n${art.text.take(6000)}")
+                val n = cite(art.title, art.url)
+                ctx.append("\n\n[Tab \"${art.title}\" ${art.url} — cite as [$n]]\n${art.text.take(6000)}")
             }
+            for (f in attachments.take(6)) ctx.append(attachmentContext(f, text))
             messages.put(JSONObject().put("role", "user").put("content", text + ctx + note + "\n\n(${Llm.langInstruction(text)})"))
             loop()
+        }
+    }
+
+    /** Turns an attachment into text the agent can reason over: extracted document text, or a vision read of an image. */
+    private suspend fun attachmentContext(f: Attachment, question: String): String {
+        if (!f.ready) { step("file", "Reading ${f.name.take(40)}"); var w = 0; while (!f.ready && w < 200) { delay(100); w++ } }
+        if (f.isImage || f.scanned.isNotEmpty()) {
+            step("lasso", if (f.isImage) "Looking at ${if (f.name == "Photo") "your photo" else f.name.take(40)}" else "Reading scanned pages of ${f.name.take(40)}")
+            val imgs = if (f.isImage) listOf(f.jpegB64()) else f.scanned.map { b -> java.io.ByteArrayOutputStream().also { o -> b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, o) }.let { android.util.Base64.encodeToString(it.toByteArray(), android.util.Base64.NO_WRAP) } }
+            val desc = imgs.mapIndexed { i, b64 ->
+                Llm.vision("You are the eyes of Cairn, a browser assistant. Describe this ${if (f.isImage) "image" else "document page"} for another AI that cannot see it. " +
+                    "Transcribe ALL visible text exactly (OCR), list products/brands/prices/people/places/UI elements, and note anything relevant to the user's request: \"${question.ifBlank { "What is this?" }.take(400)}\". Be thorough but compact. Write in English.", b64, 1400)
+                    .let { if (imgs.size > 1) "--- Page ${i + 1} ---\n$it" else it }
+            }.joinToString("\n")
+            return "\n\n[Attached ${if (f.isImage) "image" else "scanned PDF"} \"${f.name}\" — what it shows:]\n$desc"
+        }
+        val t = f.text
+        if (t.isNullOrBlank()) return "\n\n[Attached file \"${f.name}\" could not be read: ${f.error ?: "no text"}]"
+        val pages = if (f.pages > 0) ", ${f.pages} pages" else ""
+        return "\n\n[Attached ${f.kindLabel} \"${f.name}\"$pages, ${t.length} chars${if (t.length > 14000) " — first part shown" else ""}:]\n${t.take(14000)}"
+    }
+
+    /** Re-asks the last question (the "Retry" action). */
+    fun retry() { if (!running && lastPrompt.isNotBlank()) run(lastPrompt, lastMentions) }
+
+    /** Suggests next questions under an answer, in the user's language, without blocking the conversation. */
+    private fun suggestFollowUps(m: AiMsg, question: String) {
+        if (m.error || m.markdown.length < 60 || question.isBlank()) return
+        scope.launch {
+            runCatching {
+                val r = Llm.complete("Suggest exactly 3 short follow-up questions (max 9 words each) the user might ask next. ${Llm.langInstruction(question)} One per line. No numbering, no quotes.",
+                    "User asked: $question\n\nAnswer:\n${m.markdown.take(2500)}", tier = "fast")
+                r.lines().map { it.trim().trimStart('-', '•', '*', ' ').replace(Regex("^\\d+[.)]\\s*"), "").trim('"') }.filter { it.length in 4..90 }.take(3)
+            }.getOrNull()?.let { m.followUps.addAll(it) }
         }
     }
 
@@ -267,7 +318,11 @@ HOW TO WORK
             val am = JSONObject().put("role", "assistant").put("content", content)
             if (calls != null && calls.length() > 0) am.put("tool_calls", calls)
             messages.put(am)
-            if (calls == null || calls.length() == 0) { items.add(AiMsg(content.ifBlank { "Done." })); return }
+            if (calls == null || calls.length() == 0) {
+                val reply = content.ifBlank { "Done." }
+                val m = AiMsg(app.cairn.browser.ui.normCites(reply), sources = cites.toList(), prompt = lastPrompt)
+                items.add(m); suggestFollowUps(m, lastPrompt); return
+            }
             // Close the current steps group if the model also said something
             for (k in 0 until calls.length()) {
                 val c = calls.getJSONObject(k); val f = c.getJSONObject("function")
@@ -276,7 +331,12 @@ HOW TO WORK
                     catch (e: CancellationException) { throw e }
                     catch (e: NoAiException) { throw e }
                     catch (e: Exception) { step("warn", (e.message ?: "Failed").take(140)); "ERROR: ${e.message}" }
-                messages.put(JSONObject().put("role", "tool").put("tool_call_id", c.optString("id")).put("content", result.take(14000)))
+                val labelled = when (f.getString("name")) {
+                    "open_url", "read_page", "summarize_page" -> tab().takeIf { it.url.startsWith("http") && !result.startsWith("ERROR") }?.let { t -> "$result\n[This page is source [${cite(t.title, t.url)}]]" } ?: result
+                    "read_article" -> lastArticle?.takeIf { !result.startsWith("ERROR") && result.startsWith("Title:") }?.let { a -> "$result\n[This article is source [${cite(a.title, a.url)}]]" } ?: result
+                    else -> result
+                }
+                messages.put(JSONObject().put("role", "tool").put("tool_call_id", c.optString("id")).put("content", labelled.take(14000)))
             }
             if (i == max - 1) items.add(AiMsg("I reached the step limit for this task. Tell me how you'd like to continue."))
         }
@@ -330,6 +390,9 @@ HOW TO WORK
     private val http = OkHttpClient.Builder().callTimeout(12, TimeUnit.SECONDS).build()
     suspend fun search(q: String) = webSearch(q)
     private suspend fun webSearch(q: String): List<Triple<String, String, String>> = withContext(Dispatchers.IO) {
+        app.cairn.browser.data.CairnSearch.results(q).map { Triple(it.title, it.url, it.snippet) }.ifEmpty { legacySearch(q) }
+    }
+    private fun legacySearch(q: String): List<Triple<String, String, String>> = kotlin.run {
         val html = http.newCall(Request.Builder().url("https://html.duckduckgo.com/html/?q=" + Uri.encode(q)).header("User-Agent", Browser.desktopUa()).build()).execute().use { it.body?.string().orEmpty() }
         val strip = { s: String -> android.text.Html.fromHtml(s, 0).toString().replace(Regex("\\s+"), " ").trim() }
         Regex("<a[^>]+class=\"result__a\"[^>]+href=\"([^\"]+)\"[^>]*>([\\s\\S]*?)</a>[\\s\\S]*?<a[^>]+class=\"result__snippet\"[^>]*>([\\s\\S]*?)</a>").findAll(html).mapNotNull { m ->
@@ -344,9 +407,15 @@ HOW TO WORK
         when (name) {
             "web_search" -> {
                 step("search", "Searching the web: ${a.optString("query")}")
-                val r = webSearch(a.optString("query"))
-                if (r.isNotEmpty()) items.add(SourcesItem(r.take(6)))
-                return if (r.isEmpty()) "No results." else r.mapIndexed { i, x -> "${i + 1}. ${x.first}\n   ${x.second}\n   ${x.third}" }.joinToString("\n")
+                val r = webSearch(a.optString("query")).take(8)
+                if (r.isEmpty()) return "No results."
+                // Read the top pages too, so answers rest on real page text — not just snippets.
+                step("read", "Reading ${r.take(3).joinToString { hostOf(it.second).removePrefix("www.") }}")
+                val pages = withContext(Dispatchers.IO) { withTimeoutOrNull(5500) { r.take(3).map { x -> async { x.second to app.cairn.browser.data.CairnSearch.pageText(x.second, 1800) } }.awaitAll().toMap() } ?: emptyMap() }
+                return "Results (cite as [n]):\n" + r.joinToString("\n\n") { x ->
+                    val n = cite(x.first, x.second)
+                    "[$n] ${x.first}\n${x.second}\n${pages[x.second]?.takeIf { it.length > 200 }?.let { "Page excerpt: $it" } ?: x.third}"
+                }
             }
             "compare_prices" -> {
                 val country = a.optString("country").ifBlank { Prefs.shoppingCountry }.uppercase()

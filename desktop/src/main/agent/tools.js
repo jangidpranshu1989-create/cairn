@@ -61,32 +61,19 @@ async function guardFinal(ctx, label) {
   return `BLOCKED: "${label}" looks like placing an order or paying. Call request_approval first (with amount, merchant, item), then retry this click only if approved.`;
 }
 
-async function webSearch(query) {
-  const r = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query), {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36' } });
-  const html = await r.text();
-  const out = [];
-  const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-  let m;
-  const strip = (s) => s.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/\s+/g, ' ').trim();
-  while ((m = re.exec(html)) && out.length < 8) {
-    let url = m[1];
-    const u = url.match(/uddg=([^&]+)/); if (u) url = decodeURIComponent(u[1]);
-    if (url.startsWith('//')) url = 'https:' + url;
-    if (/duckduckgo\.com\/y\.js/.test(url)) continue; // ads
-    out.push({ title: strip(m[2]), url, snippet: strip(m[3]).slice(0, 240) });
-  }
-  return out;
-}
+async function webSearch(query) { return require('../search').results(query); }
 
 async function execute(name, args, ctx) {
   const wc = () => ctx.agentTab().webContents;
   switch (name) {
     case 'web_search': {
       ctx.step('search', `Searching the web: ${args.query}`);
-      const res = await webSearch(args.query);
-      ctx.sources(res);
-      return res.length ? res.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join('\n') : 'No results.';
+      const res = (await webSearch(args.query)).slice(0, 8);
+      if (!res.length) return 'No results.';
+      const pages = await Promise.race([Promise.all(res.slice(0, 3).map(r => require('../search').pageText(r.url, 2500))), new Promise(r => setTimeout(() => r([]), 5500))]);
+      const numbered = res.map((r, i) => ({ ...r, n: ctx.cite(r.title, r.url) }));
+      ctx.sources(numbered);
+      return 'Cite these as [n] right after each fact you use from them.\n\n' + numbered.map((r, i) => `[${r.n}] ${r.title}\n   ${r.url}\n   ${(pages[i] && pages[i].length > 200) ? pages[i] : r.snippet}`).join('\n\n');
     }
     case 'compare_prices': {
       const country = (args.country || store.get().settings.data.shoppingCountry || 'IN').toUpperCase();
@@ -112,7 +99,7 @@ async function execute(name, args, ctx) {
       if (!args.new_tab) await tab.webContents.loadURL(url).catch(() => {});
       await settle(tab.webContents, 8000);
       await dom.overlay(tab.webContents, 'move', 40, 40, 'Cairn');
-      return `Opened ${tab.webContents.getURL()} — "${tab.webContents.getTitle()}". Call read_page to see it.`;
+      return `Opened ${tab.webContents.getURL()} — "${tab.webContents.getTitle()}" [This page is source [${ctx.cite(tab.webContents.getTitle(), tab.webContents.getURL())}]]. Call read_page to see it.`;
     }
     case 'read_page': {
       const w = wc();
@@ -162,7 +149,7 @@ async function execute(name, args, ctx) {
       ctx.step('read', args.url ? `Reading article in background: ${safeHost(args.url)}` : 'Reading this article');
       const a = args.url ? await pageTools.readUrl(args.url, ctx.signal) : await pageTools.getArticle(wc());
       ctx.lastArticle = a;
-      return `Title: ${a.title}\nURL: ${a.url}\nLength: ${a.text.length} chars\nOpening:\n${a.text.slice(0, 2500)}`;
+      return `[This page is source [${ctx.cite(a.title, a.url)}]]\nTitle: ${a.title}\nURL: ${a.url}\nLength: ${a.text.length} chars\nOpening:\n${a.text.slice(0, 2500)}`;
     }
     case 'read_aloud': {
       const text = args.source === 'last_article' ? (ctx.lastArticle ? `${ctx.lastArticle.title}.\n${ctx.lastArticle.text}` : null) : args.text;

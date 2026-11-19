@@ -13,6 +13,7 @@ data class SearchEngine(val id: String, val name: String, val host: String, val 
 
 object Search {
     val engines = listOf(
+        SearchEngine("cairn", "Cairn Search", CairnSearch.HOST, "https://${CairnSearch.HOST}/?q=%s", "https://duckduckgo.com/ac/?type=list&q=%s"),
         SearchEngine("duckduckgo", "DuckDuckGo", "duckduckgo.com", "https://duckduckgo.com/?q=%s", "https://duckduckgo.com/ac/?type=list&q=%s"),
         SearchEngine("bing", "Bing", "bing.com", "https://www.bing.com/search?q=%s", "https://api.bing.com/osjson.aspx?query=%s"),
         SearchEngine("brave", "Brave Search", "search.brave.com", "https://search.brave.com/search?q=%s", "https://search.brave.com/api/suggest?q=%s"),
@@ -28,6 +29,7 @@ object Search {
         val t = input.trim()
         if (t.isEmpty()) return null
         if (Regex("^(https?|file|about|data|view-source|chrome|intent):", RegexOption.IGNORE_CASE).containsMatchIn(t) && !t.contains(' ')) return t
+        Sites.resolve(t)?.let { return it }
         if (t.contains(' ')) return null
         if (Regex("^(localhost|\\d{1,3}(\\.\\d{1,3}){3})(:\\d+)?(/.*)?$").matches(t)) return "http://$t"
         if (Patterns.WEB_URL.matcher(t).matches() && Regex("^[^/]+\\.[a-z]{2,}(:\\d+)?([/?#].*)?$", RegexOption.IGNORE_CASE).matches(t)) return (if (Prefs.httpsUpgrade) "https://" else "http://") + t
@@ -38,6 +40,7 @@ object Search {
     fun queryOf(url: String): String? = runCatching {
         val u = Uri.parse(url); val h = u.host ?: return null
         when {
+            h == CairnSearch.HOST -> u.getQueryParameter("q")
             h.contains("bing.com") && u.path == "/search" -> u.getQueryParameter("q")
             h.contains("duckduckgo.com") -> u.getQueryParameter("q")
             h == "search.brave.com" -> u.getQueryParameter("q")

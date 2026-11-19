@@ -35,7 +35,7 @@ class UiShots {
         Prefs.initWith(sharedMem)
         Prefs.onboarded = true; Prefs.theme = "dark"; Prefs.shieldTotal = 12480
         Browser.tabs.clear(); Ui.assistant = false; Ui.omnibox = false; Ui.tabSwitcher = false; Ui.screen = null; ReadAloud.active = false
-        Agent.items.clear(); Agent.running = false; Ui.mentions.clear(); Ui.collapsed = false
+        Agent.items.clear(); Agent.running = false; Ui.mentions.clear(); Ui.collapsed = false; Ui.attachments.clear(); Prefs.localAccountS = ""; Prefs.localSignedIn = false
         if (icons.isEmpty()) listOf("https://www.wikipedia.org", "https://www.amazon.in", "https://www.flipkart.com", "https://www.reddit.com", "https://github.com", "https://x.com",
             "https://www.linkedin.com", "https://www.makemytrip.com", "https://www.croma.com", "https://www.reliancedigital.in", "https://www.booking.com", "https://www.uber.com", "https://en.wikipedia.org")
             .forEach { u -> app.cairn.browser.browser.Favicons.fetchNow(u)?.let { icons[u] = it } }
@@ -151,4 +151,38 @@ class UiShots {
         shoot("24_mention") { App(FrameLayout(paparazzi.context), FrameLayout(paparazzi.context)) }
     }
     @Test fun pair() { val t = Tab(1, false, ""); Browser.tabs.add(t); Browser.current = t; Ui.screen = "settings/pair"; shoot("19_pair") { App(FrameLayout(paparazzi.context), FrameLayout(paparazzi.context)) } }
+
+    @Test fun answerSources() {
+        val t = page("https://en.wikipedia.org/wiki/Black_hole", "Black hole - Wikipedia"); Browser.tabs.add(t); Browser.current = t; Ui.assistant = true
+        Agent.items.add(UserMsg("iPhone 16 ka price kya hai India me?"))
+        Agent.items.add(StepsItem().apply { steps.add(Step("search", "Searching the web: iPhone 16 price India")); steps.add(Step("read", "Read 3 sources")); done = true })
+        val cites = listOf(app.cairn.browser.agent.Cite(1, "Buy iPhone 16 - Apple (IN)", "https://www.apple.com/in/shop/buy-iphone/iphone-16"),
+            app.cairn.browser.agent.Cite(2, "Apple iPhone 16 (128 GB) - Flipkart", "https://www.flipkart.com/apple-iphone-16"),
+            app.cairn.browser.agent.Cite(3, "iPhone 16 - Wikipedia", "https://en.wikipedia.org/wiki/IPhone_16"))
+        Agent.items.add(AiMsg("**iPhone 16 ki India me starting price ₹79,900 hai** (128 GB) [1]. Flipkart par abhi yeh **₹69,999** me mil raha hai [2].\n\n- **256 GB:** ₹89,900 [1]\n- **Launch:** September 2024 [3]", sources = cites, prompt = "iPhone 16 price").apply {
+            revealed = true; followUps.addAll(listOf("iPhone 16 vs iPhone 16 Plus kaunsa le?", "Flipkart par bank offers kya hain?", "iPhone 16 ka exchange price kitna milega?")) })
+        shoot("25_answer_sources") { App(FrameLayout(paparazzi.context), FrameLayout(paparazzi.context)) }
+    }
+    @Test fun attachments() {
+        val t = Tab(1, false, ""); Browser.tabs.add(t); Browser.current = t; Ui.assistant = true
+        val bmp = android.graphics.Bitmap.createBitmap(96, 96, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF6B7A8F.toInt()) }
+        Ui.attachments.add(app.cairn.browser.agent.Attachment("IMG_2041.jpg", "image/jpeg", null, bmp))
+        Ui.attachments.add(app.cairn.browser.agent.Attachment("Rent agreement.pdf", "application/pdf", null, null).apply { pages = 4; text = "x"; ready = true })
+        Ui.assistantDraft = "Is agreement me notice period kitna hai?"
+        shoot("26_attachments") { App(FrameLayout(paparazzi.context), FrameLayout(paparazzi.context)) }
+    }
+    @Test fun accountSignup() { val t = Tab(1, false, ""); Browser.tabs.add(t); Browser.current = t; Ui.screen = "settings/account"; shoot("27_account_signup") { App(FrameLayout(paparazzi.context), FrameLayout(paparazzi.context)) } }
+    @Test fun accountSignedIn() {
+        val t = Tab(1, false, ""); Browser.tabs.add(t); Browser.current = t
+        app.cairn.browser.data.LocalAccount.create("Aarav Sharma", "aarav@example.com", "correct-horse-9")
+        Ui.screen = "settings/account"; shoot("28_account_signed_in") { App(FrameLayout(paparazzi.context), FrameLayout(paparazzi.context)) }
+    }
+    private fun homeScreen(vararg layouts: Pair<Int, Int>): android.view.View {
+        val ctx = paparazzi.context; val d = ctx.resources.displayMetrics.density
+        val col = android.widget.LinearLayout(ctx).apply { orientation = android.widget.LinearLayout.VERTICAL; setPadding((16 * d).toInt(), (120 * d).toInt(), (16 * d).toInt(), 0)
+            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF3B4A5E.toInt(), 0xFF6E5A73.toInt(), 0xFF2A2F3A.toInt())) }
+        layouts.forEach { (id, h) -> col.addView(paparazzi.inflate<android.view.View>(id), android.widget.LinearLayout.LayoutParams(-1, (h * d).toInt()).apply { bottomMargin = (28 * d).toInt() }) }
+        return col
+    }
+    @Test fun widgets() { paparazzi.snapshot(homeScreen(R.layout.widget_search to 64, R.layout.widget_actions to 150), "29_widgets") }
 }

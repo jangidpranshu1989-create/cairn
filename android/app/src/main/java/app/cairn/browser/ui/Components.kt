@@ -10,6 +10,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -155,9 +157,9 @@ fun EmptyState(icon: ImageVector, title: String, sub: String, modifier: Modifier
 fun Modifier.noRippleClick(onClick: () -> Unit): Modifier = this.then(Modifier.clickable(interactionSource = MutableInteractionSource(), indication = null, onClick = onClick))
 
 // ---------------- Markdown ----------------
-private val linkRe = Regex("\\[([^\\]]+)]\\((https?://[^)\\s]+)\\)|\\*\\*(.+?)\\*\\*|`([^`]+)`|(https?://[^\\s)]+)")
+private val linkRe = Regex("\\[([^\\]]+)]\\((https?://[^)\\s]+)\\)|\\*\\*(.+?)\\*\\*|`([^`]+)`|(https?://[^\\s)]+)|\\s?\\[(\\d{1,2})]")
 
-fun inlineMd(s: String, linkColor: Color, codeBg: Color): AnnotatedString = buildAnnotatedString {
+fun inlineMd(s: String, linkColor: Color, codeBg: Color, cites: Set<Int>? = null): AnnotatedString = buildAnnotatedString {
     var i = 0
     for (m in linkRe.findAll(s)) {
         append(s.substring(i, m.range.first))
@@ -166,16 +168,37 @@ fun inlineMd(s: String, linkColor: Color, codeBg: Color): AnnotatedString = buil
             m.groups[3] != null -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(m.groupValues[3]) }
             m.groups[4] != null -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBg, fontSize = 13.sp)) { append(m.groupValues[4]) }
             m.groups[5] != null -> withLink(LinkAnnotation.Url(m.groupValues[5], TextLinkStyles(SpanStyle(color = linkColor)))) { append(hostOf(m.groupValues[5]).ifEmpty { m.groupValues[5] }) }
+            m.groups[6] != null -> { val n = m.groupValues[6].toInt(); if (cites == null) append(m.value) else if (n in cites) { append(' '); appendInlineContent("cite:$n", "[$n]") } }
         }
         i = m.range.last + 1
     }
     append(s.substring(i))
 }
 
+/** A source citation shown inline in an answer: site name in a soft capsule; tap opens the page. */
+@Composable
+fun CitePill(c: app.cairn.browser.agent.Cite, onClick: () -> Unit) {
+    Box(Modifier.fillMaxSize().padding(horizontal = 1.dp).clip(RoundedCornerShape(50)).background(C.surface3).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        androidx.compose.material3.Text(c.label, color = C.muted, fontSize = 10.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, lineHeight = 12.sp)
+    }
+}
+
+/** Some models emit fullwidth citation marks like 【3】 or 【3†L1-L4】; normalise to [3]. */
+private val FW_CITE = Regex("【(\\d{1,2})(?:†[^】]*)?】|\\[(\\d{1,2})†[^\\]]*]")
+fun normCites(s: String) = if (s.contains('【') || s.contains('†')) FW_CITE.replace(s) { "[" + (it.groupValues[1].ifEmpty { it.groupValues[2] }) + "]" } else s
+
 /** Lightweight Markdown renderer for assistant replies: headings, bullets, numbered lists, bold, code and links. */
 @Composable
-fun Markdown(md: String, modifier: Modifier = Modifier, color: Color = C.text) {
+fun Markdown(md0: String, modifier: Modifier = Modifier, color: Color = C.text, cites: List<app.cairn.browser.agent.Cite>? = null, onCite: (app.cairn.browser.agent.Cite) -> Unit = {}) {
+    val md = remember(md0) { normCites(md0) }
     val link = C.agent; val codeBg = C.surface3
+    val citeSet = cites?.map { it.n }?.toSet()
+    val inline = remember(cites) { cites?.associate { c ->
+        "cite:${c.n}" to InlineTextContent(Placeholder((c.label.length * 6.3f + 17f).sp, 19.sp, PlaceholderVerticalAlign.TextCenter)) { CitePill(c) { onCite(c) } }
+    } ?: emptyMap() }
+    @Composable fun Text(text: AnnotatedString, style: androidx.compose.ui.text.TextStyle, color: Color, modifier: Modifier = Modifier) =
+        androidx.compose.material3.Text(text, modifier = modifier, style = style, color = color, inlineContent = inline)
+    fun inlineMd(s: String, linkColor: Color, codeBg: Color) = inlineMd(s, linkColor, codeBg, citeSet)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         for (raw in md.trim().lines()) {
             val l = raw.trimEnd()

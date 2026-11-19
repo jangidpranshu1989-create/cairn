@@ -38,6 +38,7 @@ class CairnApp : Application() {
         })
         app.cairn.browser.data.Recall.init(this)
         app.cairn.browser.browser.Favicons.init(this)
+        app.cairn.browser.data.CairnSearch.init(this)
         app.cairn.browser.service.PriceWatch.schedule(this)
         // "Stay signed in" off → start every session signed out (cookies wiped); on → cookies persist and are flushed to disk often.
         if (!Prefs.keepSignedIn) runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }

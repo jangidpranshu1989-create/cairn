@@ -58,6 +58,10 @@ import app.cairn.browser.browser.Browser
 import app.cairn.browser.data.Prefs
 import app.cairn.browser.data.hostOf
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -217,11 +221,30 @@ private fun Composer() {
     val cur = Browser.current
     val candidates = if (m == null) emptyList() else Browser.tabs.filter { !it.isNtp && it.incognito == (cur?.incognito == true) && it !in Ui.mentions }
         .filter { val q = m.groupValues[1]; q.isEmpty() || it.title.contains(q, true) || it.host.contains(q, true) }.take(6)
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var tray by remember { mutableStateOf(false) }
+    LaunchedEffect(Ui.attachTray) { if (Ui.attachTray) { tray = true; Ui.attachTray = false } }
+    fun add(a: Attachment?) {
+        if (a == null) { act.toast("Couldn't open that file"); return }
+        if (Ui.attachments.size >= 6) { act.toast("Up to 6 attachments per message"); return }
+        Ui.attachments.add(a); scope.launch { a.extract(ctx) }
+    }
+    val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(6)) { uris ->
+        tray = false; scope.launch { uris.forEach { u -> add(kotlinx.coroutines.withContext(Dispatchers.IO) { Attachment.fromImage(ctx, u) }) } }
+    }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { b -> tray = false; if (b != null) add(Attachment.fromCamera(b)) }
+    val camPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) runCatching { camera.launch(null) } else act.toast("Camera permission is needed to take a photo") }
+    val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        tray = false; scope.launch { uris.take(6).forEach { u -> add(kotlinx.coroutines.withContext(Dispatchers.IO) { Attachment.fromDocument(ctx, u) }) } }
+    }
+    val canSend = text.isNotBlank() || (ask == null && Ui.attachments.isNotEmpty())
     fun send() {
-        val t = text.trim(); if (t.isEmpty()) return
+        val t = text.trim(); if (!canSend) return
+        if (Agent.running && ask == null) return
         Haptics.confirm()
-        tf = TextFieldValue("")
-        if (ask != null) Agent.answer(t) else { Agent.run(t, Ui.mentions.toList()); Ui.mentions.clear() }
+        tf = TextFieldValue(""); tray = false
+        if (ask != null) Agent.answer(t) else { Agent.run(t, Ui.mentions.toList(), Ui.attachments.toList()); Ui.mentions.clear(); Ui.attachments.clear() }
     }
     fun pick(tab: app.cairn.browser.browser.Tab) {
         Haptics.tick()
@@ -246,6 +269,21 @@ private fun Composer() {
                 }
             }
         }
+        AnimatedVisibility(tray && ask == null, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+            Row(Modifier.padding(bottom = 8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(Triple(Ic.Images, "Photos") { photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    Triple(Ic.Camera, "Camera") { camPerm.launch(android.Manifest.permission.CAMERA) },
+                    Triple(Ic.FileText, "Files") { files.launch(arrayOf("*/*")) }).forEach { (ic, label, go) ->
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(16.dp)).clickable { Haptics.tick(); go() }.padding(vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(ic, null, Modifier.size(20.dp), tint = C.agent); Spacer(Modifier.height(6.dp)); Text(label, color = C.text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+        }
+        if (Ui.attachments.isNotEmpty()) Row(Modifier.padding(bottom = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Ui.attachments.toList().forEach { a -> AttachmentChip(a, onRemove = { Ui.attachments.remove(a) }) }
+        }
         if (Ui.mentions.isNotEmpty()) Row(Modifier.padding(bottom = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Ui.mentions.toList().forEach { t ->
                 Row(Modifier.clip(RoundedCornerShape(10.dp)).background(C.agentSoft).border(1.dp, C.agent.copy(alpha = .35f), RoundedCornerShape(10.dp)).padding(start = 8.dp, end = 2.dp).height(30.dp),
@@ -259,14 +297,15 @@ private fun Composer() {
         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(26.dp)).background(C.surface)
             .border(1.dp, if (ask != null) C.agent.copy(alpha = .6f) else C.line2, RoundedCornerShape(26.dp)).padding(start = 6.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            IconBtn(Ic.At, "Mention a tab", tint = C.muted, size = 40.dp) {
+            IconBtn(if (tray) Ic.Close else Ic.Plus, if (tray) "Close" else "Add photos or files", tint = if (tray) C.text else C.muted, size = 40.dp, enabled = ask == null) { Haptics.tick(); tray = !tray }
+            IconBtn(Ic.At, "Mention a tab", tint = C.muted, size = 36.dp) {
                 val s = tf.text; val add = if (s.isEmpty() || s.endsWith(" ")) "@" else " @"; tf = TextFieldValue(s + add, TextRange(s.length + add.length))
             }
             BasicTextField(tf, { tf = it }, Modifier.weight(1f).padding(vertical = 13.dp), maxLines = 6,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.text, fontSize = 15.5.sp, lineHeight = 21.sp), cursorBrush = SolidColor(C.agent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { send() }),
-                decorationBox = { inner -> if (text.isEmpty()) Text(if (ask != null) "Type your answer…" else if (Agent.running) "Cairn is working…" else "Ask anything · @ to add a tab", color = C.faint, fontSize = 15.5.sp, maxLines = 1); inner() })
-            Crossfade(when { Agent.running && ask == null && text.isEmpty() -> 0; text.isNotBlank() -> 1; else -> 2 }, label = "act") { k ->
+                decorationBox = { inner -> if (text.isEmpty()) Text(if (ask != null) "Type your answer…" else if (Agent.running) "Cairn is working…" else if (Ui.attachments.isNotEmpty()) "Ask about ${if (Ui.attachments.size == 1) "this" else "these"}…" else "Ask anything", color = C.faint, fontSize = 15.5.sp, maxLines = 1); inner() })
+            Crossfade(when { Agent.running && ask == null && text.isEmpty() -> 0; canSend -> 1; else -> 2 }, label = "act") { k ->
                 when (k) {
                     0 -> RoundAction(Ic.Stop, "Stop", C.surface3, C.text) { Haptics.reject(); Agent.stop() }
                     1 -> RoundAction(Ic.ArrowUpward, "Send", C.accent, C.accentInk) { send() }
@@ -292,17 +331,14 @@ private fun ItemView(it: Item) {
             if (it.mentions.isNotEmpty()) Row(Modifier.padding(bottom = 5.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 it.mentions.take(3).forEach { m -> Text("@" + shortTitle(m, 24), color = C.agent, fontSize = 11.5.sp, maxLines = 1, modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(C.agentSoft).padding(horizontal = 7.dp, vertical = 3.dp)) }
             }
+            if (it.attachments.isNotEmpty()) Row(Modifier.padding(bottom = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                it.attachments.forEach { a -> AttachmentChip(a, onRemove = null) }
+            }
             Box(Modifier.widthIn(max = 310.dp).clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp)).background(C.surface2).padding(horizontal = 15.dp, vertical = 10.dp)) {
                 Text(it.text, color = C.text, fontSize = 15.sp, lineHeight = 21.sp)
             }
         }
-        is AiMsg -> Column {
-            Markdown(it.markdown, color = if (it.error) C.muted else C.text)
-            if (it.setup) Row(Modifier.padding(top = 10.dp)) {
-                if (!Prefs.isSignedIn) { PrimaryButton("Sign in") { Ui.assistant = false; Ui.go("settings/account") }; Spacer(Modifier.width(8.dp)) }
-                SecondaryButton("AI settings") { Ui.assistant = false; Ui.go("settings/ai") }
-            }
-        }
+        is AiMsg -> AnswerView(it)
         is StepsItem -> Steps(it)
         is ProductsItem -> Products(it)
         is SummaryItem -> Card {
@@ -345,6 +381,109 @@ private fun ItemView(it: Item) {
         is AskItem -> Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.agentSoft).padding(14.dp)) {
             Icon(Ic.HelpOutline, null, Modifier.size(18.dp), tint = C.agent); Spacer(Modifier.width(10.dp))
             Column { Text(it.question, color = C.text, fontSize = 14.5.sp, lineHeight = 20.sp); it.answer?.let { a -> Text("You answered: $a", color = C.muted, fontSize = 12.5.sp, modifier = Modifier.padding(top = 6.dp)) } }
+        }
+    }
+}
+
+private fun openSource(url: String) { Haptics.tick(); Ui.assistant = false; Browser.newTab(url, Browser.current?.incognito == true) }
+
+/** An assistant reply: typewriter reveal, inline source pills, a sources row with direct links, actions and follow-ups. */
+@Composable
+private fun AnswerView(m: AiMsg) {
+    val ctx = LocalContext.current
+    var shown by remember(m.key) { mutableStateOf(if (m.revealed) m.markdown.length else 0) }
+    LaunchedEffect(m.key) {
+        if (m.revealed) return@LaunchedEffect
+        val total = m.markdown.length; val step = (total / 55).coerceAtLeast(4)
+        while (shown < total) {
+            var next = (shown + step).coerceAtMost(total)
+            while (next < total && !m.markdown[next].isWhitespace()) next++   // whole words only
+            shown = next; delay(18)
+        }
+        m.revealed = true
+    }
+    var open by remember(m.key) { mutableStateOf(false) }
+    Column {
+        Markdown(if (m.revealed) m.markdown else m.markdown.take(shown), color = if (m.error) C.muted else C.text, cites = m.sources, onCite = { c -> openSource(c.url) })
+        if (m.setup) Row(Modifier.padding(top = 10.dp)) {
+            if (!Prefs.isSignedIn) { PrimaryButton("Sign in") { Ui.assistant = false; Ui.go("settings/account") }; Spacer(Modifier.width(8.dp)) }
+            SecondaryButton("AI settings") { Ui.assistant = false; Ui.go("settings/ai") }
+        }
+        AnimatedVisibility(m.revealed && !m.error && !m.setup, enter = fadeIn(tween(260))) {
+            Column {
+                Row(Modifier.padding(top = 8.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    val plain = { m.markdown.replace(Regex("\\s?\\[(\\d{1,2})]"), "").replace(Regex("[*#`]"), "") }
+                    IconBtn(Ic.Copy, "Copy", tint = C.faint, size = 36.dp) {
+                        copyText(ctx, "Cairn", m.markdown + if (m.sources.isEmpty()) "" else "\n\nSources:\n" + m.sources.joinToString("\n") { "[${it.n}] ${it.title} — ${it.url}" })
+                    }
+                    IconBtn(Ic.Share, "Share", tint = C.faint, size = 36.dp) { shareText(ctx, plain() + if (m.sources.isEmpty()) "" else "\n\n" + m.sources.take(5).joinToString("\n") { it.url }) }
+                    IconBtn(Ic.Volume, "Listen", tint = C.faint, size = 36.dp) { app.cairn.browser.service.ReadAloud.speak("Cairn", plain()) }
+                    if (m.prompt.isNotBlank()) IconBtn(Ic.Replay, "Retry", tint = C.faint, size = 36.dp, enabled = !Agent.running) { Haptics.tick(); Agent.retry() }
+                    Spacer(Modifier.weight(1f))
+                    if (m.sources.isNotEmpty()) Row(Modifier.clip(CircleShape).background(C.surface).border(1.dp, C.line, CircleShape).clickable { Haptics.tick(); open = !open }
+                        .padding(start = 6.dp, end = 11.dp).height(32.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width((14 + 10 * (m.sources.distinctBy { it.host }.take(3).size - 1)).dp + 4.dp)) {
+                            m.sources.distinctBy { it.host }.take(3).forEachIndexed { i, c ->
+                                Box(Modifier.padding(start = (i * 10).dp).size(18.dp).clip(CircleShape).background(C.bg).padding(1.5.dp)) { Favicon(c.url, size = 15.dp, corner = 8.dp) }
+                            }
+                        }
+                        Spacer(Modifier.width(5.dp))
+                        Text("${m.sources.size} source${if (m.sources.size == 1) "" else "s"}", color = C.muted, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                AnimatedVisibility(open, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+                    Column(Modifier.padding(top = 6.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(16.dp)).padding(vertical = 4.dp)) {
+                        m.sources.forEach { c ->
+                            Row(Modifier.fillMaxWidth().clickable { openSource(c.url) }.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("${c.n}", color = C.faint, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(18.dp))
+                                Favicon(c.url, size = 18.dp, corner = 5.dp); Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(c.title, color = C.text, fontSize = 13.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(c.host, color = C.faint, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                Icon(Ic.NorthEast, "Open", Modifier.size(13.dp), tint = C.faint)
+                            }
+                        }
+                    }
+                }
+                if (m.followUps.isNotEmpty() && Agent.items.lastOrNull { x -> x is AiMsg } == m) Column(Modifier.padding(top = 8.dp)) {
+                    m.followUps.forEach { q ->
+                        HorizontalDivider(color = C.line)
+                        Row(Modifier.fillMaxWidth().clickable(enabled = !Agent.running) { Haptics.tick(); Agent.run(q) }.padding(vertical = 12.dp, horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Ic.FollowUp, null, Modifier.size(16.dp), tint = C.agent); Spacer(Modifier.width(12.dp))
+                            Text(q, color = C.text, fontSize = 14.5.sp, lineHeight = 20.sp, modifier = Modifier.weight(1f))
+                            Icon(Ic.Plus, "Ask", Modifier.size(15.dp), tint = C.faint)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A photo thumbnail or a document card, in the composer (removable) or in a sent message. */
+@Composable
+private fun AttachmentChip(a: Attachment, onRemove: (() -> Unit)?) {
+    Box {
+        if (a.bitmap != null) {
+            Image(a.bitmap.asImageBitmap(), a.name, Modifier.size(if (onRemove != null) 60.dp else 72.dp).clip(RoundedCornerShape(14.dp)).border(1.dp, C.line, RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+        } else {
+            Row(Modifier.height(if (onRemove != null) 60.dp else 56.dp).widthIn(min = 150.dp, max = 230.dp).clip(RoundedCornerShape(14.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(14.dp))
+                .padding(start = 10.dp, end = if (onRemove != null) 26.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(C.agentSoft), contentAlignment = Alignment.Center) {
+                    if (!a.ready) CircularProgressIndicator(Modifier.size(16.dp), color = C.agent, strokeWidth = 2.dp)
+                    else Icon(if (a.kindLabel == "PDF") Ic.PictureAsPdf else Ic.FileText, null, Modifier.size(17.dp), tint = C.agent)
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f, false)) {
+                    Text(a.name, color = C.text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(when { !a.ready -> "Reading…"; a.error != null -> a.error!!; a.pages > 0 -> "${a.kindLabel} · ${a.pages} page${if (a.pages == 1) "" else "s"}"; else -> a.kindLabel },
+                        color = if (a.error != null) C.err else C.faint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        if (onRemove != null) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp).clip(CircleShape).background(C.bg.copy(alpha = .85f)).clickable { Haptics.tick(); onRemove() }, contentAlignment = Alignment.Center) {
+            Icon(Ic.Close, "Remove", Modifier.size(11.dp), tint = C.text)
         }
     }
 }

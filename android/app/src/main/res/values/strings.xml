@@ -3,4 +3,14 @@
     <string name="shortcut_new_tab">New tab</string>
     <string name="shortcut_private_tab">New private tab</string>
     <string name="shortcut_assistant">Ask Cairn</string>
+    <string name="widget_hint">Search or ask Cairn</string>
+    <string name="widget_voice">Voice search</string>
+    <string name="widget_ask">Ask</string>
+    <string name="widget_new_tab">New tab</string>
+    <string name="widget_private">Private</string>
+    <string name="widget_photo">Photo</string>
+    <string name="widget_search_label">Cairn search</string>
+    <string name="widget_actions_label">Cairn quick actions</string>
+    <string name="widget_search_desc">Search the web or ask Cairn from your Home screen</string>
+    <string name="widget_actions_desc">Search, new tab, private tab, ask Cairn and ask about a photo</string>
 </resources>

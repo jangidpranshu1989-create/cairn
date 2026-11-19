@@ -38,8 +38,8 @@ android {
         applicationId = "app.cairn.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0.0"
+        versionCode = 4
+        versionName = "2.1.0"
         // Default Cairn Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
         buildConfigField("String", "DEFAULT_SERVER", "\"https://api.cairn.app\"")
         buildConfigField("String", "SITE", "\"https://cairn.app\"")
@@ -93,4 +93,5 @@ dependencies {
     implementation("androidx.media:media:1.7.0")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 }

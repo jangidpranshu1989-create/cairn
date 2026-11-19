@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wg_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/wg_card" android:orientation="vertical" android:padding="12dp" android:gravity="center_vertical">
+    <LinearLayout android:id="@+id/wg_bar" android:layout_width="match_parent" android:layout_height="50dp"
+        android:background="@drawable/wg_pill" android:gravity="center_vertical" android:orientation="horizontal"
+        android:paddingStart="16dp" android:paddingEnd="6dp">
+        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/wg_logo" android:contentDescription="@string/app_name" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp"
+            android:text="@string/widget_hint" android:textColor="#FFA3A19B" android:textSize="15sp" android:maxLines="1" android:ellipsize="end" />
+        <ImageView android:id="@+id/wg_mic" android:layout_width="38dp" android:layout_height="38dp" android:padding="9dp" android:src="@drawable/wg_mic"
+            android:background="@drawable/wg_circle" android:contentDescription="@string/widget_voice" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/wg_tab" android:layout_width="0dp" android:layout_height="58dp" android:layout_weight="1" android:background="@drawable/wg_btn"
+            android:gravity="center" android:orientation="vertical">
+            <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/wg_tab" android:contentDescription="@null" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/widget_new_tab"
+                android:textColor="#FFEEEDEA" android:textSize="11.5sp" android:fontFamily="sans-serif-medium" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/wg_private" android:layout_width="0dp" android:layout_height="58dp" android:layout_weight="1" android:layout_marginStart="8dp"
+            android:background="@drawable/wg_btn" android:gravity="center" android:orientation="vertical">
+            <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/wg_private" android:contentDescription="@null" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/widget_private"
+                android:textColor="#FFEEEDEA" android:textSize="11.5sp" android:fontFamily="sans-serif-medium" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/wg_ask" android:layout_width="0dp" android:layout_height="58dp" android:layout_weight="1" android:layout_marginStart="8dp"
+            android:background="@drawable/wg_btn" android:gravity="center" android:orientation="vertical">
+            <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/wg_ask" android:contentDescription="@null" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/widget_ask"
+                android:textColor="#FFEEEDEA" android:textSize="11.5sp" android:fontFamily="sans-serif-medium" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/wg_lens" android:layout_width="0dp" android:layout_height="58dp" android:layout_weight="1" android:layout_marginStart="8dp"
+            android:background="@drawable/wg_btn" android:gravity="center" android:orientation="vertical">
+            <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/wg_lens" android:contentDescription="@null" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/widget_photo"
+                android:textColor="#FFEEEDEA" android:textSize="11.5sp" android:fontFamily="sans-serif-medium" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

@@ -5,7 +5,10 @@ const { EventEmitter } = require('node:events');
 const store = require('./store');
 const { PARTITION } = require('./agent/background');
 
+const search = require('./search');
+
 const SEARCH = {
+  cairn: 'cairn://search/?q=',
   duckduckgo: 'https://duckduckgo.com/?q=',
   bing: 'https://www.bing.com/search?q=',
   brave: 'https://search.brave.com/search?q=',
@@ -17,7 +20,9 @@ function resolveInput(input) {
   if (/^(https?|cairn|file|about|data|view-source):/i.test(t)) return t;
   if (/^localhost(:\d+)?(\/.*)?$/i.test(t) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/.*)?$/.test(t)) return 'http://' + t;
   if (!/\s/.test(t) && /^[^\s]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(t)) return 'https://' + t;
-  return (SEARCH[store.get().settings.data.searchEngine] || SEARCH.duckduckgo) + encodeURIComponent(t);
+  const site = search.resolveSite(t);
+  if (site) return site;
+  return (SEARCH[store.get().settings.data.searchEngine] || SEARCH.cairn) + encodeURIComponent(t);
 }
 
 class Tabs extends EventEmitter {

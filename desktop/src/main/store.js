@@ -45,7 +45,8 @@ class EncryptedStore {
 
 const DEFAULT_SETTINGS = {
   theme: 'dark',                 // dark | light | system
-  searchEngine: 'duckduckgo',    // duckduckgo | brave | bing | ecosia
+  searchEngine: 'cairn',         // cairn | duckduckgo | brave | bing
+  searchAnswers: true,           // AI answers on Cairn Search
   startup: 'newtab',             // newtab | restore
   homepage: 'cairn://newtab',
   language: 'auto',              // assistant reply language: auto | en | hi | hinglish | ...
@@ -85,6 +86,8 @@ function init() {
     threads: new JsonStore('threads', []),
     vault: new EncryptedStore('vault', { passwords: [], cloud: null }),
   };
+  const sd = stores.settings.data;
+  if (!sd.engineMigrated21) { if (sd.searchEngine === 'duckduckgo') sd.searchEngine = 'cairn'; sd.engineMigrated21 = true; stores.settings.save(); }
   return stores;
 }
 const get = () => stores;

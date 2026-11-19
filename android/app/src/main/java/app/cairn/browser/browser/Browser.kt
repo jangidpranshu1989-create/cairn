@@ -312,6 +312,13 @@ object Browser {
         override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
             val u = req.url; val s = u.scheme?.lowercase() ?: return false
             if (s == "http" || s == "https" || s == "about" || s == "data" || s == "blob" || s == "javascript") return false
+            if (s == "cairn" && u.host == "ask") {
+                // "Ask a follow-up" from a Cairn Search page continues in the assistant, with that page as context.
+                val q = u.getQueryParameter("q").orEmpty()
+                app.cairn.browser.ui.Ui.assistant = true
+                if (q.isNotBlank()) app.cairn.browser.agent.Agent.run(q) else app.cairn.browser.ui.Ui.assistantDraft = ""
+                return true
+            }
             return activity.openExternal(u, req.isForMainFrame && req.hasGesture())
         }
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
@@ -344,6 +351,7 @@ object Browser {
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
         }
         override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
+            if (req.url.host == app.cairn.browser.data.CairnSearch.HOST) return app.cairn.browser.data.CairnSearch.intercept(req, app.cairn.browser.ui.C.dark)
             if (Prefs.shield && !req.isForMainFrame && Shield.isBlocked(req.url.host)) {
                 view.post { t.blocked++; shieldSession++; Prefs.shieldTotal = Prefs.shieldTotal + 1 }
                 return Shield.empty()

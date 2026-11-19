@@ -9,3 +9,8 @@
 -keep class android.print.PdfExporter$* { *; }
 # JavaScript bridges
 -keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }
+# PDFBox (attachments): optional JPEG2000 / Gemalto deps are not used
+-dontwarn com.gemalto.jp2.**
+-dontwarn com.tom_roush.pdfbox.filter.**
+-keep class com.tom_roush.pdfbox.** { *; }
+-keep class com.tom_roush.fontbox.** { *; }

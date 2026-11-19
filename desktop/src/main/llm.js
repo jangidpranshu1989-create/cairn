@@ -58,7 +58,7 @@ async function chat(opts) {
   let last;
   for (const p of providers) {
     const body = {
-      model: modelFor(p, opts.tier === 'vision' ? 'smart' : opts.tier, c),
+      model: opts.tier === 'vision' && p === 'groq' ? 'qwen/qwen3.8-27b' : modelFor(p, opts.tier === 'vision' ? 'smart' : opts.tier, c),
       messages: opts.messages,
       temperature: opts.temperature ?? 0.2,
       max_tokens: opts.maxTokens ?? 4096,
@@ -89,6 +89,39 @@ async function chat(opts) {
     }
   }
   throw last;
+}
+
+/** Streams a plain-text reply; calls onDelta(text) per chunk. Cloud mode falls back to one chunk. */
+async function stream(messages, onDelta, opts = {}) {
+  const c = cfg();
+  if (c.mode === 'cloud') { const { message } = await chat({ messages, ...opts }); onDelta(message.content || ''); return message.content || ''; }
+  const providers = order(c, opts.tier || 'smart');
+  if (!providers.length) throw new Error('NO_AI_KEY');
+  let last;
+  for (const p of providers) {
+    const body = { model: modelFor(p, opts.tier || 'smart', c), messages, temperature: 0.3, max_tokens: opts.maxTokens ?? 1000, stream: true };
+    if (p === 'nvidia') body.chat_template_kwargs = { enable_thinking: false };
+    if (p === 'groq' && /gpt-oss/.test(body.model)) body.reasoning_effort = 'low';
+    let out = '';
+    try {
+      const r = await fetch(`${PROVIDERS[p].base}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${p === 'groq' ? c.groqKey : c.nvidiaKey}` },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(90_000) });
+      if (!r.ok) { last = new Error(`${PROVIDERS[p].label} ${r.status}`); continue; }
+      const dec = new TextDecoder(); let buf = '';
+      for await (const chunk of r.body) {
+        buf += dec.decode(chunk, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!line.startsWith('data:')) continue;
+          const d = line.slice(5).trim(); if (d === '[DONE]') continue;
+          try { const t = JSON.parse(d).choices?.[0]?.delta?.content; if (t) { out += t; onDelta(t); } } catch {}
+        }
+      }
+      if (out) return out;
+    } catch (e) { if (out) return out; last = e; }
+  }
+  throw last || new Error('AI request failed');
 }
 
 /** Plain text helper */
@@ -141,4 +174,4 @@ async function testKey(provider, key) {
   return r.ok;
 }
 
-module.exports = { chat, complete, completeJSON, transcribe, speech, status, testKey };
+module.exports = { chat, stream, complete, completeJSON, transcribe, speech, status, testKey };

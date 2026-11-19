@@ -72,6 +72,8 @@ object Ui {
     var lasso by mutableStateOf(false)                   // circle-to-act overlay
     var pip by mutableStateOf(true)                      // live mini-preview of background agent work
     var mentions = androidx.compose.runtime.mutableStateListOf<Tab>()  // @tab context for the next message
+    val attachments = androidx.compose.runtime.mutableStateListOf<app.cairn.browser.agent.Attachment>()
+    var attachTray by mutableStateOf(false)               // widget "Photo": open the attach tray in the assistant
     val stack = ArrayDeque<String>()
 
     fun go(s: String) { screen?.let { stack.addLast(it) }; screen = s; menu = false; tabSwitcher = false }
@@ -141,6 +143,9 @@ class BrowserActivity : FragmentActivity() {
             ACTION_NEW_TAB -> { Browser.newTab(); Ui.screen = null; if (!cold) Ui.omnibox = true }
             ACTION_PRIVATE_TAB -> { Browser.newTab(NTP, incognito = true); Ui.screen = null }
             ACTION_ASSISTANT -> { Ui.screen = null; Ui.assistant = true }
+            ACTION_FOCUS_SEARCH -> { Ui.screen = null; Ui.assistant = false; Browser.current?.takeIf { it.isNtp && !it.incognito } ?: Browser.newTab(); webHost.postDelayed({ Ui.omnibox = true }, if (cold) 420 else 60) }
+            ACTION_VOICE -> { Ui.screen = null; webHost.postDelayed({ listen { t -> if (t.isNotBlank()) { Browser.open(t, Browser.current?.takeIf { it.isNtp } ?: Browser.newTab()) } } }, if (cold) 600 else 150) }
+            ACTION_ASK_PHOTO -> { Ui.screen = null; Ui.assistant = true; Ui.attachTray = true }
         }
         refreshContainer()
     }
@@ -320,5 +325,8 @@ class BrowserActivity : FragmentActivity() {
         const val ACTION_NEW_TAB = "app.cairn.browser.NEW_TAB"
         const val ACTION_PRIVATE_TAB = "app.cairn.browser.PRIVATE_TAB"
         const val ACTION_ASSISTANT = "app.cairn.browser.ASSISTANT"
+        const val ACTION_FOCUS_SEARCH = "app.cairn.browser.SEARCH"
+        const val ACTION_VOICE = "app.cairn.browser.VOICE"
+        const val ACTION_ASK_PHOTO = "app.cairn.browser.ASK_PHOTO"
     }
 }

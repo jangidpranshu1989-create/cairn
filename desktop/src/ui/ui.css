@@ -259,3 +259,22 @@ body.resizing #panel{transition:none}
 .hidden{display:none!important}
 .md.errtxt{color:var(--err)}
 .setup-btn{margin-top:10px;height:32px}
+
+/* Answers: inline citations, action bar, sources */
+.md a.cite{display:inline-flex;align-items:center;height:18px;padding:0 7px;margin:0 2px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted);font-size:10.5px;font-weight:500;text-decoration:none;vertical-align:1px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.md a.cite:hover{color:var(--text);border-color:var(--line-2)}
+.ans-bar{display:flex;align-items:center;gap:4px;margin-top:8px;flex-wrap:wrap}
+.ans-bar .ab{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:14px;border:1px solid transparent;background:none;color:var(--muted);font-size:12px;cursor:pointer}
+.ans-bar .ab:hover{background:var(--surface-2);color:var(--text)}
+.ans-bar .srcchip{margin-left:auto;border-color:var(--line);background:var(--surface-2)}
+.srcchip .favs{display:inline-flex}
+.srcchip .favs img{width:14px;height:14px;border-radius:50%;background:var(--surface-3,#333);border:1.5px solid var(--surface-2);margin-left:-5px}
+.srcchip .favs img:first-child{margin-left:0}
+.srclist{display:none;flex-direction:column;gap:2px;margin-top:6px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.srclist.open{display:flex}
+.srcrow{display:grid;grid-template-columns:18px 16px 1fr auto;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;border:0;background:none;color:var(--text);font-size:12px;text-align:left;cursor:pointer}
+.srcrow:hover{background:var(--surface-3,rgba(255,255,255,.05))}
+.srcrow .n{color:var(--faint,var(--muted));font-size:11px;font-variant-numeric:tabular-nums}
+.srcrow img{width:14px;height:14px;border-radius:3px}
+.srcrow .tt{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.srcrow .hh{color:var(--muted);font-size:11px}

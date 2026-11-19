@@ -90,6 +90,44 @@ object Llm {
         throw last ?: Exception("AI request failed")
     }
 
+    /**
+     * Streams a plain-text completion token by token (Server-Sent Events). Used by Cairn Search answers and chat replies.
+     * Falls back to a single non-streamed call (e.g. Cairn Cloud), delivering the whole text as one chunk.
+     */
+    fun streamBlocking(messages: JSONArray, tier: String = "smart", maxTokens: Int = 1600, onDelta: (String) -> Unit): String {
+        val providers = ownProviders()
+        if (providers.isEmpty() || (Prefs.aiMode == "cloud" && Prefs.isSignedIn)) {
+            val t = kotlinx.coroutines.runBlocking { chat(messages, tier = tier, maxTokens = maxTokens) }.optString("content").trim()
+            onDelta(t); return t
+        }
+        var last: Exception? = null
+        for (p in providers) {
+            val model = if (p == "groq") (if (tier == "fast") Prefs.groqFastModel else Prefs.groqModel) else (if (tier == "fast") Prefs.nvidiaFastModel else Prefs.nvidiaModel)
+            val body = JSONObject().put("model", model).put("messages", messages).put("temperature", 0.3).put("max_tokens", maxTokens).put("stream", true)
+            if (p == "nvidia") body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
+            if (p == "groq" && model.contains("gpt-oss")) body.put("reasoning_effort", "low")
+            val out = StringBuilder()
+            try {
+                http.newCall(Request.Builder().url("${bases[p]}/chat/completions").header("Authorization", "Bearer ${keyFor(p)}").header("Accept", "text/event-stream")
+                    .post(body.toString().toRequestBody(JSON_T)).build()).execute().use { r ->
+                    if (!r.isSuccessful) { last = Exception("${labels[p]} error ${r.code}"); return@use }
+                    val src = r.body!!.source()
+                    while (!src.exhausted()) {
+                        val line = src.readUtf8Line() ?: break
+                        if (!line.startsWith("data:")) continue
+                        val d = line.removePrefix("data:").trim()
+                        if (d == "[DONE]") break
+                        val delta = runCatching { JSONObject(d).getJSONArray("choices").getJSONObject(0).optJSONObject("delta")?.optString("content").orEmpty() }.getOrDefault("")
+                        if (delta.isNotEmpty() && delta != "null") { out.append(delta); onDelta(delta) }
+                    }
+                    lastProvider = p
+                }
+                if (out.isNotEmpty()) return out.toString()
+            } catch (e: java.io.InterruptedIOException) { if (out.isNotEmpty()) return out.toString(); last = e } catch (e: Exception) { if (out.isNotEmpty()) return out.toString(); last = e }
+        }
+        throw last ?: Exception("AI request failed")
+    }
+
     suspend fun complete(system: String, user: String, tier: String = "smart", maxTokens: Int = 1500, json: Boolean = false): String {
         val m = chat(JSONArray().put(JSONObject().put("role", "system").put("content", system)).put(JSONObject().put("role", "user").put("content", user)), tier = tier, json = json, maxTokens = maxTokens)
         return m.optString("content").trim()
@@ -119,7 +157,7 @@ object Llm {
         val msgs = JSONArray().put(JSONObject().put("role", "user").put("content", content))
         val models = buildList {
             if (keyFor("nvidia").isNotBlank()) { add("nvidia" to Prefs.nvidiaModel.takeIf { it.contains("vl") || it.contains("vision") }.orEmpty().ifBlank { "nvidia/nemotron-3.5-super-vl-120b-a12b" }); add("nvidia" to "meta/llama-3.2-90b-vision-instruct") }
-            if (keyFor("groq").isNotBlank()) add("groq" to "meta-llama/llama-4-scout-17b-16e-instruct")
+            if (keyFor("groq").isNotBlank()) add("groq" to "qwen/qwen3.8-27b")
         }.distinct()
         if (models.isEmpty()) throw NoAiException()
         var last: Exception? = null

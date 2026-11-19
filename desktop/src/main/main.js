@@ -10,10 +10,11 @@ if (process.defaultApp) app.setAsDefaultProtocolClient('cairn', process.execPath
 else app.setAsDefaultProtocolClient('cairn');
 
 const store = require('./store');
+const search = require('./search');
 let tabsMod, cloud, llm, passwords, pageTools, AgentCls;
 
 const UI_DIR = path.join(__dirname, '..', 'ui');
-const PAGES = new Set(['newtab', 'settings', 'history', 'bookmarks', 'downloads', 'passwords', 'account', 'mindmap', 'error', 'about', 'reader']);
+const PAGES = new Set(['search', 'newtab', 'settings', 'history', 'bookmarks', 'downloads', 'passwords', 'account', 'mindmap', 'error', 'about', 'reader']);
 const isMac = process.platform === 'darwin';
 
 let win, tabs, agent, agentTabId = null;
@@ -32,6 +33,7 @@ function send(ch, data) { if (win && !win.isDestroyed()) win.webContents.send(ch
 function registerProtocol() {
   const handler = (req) => {
     const u = new URL(req.url);
+    if (u.host === 'search') return search.handle(u);
     if (u.host === 'auth-callback') return new Response('Signing in…', { headers: { 'content-type': 'text/plain' } });
     if (u.host === 'file') { // serve generated files (e.g. long screenshots) for preview
       const p = u.searchParams.get('p');

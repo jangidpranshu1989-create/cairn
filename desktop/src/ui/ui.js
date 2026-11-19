@@ -528,9 +528,25 @@
         if (ev.error && cur?.steps && cur.count <= 1) { cur.steps.remove(); cur.steps = null; }
         finishSteps();
         const t = ensureTurn();
-        const b = h('div', 'md', md(ev.text));
+        const b = h('div', 'md', md(ev.text, ev.sources));
         if (ev.error) b.classList.add('errtxt');
         t.root.appendChild(b);
+        if (!ev.error && ev.text) {
+          const bar = h('div', 'ans-bar');
+          const cp = h('button', 'ab', `${icon('copy', 14)}<span>Copy</span>`);
+          cp.onclick = () => { const plain = ev.text + (ev.sources?.length ? '\n\nSources:\n' + ev.sources.map(c => `[${c.n}] ${c.title} — ${c.url}`).join('\n') : ''); S.invoke('clipboard:write', plain); cp.querySelector('span').textContent = 'Copied'; setTimeout(() => { cp.querySelector('span').textContent = 'Copy'; }, 1400); };
+          const rd = h('button', 'ab', `${icon('speak', 14)}<span>Listen</span>`); rd.onclick = () => speak(ev.text.replace(/\[\d{1,2}\]/g, '').replace(/[*#`]/g, ''), '', '');
+          bar.append(cp, rd);
+          if (ev.sources?.length) {
+            const favs = [...new Set(ev.sources.map(c => host(c.url)))].slice(0, 4).map(hh => `<img src="cairn://search/icon?h=${encodeURIComponent(hh)}" alt="">`).join('');
+            const chip = h('button', 'ab srcchip', `<span class="favs">${favs}</span><span>${ev.sources.length} source${ev.sources.length > 1 ? 's' : ''}</span>`);
+            const list = h('div', 'srclist');
+            for (const c of ev.sources) { const r = h('button', 'srcrow', `<span class="n">${c.n}</span><img src="cairn://search/icon?h=${encodeURIComponent(host(c.url))}" alt=""><span class="tt">${esc(c.title)}</span><span class="hh">${esc(host(c.url))}</span>`); r.onclick = () => S.invoke('tabs:new', c.url); list.appendChild(r); }
+            chip.onclick = () => list.classList.toggle('open');
+            for (const im of [...chip.querySelectorAll('img'), ...list.querySelectorAll('img')]) im.onerror = () => { im.style.visibility = 'hidden'; };
+            bar.appendChild(chip); t.root.appendChild(bar); t.root.appendChild(list);
+          } else t.root.appendChild(bar);
+        }
         if (ev.setup) { const bt = h('button', 'btn primary setup-btn', `${icon('key', 13)} Add API key`); bt.onclick = () => S.invoke('tabs:new', 'cairn://settings#ai'); t.root.appendChild(bt); }
         if (ev.provider) t.root.appendChild(h('div', 'prov', `via ${ev.provider === 'groq' ? 'Groq' : 'NVIDIA NIM'}`));
         scrollDown(); break;

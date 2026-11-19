@@ -65,7 +65,8 @@ object Prefs {
 
     // ---- Browser ----
     var theme by str("theme", "system")                 // system | dark | light
-    var searchEngine by str("searchEngineV2", "duckduckgo") // see Search.engines (no Google services anywhere in Cairn)
+    var searchEngine by str("searchEngineV3", "cairn") // see Search.engines — Cairn Search is the default (no Google services anywhere in Cairn)
+    var searchAnswers by bool("searchAnswers", true) // AI answer with sources on Cairn Search
     var searchSuggestions by bool("searchSuggestions", true)
     var shield by bool("shield", true)                   // ad & tracker blocking
     var shieldTotal by long("shieldTotal", 0)
@@ -107,6 +108,8 @@ object Prefs {
     var accessTokenS by secret("at")
     var refreshTokenS by secret("rt")
     var autoSave by bool("autoSave", true)
+    var localAccountS by secret("localAccount")          // on-device account: name, email, PBKDF2 password hash
+    var localSignedIn by bool("localSignedIn", false)
 
     var deviceId: String?
         get() = deviceIdS.ifEmpty { null }
@@ -123,9 +126,12 @@ object Prefs {
 
     val isSignedIn get() = refreshToken != null
     val isPaired get() = deviceId != null && refreshToken != null
-    val userName get() = userJson?.let { runCatching { JSONObject(it).optString("name").ifEmpty { JSONObject(it).optString("email") } }.getOrNull() } ?: ""
-    val userEmail get() = userJson?.let { runCatching { JSONObject(it).optString("email") }.getOrNull() } ?: ""
-    val userPlan get() = userJson?.let { runCatching { JSONObject(it).optString("plan", "free") }.getOrNull() } ?: "free"
+    /** Signed in with any Cairn account — the on-device one or a cloud one. */
+    val hasAccount get() = isSignedIn || (localSignedIn && localAccountS.isNotEmpty())
+    private val acct get() = userJson ?: localAccountS.takeIf { localSignedIn && it.isNotEmpty() }
+    val userName get() = acct?.let { runCatching { JSONObject(it).optString("name").ifEmpty { JSONObject(it).optString("email") } }.getOrNull() } ?: ""
+    val userEmail get() = acct?.let { runCatching { JSONObject(it).optString("email") }.getOrNull() } ?: ""
+    val userPlan get() = acct?.let { runCatching { JSONObject(it).optString("plan", "free") }.getOrNull() } ?: "free"
 
     fun files(): List<SavedFile> = runCatching {
         val a = JSONArray(p.getString("files", "[]")); (0 until a.length()).map { a.getJSONObject(it) }.map {

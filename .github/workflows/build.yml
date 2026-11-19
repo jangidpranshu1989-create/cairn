@@ -37,7 +37,9 @@ jobs:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
       - uses: actions/upload-artifact@v4
-        with: { name: saarthi-${{ matrix.os }}, path: "desktop/dist/*.*" }
+        with:
+          name: saarthi-${{ matrix.os }}
+          path: desktop/dist/*.*
   android:
     runs-on: ubuntu-latest
     steps:
@@ -45,7 +47,9 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@v3
-      - run: ./gradlew assembleRelease --no-daemon
+      - run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
         working-directory: android
       - uses: actions/upload-artifact@v4
-        with: { name: saarthi-companion, path: android/app/build/outputs/apk/release/*.apk }
+        with:
+          name: saarthi-android
+          path: android/app/build/outputs/apk/release/*.apk

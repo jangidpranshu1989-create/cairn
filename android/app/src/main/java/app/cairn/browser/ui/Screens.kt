@@ -574,6 +574,21 @@ fun AccountScreen() {
                 if (local) Row2(Ic.Password, "Change password", null, onClick = { pw = ""; name = ""; dialog = "password" })
                 else Row2(Ic.Password, "Change password", "Opens your account on the web", onClick = { openUrl("${BuildConfig.SITE}/download.html#account") })
             }
+            if (!local) {
+                Spacer(Modifier.height(12.dp))
+                val S = app.cairn.browser.vault.Sync
+                var on by remember { mutableStateOf(Prefs.syncOn) }
+                val unlocked = app.cairn.browser.vault.Vault.ready.value
+                Group {
+                    Toggle(Ic.Devices, "Sync", when {
+                        !unlocked -> "Sign out and back in with your password to unlock encrypted sync"
+                        S.status.value.isNotEmpty() -> S.status.value
+                        Prefs.syncLast > 0 -> "End-to-end encrypted · synced " + android.text.format.DateUtils.getRelativeTimeSpanString(Prefs.syncLast)
+                        else -> "Bookmarks, history, tabs, passwords, passkeys and settings"
+                    }, on) { on = it; Prefs.syncOn = it; if (it) S.soon(0) }
+                    if (on && unlocked) { Divider(); Row2(Ic.Refresh, if (S.busy.value) "Syncing…" else "Sync now", null, onClick = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { S.syncNow() } }) }
+                }
+            }
             Spacer(Modifier.height(12.dp))
             Group {
                 Row2(Ic.Logout, "Sign out", "Browser data on this phone stays", tint = C.err, onClick = { dialog = "signout" })

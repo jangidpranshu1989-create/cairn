@@ -574,6 +574,7 @@ private fun RowScope.QuickAct(icon: androidx.compose.ui.graphics.vector.ImageVec
 fun TabSwitcher() {
     var private by remember { mutableStateOf(Browser.current?.incognito == true) }
     var menu by remember { mutableStateOf(false) }
+    var devices by remember { mutableStateOf(false) }
     val list = Browser.tabs.filter { it.incognito == private }
     BackHandler { Ui.tabSwitcher = false }
     Column(Modifier.fillMaxSize().background(C.chrome).statusBarsPadding().navigationBarsPadding()) {
@@ -587,13 +588,15 @@ fun TabSwitcher() {
             }
             Spacer(Modifier.weight(1f))
             Row(Modifier.clip(RoundedCornerShape(20.dp)).background(C.surface2).padding(3.dp)) {
-                Seg("${Browser.normalTabs().size}  Tabs", !private) { private = false }
-                Seg("Private", private) { private = true }
+                Seg("${Browser.normalTabs().size}  Tabs", !private && !devices) { private = false; devices = false }
+                Seg("Private", private && !devices) { private = true; devices = false }
+                Seg("Devices", devices) { devices = true; Haptics.tick(); app.cairn.browser.vault.Sync.soon(0) }
             }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = { Ui.tabSwitcher = false }) { Text("Done", color = C.text, fontWeight = FontWeight.Medium) }
         }
-        if (list.isEmpty()) EmptyState(if (private) Ic.VisibilityOff else Ic.Tab, if (private) "No private tabs" else "No tabs",
+        if (devices) RemoteTabsList(Modifier.weight(1f).fillMaxWidth())
+        else if (list.isEmpty()) EmptyState(if (private) Ic.VisibilityOff else Ic.Tab, if (private) "No private tabs" else "No tabs",
             if (private) "Private tabs don't save history or cookies." else "Open a new tab to start browsing.", Modifier.weight(1f).fillMaxWidth())
         else LazyVerticalGrid(GridCells.Fixed(2), Modifier.weight(1f), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(list, key = { it.id }) { t -> TabCard(t) }
@@ -609,8 +612,39 @@ fun TabSwitcher() {
 }
 
 @Composable
+private fun RemoteTabsList(mod: Modifier) {
+    val remote = app.cairn.browser.vault.Sync.remoteTabs
+    if (!Prefs.isSignedIn || remote.isEmpty()) {
+        EmptyState(Ic.Devices, if (Prefs.isSignedIn) "No tabs from other devices yet" else "Sign in to see your other devices",
+            if (Prefs.isSignedIn) "Tabs open on your computer or other phones show up here." else "Your open tabs follow your Cairn account, end-to-end encrypted.", mod)
+        return
+    }
+    androidx.compose.foundation.lazy.LazyColumn(mod, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        remote.forEach { d ->
+            item(key = "h" + d.device) {
+                Row(Modifier.padding(start = 8.dp, top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Ic.Devices, null, Modifier.size(16.dp), tint = C.muted); Spacer(Modifier.width(8.dp))
+                    Text(d.device, color = C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    if (d.at > 0) Text(android.text.format.DateUtils.getRelativeTimeSpanString(d.at).toString(), color = C.faint, fontSize = 12.sp)
+                }
+            }
+            items(d.tabs.filter { it.first.startsWith("http") }, key = { d.device + it.first }) { (url, title) ->
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.surface).clickable { Haptics.tick(); Browser.newTab(url, false); Ui.tabSwitcher = false }
+                    .padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Favicon(url, null, 18.dp, 4.dp); Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(title.ifBlank { url }, color = C.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(android.net.Uri.parse(url).host.orEmpty().removePrefix("www."), color = C.muted, fontSize = 12.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun Seg(t: String, on: Boolean, onClick: () -> Unit) {
-    Box(Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(if (on) C.surface3 else Color.Transparent).clickable(onClick = onClick).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(if (on) C.surface3 else Color.Transparent).clickable(onClick = onClick).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
         Text(t, color = if (on) C.text else C.muted, fontSize = 13.5.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal)
     }
 }

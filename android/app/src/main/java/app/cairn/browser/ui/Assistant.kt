@@ -155,7 +155,7 @@ fun AssistantSheet() {
                         Spacer(Modifier.width(10.dp))
                         Row(Modifier.weight(1f, false).clip(RoundedCornerShape(10.dp)).background(C.surface).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Favicon(t.url, t.icon, 12.dp, 3.dp); Spacer(Modifier.width(6.dp))
-                            Text(t.host.removePrefix("www."), color = C.muted, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(siteName(t.host), color = C.muted, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     Spacer(Modifier.weight(1f))
@@ -251,7 +251,7 @@ private fun Composer() {
                 Row(Modifier.clip(RoundedCornerShape(10.dp)).background(C.agentSoft).border(1.dp, C.agent.copy(alpha = .35f), RoundedCornerShape(10.dp)).padding(start = 8.dp, end = 2.dp).height(30.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Favicon(t.url, t.icon, 13.dp, 3.dp); Spacer(Modifier.width(6.dp))
-                    Text(t.title.ifBlank { t.host }.take(28), color = C.text, fontSize = 12.sp, maxLines = 1)
+                    Text(shortTitle(t.title.ifBlank { t.host }), color = C.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 220.dp))
                     Box(Modifier.size(26.dp).clip(CircleShape).clickable { Ui.mentions.remove(t) }, contentAlignment = Alignment.Center) { Icon(Ic.Close, "Remove", Modifier.size(12.dp), tint = C.muted) }
                 }
             }
@@ -290,7 +290,7 @@ private fun ItemView(it: Item) {
         is UserMsg -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
             it.page?.let { p -> Text(p, color = C.faint, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 4.dp, end = 4.dp).widthIn(max = 260.dp)) }
             if (it.mentions.isNotEmpty()) Row(Modifier.padding(bottom = 5.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                it.mentions.take(3).forEach { m -> Text("@" + m.take(22), color = C.agent, fontSize = 11.5.sp, maxLines = 1, modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(C.agentSoft).padding(horizontal = 7.dp, vertical = 3.dp)) }
+                it.mentions.take(3).forEach { m -> Text("@" + shortTitle(m, 24), color = C.agent, fontSize = 11.5.sp, maxLines = 1, modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(C.agentSoft).padding(horizontal = 7.dp, vertical = 3.dp)) }
             }
             Box(Modifier.widthIn(max = 310.dp).clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp)).background(C.surface2).padding(horizontal = 15.dp, vertical = 10.dp)) {
                 Text(it.text, color = C.text, fontSize = 15.sp, lineHeight = 21.sp)
@@ -656,4 +656,21 @@ private fun StoreChips(p: ProductsItem) {
             }
         }
     }
+}
+
+
+/** "Black hole - Wikipedia" → "Black hole"; long titles are cut at a word boundary with an ellipsis. */
+fun shortTitle(title: String, max: Int = 30): String {
+    val t = title.split(" - ", " | ", " : ", " – ", " — ").first().trim().ifEmpty { title.trim() }
+    if (t.length <= max) return t
+    val cut = t.take(max).substringBeforeLast(' ').ifEmpty { t.take(max) }
+    return cut.trimEnd(',', '.', '(', '-', ' ') + "…"
+}
+
+/** "en.wikipedia.org" → "Wikipedia", "www.amazon.in" → "Amazon". */
+fun siteName(host: String): String {
+    val p = host.lowercase().split('.').filter { it.isNotEmpty() }
+    if (p.size < 2) return host
+    val sld = if (p.size >= 3 && p[p.size - 2] in setOf("co", "com", "org", "net", "gov", "ac")) p[p.size - 3] else p[p.size - 2]
+    return when (sld) { "x" -> "X"; "github" -> "GitHub"; "linkedin" -> "LinkedIn"; "makemytrip" -> "MakeMyTrip"; "youtube" -> "YouTube"; else -> sld.replaceFirstChar { it.uppercase() } }
 }

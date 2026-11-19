@@ -284,7 +284,7 @@ fun NewTabPage(private: Boolean) {
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ideas.forEach { i ->
-                Column(Modifier.width(176.dp).height(132.dp).clip(RoundedCornerShape(18.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(18.dp))
+                Column(Modifier.width(176.dp).height(146.dp).clip(RoundedCornerShape(18.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(18.dp))
                     .clickable { Haptics.tick(); ask(i.prompt) }.padding(14.dp)) {
                     Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(C.agentSoft), contentAlignment = Alignment.Center) { Icon(i.icon, null, Modifier.size(17.dp), tint = C.agent) }
                     Spacer(Modifier.height(12.dp))

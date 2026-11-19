@@ -4,7 +4,9 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:colorAccent">@color/ink</item>
     </style>
-    <color name="bg">#0B0C0F</color>
-    <color name="accent">#E9A23B</color>
+    <color name="bg">#0F0F0F</color>
+    <color name="ink">#EDEDEB</color>
+    <color name="agent">#82A9D9</color>
 </resources>

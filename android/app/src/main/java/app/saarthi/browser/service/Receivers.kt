@@ -1,11 +1,11 @@
-package app.saarthi.companion.service
+package app.saarthi.browser.service
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import app.saarthi.companion.data.Api
-import app.saarthi.companion.data.AppState
-import app.saarthi.companion.data.Prefs
+import app.saarthi.browser.data.Api
+import app.saarthi.browser.data.AppState
+import app.saarthi.browser.data.Prefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -27,5 +27,5 @@ class ActionReceiver : BroadcastReceiver() {
             try { Api.decide(id, approve = false, verified = false); AppState.removeApproval(id) } catch (_: Exception) {} finally { pending.finish() }
         }
     }
-    companion object { const val DENY = "app.saarthi.companion.DENY" }
+    companion object { const val DENY = "app.saarthi.browser.DENY" }
 }

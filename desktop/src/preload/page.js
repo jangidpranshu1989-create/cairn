@@ -38,13 +38,13 @@ if (location.protocol === 'saarthi:') {
     chip.id = SHADOW_ID;
     const sh = chip.attachShadow({ mode: 'closed' });
     sh.innerHTML = `<style>
-      .b{position:fixed;z-index:2147483647;min-width:220px;max-width:320px;background:#16181f;color:#ECE9E2;border:1px solid rgba(255,255,255,.12);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.35);font:13px/1.35 system-ui,sans-serif;padding:6px;animation:in .14s ease-out}
+      .b{position:fixed;z-index:2147483647;min-width:220px;max-width:320px;background:#1D1D1D;color:#EDEDEB;border:1px solid rgba(255,255,255,.12);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.35);font:13px/1.35 system-ui,sans-serif;padding:6px;animation:in .14s ease-out}
       @keyframes in{from{opacity:0;transform:translateY(-4px)}}
-      .h{font-size:11px;color:#9A978F;padding:6px 8px 4px;letter-spacing:.04em;text-transform:uppercase}
+      .h{font-size:11px;color:#A1A19D;padding:6px 8px 4px;letter-spacing:.04em;text-transform:uppercase}
       button{all:unset;display:flex;gap:10px;align-items:center;width:calc(100% - 16px);padding:8px;border-radius:8px;cursor:pointer}
-      button:hover,button:focus{background:rgba(233,162,59,.14)}
-      .k{width:22px;height:22px;border-radius:6px;background:#E9A23B;color:#1B1205;display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
-      small{display:block;color:#9A978F;font-size:11px}
+      button:hover,button:focus{background:rgba(255,255,255,.07)}
+      .k{width:22px;height:22px;border-radius:6px;background:#EDEDEB;color:#141414;display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
+      small{display:block;color:#A1A19D;font-size:11px}
     </style><div class="b" style="left:${Math.round(r.left)}px;top:${Math.round(r.bottom + 6)}px"><div class="h">Saarthi Passwords</div></div>`;
     const box = sh.querySelector('.b');
     for (const it of items) {

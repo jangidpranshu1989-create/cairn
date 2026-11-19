@@ -6,24 +6,28 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// UI screenshot tests (JVM, no emulator): ./gradlew -Pshots :app:recordPaparazziDebug
+if (project.hasProperty("shots")) apply(plugin = "app.cash.paparazzi")
+
 // Release signing: put keystore details in android/keystore.properties (never commit it)
 val ksProps = Properties().apply {
     val f = rootProject.file("keystore.properties"); if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
-    namespace = "app.saarthi.companion"
+    namespace = "app.saarthi.browser"
     compileSdk = 35
     buildToolsVersion = "35.0.0"
 
     defaultConfig {
-        applicationId = "app.saarthi.companion"
+        applicationId = "app.saarthi.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
-        // Default server; users can change it on the pairing screen (QR codes carry it automatically)
+        versionCode = 2
+        versionName = "1.1.0"
+        // Default Saarthi Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
         buildConfigField("String", "DEFAULT_SERVER", "\"https://api.saarthi.app\"")
+        buildConfigField("String", "SITE", "\"https://saarthi.app\"")
     }
 
     signingConfigs {
@@ -69,4 +73,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("androidx.webkit:webkit:1.12.1")
+    implementation("androidx.media:media:1.7.0")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 }

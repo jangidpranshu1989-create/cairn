@@ -1,10 +1,10 @@
 /* two-column layout for settings-like pages */
 .shell{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
 .side{position:sticky;top:0;height:100vh;padding:28px 14px;border-right:1px solid var(--line);background:var(--bg-2);display:flex;flex-direction:column;gap:2px}
-.side .logo{display:flex;align-items:center;gap:10px;font:800 18px 'Cabinet Grotesk';padding:0 10px 22px}
+.side .logo{display:flex;align-items:center;gap:10px;font:700 18px 'Cabinet Grotesk';letter-spacing:-.02em;padding:0 10px 22px}
 .side a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;color:var(--muted);font-weight:500;text-decoration:none!important}
 .side a:hover{background:var(--hover);color:var(--text)}
-.side a.on{background:var(--accent-soft);color:var(--accent)}
+.side a.on{background:var(--surface-2);color:var(--text)}
 .side .sp{flex:1}
 .content{padding:36px 44px 90px;max-width:860px;width:100%}
 .sec{display:none;animation:fade .25s ease-out}.sec.on{display:block}
@@ -30,5 +30,5 @@
 .status{font-size:12.5px;font-weight:600}.status.ok{color:var(--ok)}.status.err{color:var(--err)}
 .pair{display:flex;gap:22px;align-items:center;padding:18px}
 .pair img{width:170px;height:170px;border-radius:14px;background:#fff;padding:8px}
-.code{font:800 34px 'Cabinet Grotesk';letter-spacing:.18em}
+.code{font:700 34px 'Cabinet Grotesk';letter-spacing:.18em}
 @media (max-width:760px){.shell{grid-template-columns:1fr}.side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;padding:12px}.side .logo,.side .sp{display:none}.content{padding:24px 18px 60px}}

@@ -1,4 +1,4 @@
-package app.saarthi.companion.service
+package app.saarthi.browser.service
 
 import android.app.Service
 import android.content.Context
@@ -10,13 +10,13 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import app.saarthi.companion.data.Api
-import app.saarthi.companion.data.ApiException
-import app.saarthi.companion.data.AppState
-import app.saarthi.companion.data.Approval
-import app.saarthi.companion.data.Conn
-import app.saarthi.companion.data.Prefs
-import app.saarthi.companion.data.Transfer
+import app.saarthi.browser.data.Api
+import app.saarthi.browser.data.ApiException
+import app.saarthi.browser.data.AppState
+import app.saarthi.browser.data.Approval
+import app.saarthi.browser.data.Conn
+import app.saarthi.browser.data.Prefs
+import app.saarthi.browser.data.Transfer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -106,7 +106,7 @@ class SyncService : Service() {
             "approval_request" -> m.optJSONObject("approval")?.let { onApproval(Approval.from(it)) }
             "approval_decided" -> m.optJSONObject("approval")?.optString("id")?.let { AppState.removeApproval(it); Notifier.cancelApproval(this, it) }
             "transfer_ready" -> m.optJSONObject("transfer")?.let { onTransfer(Transfer.from(it)) }
-            "device_removed" -> if (m.optString("id") == Prefs.deviceId) { Prefs.clear(); AppState.paired.value = false; stopSelf() }
+            "device_removed" -> if (m.optString("id") == Prefs.deviceId) { Prefs.clearAccount(); AppState.paired.value = false; stopSelf() }
         }
     }
 

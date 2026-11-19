@@ -6,7 +6,7 @@
   document.title = 'Mind map — ' + data.title;
   $('#title').textContent = data.tree?.title || data.title;
   $('#src').href = data.url;
-  const PAL = ['#E9A23B', '#8B97FF', '#5BC48A', '#F0776B', '#4FC3D9', '#D98BE0', '#E9C46A'];
+  const PAL = ['#82A9D9', '#9BC4A6', '#CFB278', '#C99A96', '#A79CCF', '#82BDBD', '#BFA387'];
   let uid = 0;
   const norm = (n, depth = 0, color) => ({ id: uid++, title: String(n.title || n.name || n.label || '').slice(0, 80), depth, color, collapsed: false,
     children: (n.children || []).map((c, i) => norm(c, depth + 1, depth === 0 ? PAL[i % PAL.length] : color)) });

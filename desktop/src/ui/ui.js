@@ -329,16 +329,16 @@
 
   const thread = $('#thread'), input = $('#input'), send = $('#send');
   const SUGGESTIONS = [
-    { i: 'cart', ag: true, t: 'Mere liye iPhone 16 sabse saste rate me dhoondo', s: 'Compares Amazon, Flipkart, Croma, Reliance & more' },
-    { i: 'speak', ag: true, t: 'Wikipedia se Taj Mahal ka article padh ke sunao', s: 'Reads in the background, speaks aloud' },
-    { i: 'spark', t: 'Is page ka summary do', s: 'Instant TL;DR in your language' },
+    { i: 'cart', ag: true, t: 'Find the best price for an iPhone 16 128GB', s: 'Compares trusted stores side by side' },
+    { i: 'speak', ag: true, t: 'Read me the Wikipedia article on the Taj Mahal', s: 'Fetched in the background, read aloud' },
+    { i: 'spark', t: 'Summarize this page', s: 'Key points in seconds' },
     { i: 'map', t: 'Make a mind map of this page', s: 'Visual map you can export' },
-    { i: 'phone', ag: true, t: 'Save this article as PDF to my phone in Documents/Reading', s: 'Needs a paired phone' },
+    { i: 'phone', ag: true, t: 'Save this article as a PDF to my phone', s: 'Delivered to your paired Android device' },
   ];
   function renderEmpty() {
     thread.innerHTML = '';
     const e = h('div', 'empty');
-    e.innerHTML = `<h2>Namaste. <span>Kya karna hai?</span></h2><p>Tell me in Hindi, Hinglish or any language. I can browse, compare prices, fill carts, read pages aloud and save files to your phone.</p>`;
+    e.innerHTML = `<h2>What can I do for you?</h2><p>Ask about this page, or hand me a task. I can browse, compare prices, fill a cart, read aloud and send files to your phone — in any language.</p>`;
     const g = h('div', 'sugs');
     for (const s of SUGGESTIONS) {
       const b = h('button', 'sug' + (s.ag ? ' ag' : ''), `<span class="si">${icon(s.i)}</span><span>${esc(s.t)}<small>${esc(s.s)}</small></span>`);
@@ -592,7 +592,7 @@
         }).catch((e) => { toast(cleanErr(e), { error: true }); stopSpeaking(); });
         return;
       }
-      if (!v) { toast('No voice installed for this language. Install Hindi/regional voices in your OS speech settings.', { error: true }); stopSpeaking(); return; }
+      if (!v) { toast('No voice is installed for this language. Add one in your system speech settings.', { error: true }); stopSpeaking(); return; }
     }
     const u = new SpeechSynthesisUtterance(queue.shift());
     if (v) u.voice = v;
@@ -632,7 +632,7 @@
           input.value = text; input.dispatchEvent(new Event('input'));
           if (text.trim()) submit();
         } catch (e) { toast(cleanErr(e), { error: true }); }
-        input.placeholder = 'Kuch bhi poochho ya kaam do… (Hindi, Hinglish, English, any language)';
+        input.placeholder = 'Ask anything or give Saarthi a task…';
       };
       rec.start(); $('#mic').classList.add('rec');
       setTimeout(() => rec?.state === 'recording' && rec.stop(), 60000);

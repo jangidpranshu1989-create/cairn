@@ -1,4 +1,4 @@
-package app.saarthi.companion.service
+package app.saarthi.browser.service
 
 import android.content.ContentValues
 import android.content.Context
@@ -7,11 +7,11 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
-import app.saarthi.companion.data.Api
-import app.saarthi.companion.data.AppState
-import app.saarthi.companion.data.Prefs
-import app.saarthi.companion.data.SavedFile
-import app.saarthi.companion.data.Transfer
+import app.saarthi.browser.data.Api
+import app.saarthi.browser.data.AppState
+import app.saarthi.browser.data.Prefs
+import app.saarthi.browser.data.SavedFile
+import app.saarthi.browser.data.Transfer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File

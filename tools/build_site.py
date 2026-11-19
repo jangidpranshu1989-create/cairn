@@ -6,7 +6,7 @@ import pathlib, datetime
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / 'website'
 PAGES = pathlib.Path(__file__).resolve().parent / 'site_pages'
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 RELEASES = 'https://github.com/saarthi-app/saarthi/releases/latest/download'
 
 LOGO = '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25L16 2.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M20.5 11.5c-1-1.3-2.6-2-4.4-2-2.6 0-4.4 1.4-4.4 3.3 0 4.4 9 2.3 9 6.6 0 2-1.9 3.3-4.6 3.3-1.9 0-3.6-.8-4.6-2.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>'
@@ -64,7 +64,7 @@ FOOTER = f'''<footer class="ftr"><div class="wrap">
   <div class="grid">
     <div class="about"><a class="brand" href="index.html">{LOGO}<span>Saarthi</span></a><p>The agentic browser that understands Hindi, Hinglish and every language you think in. Made in India.</p></div>
     <div><h4>Product</h4><ul><li><a href="features.html">Features</a></li><li><a href="download.html">Download</a></li><li><a href="pricing.html">Pricing</a></li><li><a href="changelog.html">Changelog</a></li></ul></div>
-    <div><h4>Platforms</h4><ul><li><a href="download.html#windows">Windows</a></li><li><a href="download.html#mac">macOS</a></li><li><a href="download.html#linux">Linux</a></li><li><a href="download.html#android">Android companion</a></li></ul></div>
+    <div><h4>Platforms</h4><ul><li><a href="download.html#windows">Windows</a></li><li><a href="download.html#mac">macOS</a></li><li><a href="download.html#linux">Linux</a></li><li><a href="download.html#android">Android</a></li></ul></div>
     <div><h4>Company</h4><ul><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li><li><a href="security.html">Security</a></li></ul></div>
     <div><h4>Legal</h4><ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of service</a></li><li><a href="security.html#disclosure">Responsible disclosure</a></li></ul></div>
   </div>
@@ -79,7 +79,7 @@ def page(fname, title, desc, body, active=None):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <meta name="description" content="{desc}">
-<meta name="theme-color" content="#0B0C0F">
+<meta name="theme-color" content="#0F0F0F">
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{desc}">
 <meta property="og:type" content="website">
@@ -118,4 +118,4 @@ if __name__ == '__main__':
         title, desc, active = m.group(1).strip(), m.group(2).strip(), (m.group(3) or '').strip() or None
         page(f.name, title, desc, render(raw[m.end():]), active)
         print('built', f.name)
-    (ROOT / 'assets' / 'favicon.svg').write_text(LOGO.replace('currentColor', '#E9A23B').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))
+    (ROOT / 'assets' / 'favicon.svg').write_text(LOGO.replace('currentColor', '#EDEDEB').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))

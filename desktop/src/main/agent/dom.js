@@ -146,12 +146,12 @@ function overlayFn(cmd, x, y, label) {
     root.id = '__saarthi_overlay';
     root.attachShadow({ mode: 'open' }).innerHTML = `<style>
       :host{all:initial}
-      .glow{position:fixed;inset:0;pointer-events:none;z-index:2147483646;border-radius:0;box-shadow:inset 0 0 0 2px rgba(139,151,255,.75),inset 0 0 40px 4px rgba(139,151,255,.25);animation:breathe 2.4s ease-in-out infinite}
-      @keyframes breathe{50%{box-shadow:inset 0 0 0 2px rgba(233,162,59,.8),inset 0 0 60px 8px rgba(233,162,59,.18)}}
+      .glow{position:fixed;inset:0;pointer-events:none;z-index:2147483646;border-radius:0;box-shadow:inset 0 0 0 2px rgba(130,169,217,.7),inset 0 0 36px 2px rgba(130,169,217,.22);animation:breathe 2.6s ease-in-out infinite}
+      @keyframes breathe{50%{box-shadow:inset 0 0 0 2px rgba(130,169,217,.95),inset 0 0 64px 8px rgba(130,169,217,.3)}}
       .cur{position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;transition:transform .55s cubic-bezier(.22,1,.36,1);will-change:transform}
-      .dot{width:18px;height:18px;border-radius:50%;background:#8B97FF;border:2px solid #fff;box-shadow:0 4px 14px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
-      .tag{position:absolute;left:14px;top:10px;white-space:nowrap;font:600 12px/1 system-ui,sans-serif;background:#16181f;color:#ECE9E2;padding:6px 9px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.3)}
-      .ring{position:fixed;width:16px;height:16px;border-radius:50%;border:2px solid #E9A23B;transform:translate(-50%,-50%);pointer-events:none;z-index:2147483647;animation:ping .6s ease-out forwards}
+      .dot{width:18px;height:18px;border-radius:50%;background:#82A9D9;border:2px solid #fff;box-shadow:0 4px 14px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
+      .tag{position:absolute;left:14px;top:10px;white-space:nowrap;font:600 12px/1 system-ui,sans-serif;background:#1D1D1D;color:#EDEDEB;padding:6px 9px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+      .ring{position:fixed;width:16px;height:16px;border-radius:50%;border:2px solid #82A9D9;transform:translate(-50%,-50%);pointer-events:none;z-index:2147483647;animation:ping .6s ease-out forwards}
       @keyframes ping{to{width:64px;height:64px;opacity:0}}
     </style><div class="glow"></div><div class="cur"><div class="dot"></div><div class="tag"></div></div>`;
     document.documentElement.appendChild(root);

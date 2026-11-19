@@ -184,7 +184,7 @@ class Tabs extends EventEmitter {
     if (p.selectionText) items.push(
       { label: 'Copy', role: 'copy' },
       { label: `Ask Saarthi: "${p.selectionText.slice(0, 24)}${p.selectionText.length > 24 ? '…' : ''}"`, click: () => this.emit('ask', `Explain this:\n"${p.selectionText.slice(0, 2000)}"`) },
-      { label: 'Translate to Hindi', click: () => this.emit('ask', `Translate to Hindi:\n"${p.selectionText.slice(0, 2000)}"`) },
+      { label: 'Translate selection', click: () => this.emit('ask', `Translate this into English (or into my reply language if I have set one):\n"${p.selectionText.slice(0, 2000)}"`) },
       { label: 'Read selection aloud', click: () => this.emit('speak', p.selectionText) },
       { label: `Search for "${p.selectionText.slice(0, 20)}"`, click: () => this.create(resolveInput(p.selectionText)) },
       { type: 'separator' });

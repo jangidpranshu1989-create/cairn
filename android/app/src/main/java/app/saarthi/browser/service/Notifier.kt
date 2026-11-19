@@ -1,4 +1,4 @@
-package app.saarthi.companion.service
+package app.saarthi.browser.service
 
 import android.Manifest
 import android.app.Notification
@@ -10,14 +10,14 @@ import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import app.saarthi.companion.R
-import app.saarthi.companion.SaarthiApp
-import app.saarthi.companion.data.Approval
-import app.saarthi.companion.ui.ApproveActivity
-import app.saarthi.companion.ui.MainActivity
+import app.saarthi.browser.R
+import app.saarthi.browser.SaarthiApp
+import app.saarthi.browser.data.Approval
+import app.saarthi.browser.ui.ApproveActivity
+import app.saarthi.browser.ui.BrowserActivity
 
 object Notifier {
-    private const val ACCENT = 0xFFE9A23B.toInt()
+    private const val ACCENT = 0xFF82A9D9.toInt()
     private fun canPost(ctx: Context) = android.os.Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
@@ -61,7 +61,7 @@ object Notifier {
     }
 
     fun service(ctx: Context, text: String): Notification {
-        val pi = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val pi = PendingIntent.getActivity(ctx, 0, Intent(ctx, BrowserActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(ctx, SaarthiApp.CH_SERVICE)
             .setSmallIcon(R.drawable.ic_stat_saarthi).setColor(ACCENT)
             .setContentTitle("Saarthi is connected").setContentText(text)

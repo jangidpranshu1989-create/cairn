@@ -1,4 +1,4 @@
-package app.saarthi.companion.ui
+package app.saarthi.browser.ui
 
 import android.content.Context
 import android.content.Intent
@@ -37,10 +37,10 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
-import app.saarthi.companion.data.Api
-import app.saarthi.companion.data.AppState
-import app.saarthi.companion.data.Approval
-import app.saarthi.companion.service.Notifier
+import app.saarthi.browser.data.Api
+import app.saarthi.browser.data.AppState
+import app.saarthi.browser.data.Approval
+import app.saarthi.browser.service.Notifier
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -139,8 +139,8 @@ class ApproveActivity : FragmentActivity() {
     @Composable
     private fun Details(a: Approval) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(72.dp).clip(RoundedCornerShape(22.dp)).background(C.accent.copy(alpha = .14f)), contentAlignment = Alignment.Center) {
-                Icon(if (a.kind == "payment") Icons.Outlined.Payments else if (a.kind == "login") Icons.Outlined.Key else Icons.Outlined.VerifiedUser, null, tint = C.accent, modifier = Modifier.size(34.dp))
+            Box(Modifier.size(72.dp).clip(RoundedCornerShape(22.dp)).background(C.agentSoft), contentAlignment = Alignment.Center) {
+                Icon(if (a.kind == "payment") Icons.Outlined.Payments else if (a.kind == "login") Icons.Outlined.Key else Icons.Outlined.VerifiedUser, null, tint = C.agent, modifier = Modifier.size(34.dp))
             }
             Spacer(Modifier.height(18.dp))
             Text(when (a.kind) { "payment" -> "Approve this payment?"; "purchase" -> "Place this order?"; "login" -> "Allow this sign-in?"; else -> "Approve this action?" }, color = C.muted, fontSize = 15.sp)

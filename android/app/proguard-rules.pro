@@ -4,3 +4,8 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+# PDF export helper lives in android.print to reach package-private callbacks
+-keep class android.print.PdfExporter { *; }
+-keep class android.print.PdfExporter$* { *; }
+# JavaScript bridges
+-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }

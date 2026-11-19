@@ -13,8 +13,26 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+
+    <queries>
+        <intent><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="https" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="upi" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="market" /></intent>
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
+        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
+        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="*/*" /></intent>
+    </queries>
 
     <application
         android:name=".SaarthiApp"
@@ -30,13 +48,40 @@
         tools:targetApi="35">
 
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".ui.BrowserActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode|density|navigation|locale|layoutDirection|fontScale"
+            android:hardwareAccelerated="true"
+            android:resizeableActivity="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_BROWSER" />
+            </intent-filter>
+            <!-- Default-browser candidate: open web links from other apps -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="app.saarthi.browser.NEW_TAB" />
+                <action android:name="app.saarthi.browser.PRIVATE_TAB" />
+                <action android:name="app.saarthi.browser.ASSISTANT" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <!-- saarthi://pair?code=123456&server=... from the desktop QR code -->
             <intent-filter>
@@ -45,6 +90,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="saarthi" android:host="pair" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
 
         <activity
@@ -54,7 +100,7 @@
             android:launchMode="singleTop"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
-            android:taskAffinity="app.saarthi.companion.approve" />
+            android:taskAffinity="app.saarthi.browser.approve" />
 
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"
@@ -65,6 +111,11 @@
             android:name=".service.SyncService"
             android:exported="false"
             android:foregroundServiceType="remoteMessaging|dataSync" />
+
+        <service
+            android:name=".service.ReadAloudService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <receiver android:name=".service.BootReceiver" android:exported="false">
             <intent-filter>

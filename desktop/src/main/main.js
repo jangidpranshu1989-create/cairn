@@ -108,6 +108,7 @@ async function setupSession() {
       blocker.on('request-blocked', (req) => {
         const t = [...tabs.tabs.values()].find(x => x.view.webContents.id === req.tabId);
         if (t) { t.blocked++; if (t.id === tabs.activeId) send('shield', { tabId: t.id, blocked: t.blocked }); }
+        const st = store.get().settings; st.data.shieldTotal = (st.data.shieldTotal || 0) + 1; st.save();
       });
     } catch (e) { console.warn('Shield unavailable:', e.message); }
   }

@@ -10,7 +10,7 @@
     for (const x of items) {
       const dl = dayLabel(x.at);
       if (dl !== cur) { if (cur) html += '</div>'; html += `<div class="day">${esc(dl)}</div><div class="list">`; cur = dl; }
-      html += `<div class="row"><span class="small muted" style="width:52px">${new Date(x.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><img class="fav" src="${fav(x.url)}" alt=""><a class="main" href="${esc(x.url)}" style="color:inherit;text-decoration:none"><div>${esc(x.title || x.url)}</div><small>${esc(host(x.url))}</small></a><div class="acts"><button class="btn sm" data-rm="${x.at}" title="Remove">${ICON('x', 14)}</button></div></div>`;
+      html += `<div class="row"><span class="small muted" style="width:62px;flex:none;white-space:nowrap;font-variant-numeric:tabular-nums">${new Date(x.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><img class="fav" src="${fav(x.url)}" alt=""><a class="main" href="${esc(x.url)}" style="color:inherit;text-decoration:none"><div>${esc(x.title || x.url)}</div><small>${esc(host(x.url))}</small></a><div class="acts"><button class="btn sm" data-rm="${x.at}" title="Remove">${ICON('x', 14)}</button></div></div>`;
     }
     out.innerHTML = html + '</div>';
     $$('[data-rm]').forEach(b => b.onclick = async () => { await api('history:remove', Number(b.dataset.rm)); load(); });

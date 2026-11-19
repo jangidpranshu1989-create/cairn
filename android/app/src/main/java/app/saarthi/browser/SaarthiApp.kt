@@ -1,17 +1,21 @@
-package app.saarthi.companion
+package app.saarthi.browser
 
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.media.AudioAttributes
 import android.media.RingtoneManager
-import app.saarthi.companion.data.Prefs
-import app.saarthi.companion.service.SyncService
+import app.saarthi.browser.data.Prefs
+import app.saarthi.browser.service.SyncService
 
 class SaarthiApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Prefs.init(this)
+        app.saarthi.browser.data.BrowserDb.init(this)
+        app.saarthi.browser.browser.Shield.init(this)
+        app.saarthi.browser.agent.PageJs.init(this)
+        app.saarthi.browser.service.ReadAloud.init(this)
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CH_APPROVALS, "Payment approvals", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Approve or deny payments and purchases started by Saarthi on your computer"
@@ -26,6 +30,9 @@ class SaarthiApp : Application() {
         nm.createNotificationChannel(NotificationChannel(CH_SERVICE, "Connection", NotificationManager.IMPORTANCE_MIN).apply {
             description = "Keeps Saarthi connected so approvals arrive instantly"; setShowBadge(false)
         })
+        nm.createNotificationChannel(NotificationChannel(CH_MEDIA, "Read aloud", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Playback controls while Saarthi reads a page to you"; setShowBadge(false)
+        })
         if (Prefs.isPaired) SyncService.start(this)
     }
 
@@ -33,5 +40,6 @@ class SaarthiApp : Application() {
         const val CH_APPROVALS = "approvals"
         const val CH_FILES = "files"
         const val CH_SERVICE = "service"
+        const val CH_MEDIA = "media"
     }
 }

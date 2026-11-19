@@ -1,0 +1,61 @@
+import express from 'express';
+import http from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import helmet from 'helmet';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import { config } from './config.js';
+import { db, now } from './db.js';
+import { authRouter, requireAuth } from './auth.js';
+import { passkeyRouter } from './passkey.js';
+import { devicesRouter } from './devices.js';
+import { approvalsRouter } from './approvals.js';
+import { transfersRouter } from './transfers.js';
+import { aiRouter } from './ai.js';
+import { attachHub } from './hub.js';
+
+const app = express();
+app.set('trust proxy', 1);
+app.use(helmet({ contentSecurityPolicy: {
+  directives: { defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:'], styleSrc: ["'self'", "'unsafe-inline'", 'https://api.fontshare.com'],
+    fontSrc: ["'self'", 'https://cdn.fontshare.com'], scriptSrc: ["'self'"], connectSrc: ["'self'"] } } }));
+app.use(cors({ origin: config.corsOrigins.includes('*') ? true : config.corsOrigins, credentials: false }));
+app.use(express.json({ limit: '4mb' }));
+app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
+
+app.get('/api/health', (_req, res) => res.json({ ok: true, time: now(), version: '1.0.0' }));
+app.use('/api/auth', authRouter);
+app.use('/api/passkeys', passkeyRouter);
+app.use('/api/devices', devicesRouter);
+app.use('/api/approvals', approvalsRouter);
+app.use('/api/transfers', transfersRouter);
+app.use('/api/ai', aiRouter);
+
+// Encrypted sync blobs (client encrypts before upload; server never sees plaintext passwords)
+const SYNC_KINDS = new Set(['bookmarks', 'settings', 'passwords', 'history']);
+app.get('/api/sync/:kind', requireAuth, (req, res) => {
+  if (!SYNC_KINDS.has(req.params.kind)) return res.status(400).json({ error: 'bad kind' });
+  const row = db.prepare('SELECT data, updated_at FROM sync_blobs WHERE user_id=? AND kind=?').get(req.user.id, req.params.kind);
+  res.json(row || { data: null, updated_at: 0 });
+});
+app.put('/api/sync/:kind', requireAuth, express.json({ limit: '10mb' }), (req, res) => {
+  if (!SYNC_KINDS.has(req.params.kind)) return res.status(400).json({ error: 'bad kind' });
+  const data = String(req.body?.data || '');
+  db.prepare('INSERT INTO sync_blobs (user_id, kind, data, updated_at) VALUES (?,?,?,?) ON CONFLICT(user_id, kind) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at')
+    .run(req.user.id, req.params.kind, data, now());
+  res.json({ ok: true, updated_at: now() });
+});
+
+// Hosted account pages (sign-in, passkeys, reset) live in /public
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(path.join(__dirname, '..', 'public'), { extensions: ['html'] }));
+
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  res.status(err.status || 500).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'File too large' : 'Internal error' });
+});
+
+const server = http.createServer(app);
+attachHub(server);
+server.listen(config.port, () => console.log(`Saarthi server on :${config.port} (groq=${!!config.groqKey}, nvidia=${!!config.nvidiaKey})`));

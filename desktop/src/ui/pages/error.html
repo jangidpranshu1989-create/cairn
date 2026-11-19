@@ -1,0 +1,22 @@
+<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Can't reach this page</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="saarthi://error/pages/internal.css">
+<style>.e{min-height:100vh;display:grid;place-items:center;padding:30px}.e>div{max-width:520px;animation:fade .4s ease-out}
+.e .ei{width:64px;height:64px;border-radius:18px;background:var(--surface);display:grid;place-items:center;color:var(--accent);margin-bottom:22px}
+.e h1{margin-bottom:10px}.e ul{margin:16px 0 26px 18px;color:var(--muted)}.e li{margin:4px 0}code{font-size:12px;color:var(--faint)}</style></head>
+<body><div class="e"><div><div class="ei"><svg class="ic" width="30" height="30" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z"/></svg></div>
+<h1 id="t">This page can't be reached</h1><p class="muted" id="d"></p>
+<ul id="tips"><li>Check your internet connection</li><li>Check the address for typos</li><li>Try again in a moment</li></ul>
+<div style="display:flex;gap:8px"><button class="btn primary" id="retry">Try again</button><button class="btn" id="ask">Ask Saarthi to find it</button></div>
+<p style="margin-top:22px"><code id="c"></code></p></div></div>
+<script src="saarthi://error/pages/internal.js"></script>
+<script>
+(() => { const p = new URLSearchParams(location.search); const url = p.get('url') || '', code = p.get('code') || '', desc = p.get('desc') || '';
+  const offline = /INTERNET_DISCONNECTED|NETWORK_CHANGED/.test(desc);
+  const dns = /NAME_NOT_RESOLVED/.test(desc);
+  $('#t').textContent = offline ? "You're offline" : dns ? "This site can't be found" : "This page can't be reached";
+  $('#d').textContent = url ? (dns ? `${host(url)}'s server address couldn't be found.` : `${host(url)} took too long to respond or refused to connect.`) : 'Unknown page.';
+  $('#c').textContent = desc ? `${desc} (${code})` : '';
+  $('#retry').onclick = () => url ? location.replace(url) : history.back();
+  $('#ask').onclick = () => api('ui:ask', `Find and open the right page for: ${url}`);
+})();
+</script></body></html>

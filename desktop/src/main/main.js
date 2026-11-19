@@ -1,0 +1,534 @@
+// Saarthi Browser — main process
+const { app, BrowserWindow, ipcMain, protocol, net, session, Menu, dialog, shell, nativeTheme, clipboard } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs');
+const { pathToFileURL } = require('node:url');
+
+protocol.registerSchemesAsPrivileged([{ scheme: 'saarthi', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false, stream: true } }]);
+if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
+if (process.defaultApp) app.setAsDefaultProtocolClient('saarthi', process.execPath, [path.resolve(process.argv[1])]);
+else app.setAsDefaultProtocolClient('saarthi');
+
+const store = require('./store');
+let tabsMod, cloud, llm, passwords, pageTools, AgentCls;
+
+const UI_DIR = path.join(__dirname, '..', 'ui');
+const PAGES = new Set(['newtab', 'settings', 'history', 'bookmarks', 'downloads', 'passwords', 'account', 'mindmap', 'error', 'about', 'reader']);
+const isMac = process.platform === 'darwin';
+
+let win, tabs, agent, agentTabId = null;
+const pending = { asks: new Map(), confirms: new Map(), approvals: new Map(), pw: new Map() };
+let downloads = new Map();
+
+function chromeUA() {
+  const v = process.versions.chrome;
+  const os = isMac ? 'Macintosh; Intel Mac OS X 10_15_7' : process.platform === 'win32' ? 'Windows NT 10.0; Win64; x64' : 'X11; Linux x86_64';
+  return `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${v.split('.')[0]}.0.0.0 Safari/537.36`;
+}
+
+function send(ch, data) { if (win && !win.isDestroyed()) win.webContents.send(ch, data); }
+
+// ---------- saarthi:// internal pages ----------
+function registerProtocol() {
+  const handler = (req) => {
+    const u = new URL(req.url);
+    if (u.host === 'auth-callback') return new Response('Signing in…', { headers: { 'content-type': 'text/plain' } });
+    if (u.host === 'file') { // serve generated files (e.g. long screenshots) for preview
+      const p = u.searchParams.get('p');
+      if (p && p.startsWith(pageTools.outDir())) return net.fetch(pathToFileURL(p).toString());
+      return new Response('Forbidden', { status: 403 });
+    }
+    let rel = u.pathname === '/' || !u.pathname ? `pages/${u.host}.html` : (u.pathname.startsWith('/') ? u.pathname.slice(1) : u.pathname);
+    if (u.pathname === '/' && !PAGES.has(u.host)) rel = 'pages/error.html';
+    const file = path.normalize(path.join(UI_DIR, rel));
+    if (!file.startsWith(UI_DIR)) return new Response('Forbidden', { status: 403 });
+    return net.fetch(pathToFileURL(file).toString());
+  };
+  protocol.handle('saarthi', handler);
+  session.fromPartition('persist:saarthi').protocol.handle('saarthi', handler);
+}
+
+// ---------- Session: shield, privacy headers, permissions, downloads ----------
+async function setupSession() {
+  const ses = session.fromPartition('persist:saarthi');
+  ses.setUserAgent(chromeUA());
+  const s = () => store.get().settings.data;
+
+  ses.webRequest.onBeforeSendHeaders((d, cb) => {
+    const h = d.requestHeaders;
+    if (s().doNotTrack) { h['DNT'] = '1'; h['Sec-GPC'] = '1'; }
+    cb({ requestHeaders: h });
+  });
+
+  ses.setPermissionRequestHandler(async (wc, permission, cb, details) => {
+    const always = ['clipboard-sanitized-write', 'fullscreen', 'pointerLock', 'window-management'];
+    if (always.includes(permission)) return cb(true);
+    if (wc.getURL().startsWith('saarthi://')) return cb(true);
+    const origin = (() => { try { return new URL(details.requestingUrl).host; } catch { return 'This site'; } })();
+    const labels = { media: details.mediaTypes?.includes('video') ? 'use your camera' : 'use your microphone', geolocation: 'know your location', notifications: 'show notifications', 'clipboard-read': 'read your clipboard', midi: 'use MIDI devices', openExternal: 'open an external app' };
+    const { response } = await dialog.showMessageBox(win, { type: 'question', buttons: ['Allow', 'Block'], defaultId: 1, cancelId: 1, title: 'Permission request', message: `${origin} wants to ${labels[permission] || permission}` });
+    cb(response === 0);
+  });
+
+  ses.on('will-download', (_e, item, wc) => {
+    const dir = s().downloadDir || app.getPath('downloads');
+    if (!s().askWhereToSave) item.setSavePath(uniquePath(path.join(dir, item.getFilename())));
+    const id = Date.now() + Math.random().toString(36).slice(2, 6);
+    const rec = { id, filename: item.getFilename(), url: item.getURL(), total: item.getTotalBytes(), received: 0, state: 'progressing', path: item.getSavePath(), at: Date.now() };
+    downloads.set(id, { rec, item });
+    send('downloads:update', [...downloads.values()].map(d => d.rec));
+    item.on('updated', (_ev, state) => { rec.received = item.getReceivedBytes(); rec.total = item.getTotalBytes(); rec.state = state; rec.path = item.getSavePath(); send('downloads:update', [...downloads.values()].map(d => d.rec)); });
+    item.once('done', (_ev, state) => {
+      rec.state = state; rec.path = item.getSavePath(); rec.received = item.getReceivedBytes();
+      const d = store.get().downloads; d.data.unshift({ ...rec }); d.data.splice(500); d.save();
+      send('downloads:update', [...downloads.values()].map(x => x.rec));
+      if (state === 'completed') send('toast', { text: `Downloaded ${rec.filename}`, file: rec.path });
+    });
+  });
+
+  // Ad & tracker shield (Ghostery engine, lists cached on disk)
+  if (s().shield) {
+    try {
+      const { ElectronBlocker } = require('@ghostery/adblocker-electron');
+      const cache = path.join(app.getPath('userData'), 'shield-engine.bin');
+      const blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch, {
+        path: cache, read: fs.promises.readFile, write: fs.promises.writeFile });
+      blocker.enableBlockingInSession(ses);
+      blocker.on('request-blocked', (req) => {
+        const t = [...tabs.tabs.values()].find(x => x.view.webContents.id === req.tabId);
+        if (t) { t.blocked++; if (t.id === tabs.activeId) send('shield', { tabId: t.id, blocked: t.blocked }); }
+      });
+    } catch (e) { console.warn('Shield unavailable:', e.message); }
+  }
+  return ses;
+}
+function uniquePath(p) {
+  if (!fs.existsSync(p)) return p;
+  const { dir, name, ext } = path.parse(p);
+  for (let i = 1; ; i++) { const c = path.join(dir, `${name} (${i})${ext}`); if (!fs.existsSync(c)) return c; }
+}
+
+// ---------- Window ----------
+function createWindow() {
+  const st = store.get().settings.data;
+  win = new BrowserWindow({
+    width: 1440, height: 900, minWidth: 820, minHeight: 560, show: false,
+    backgroundColor: st.theme === 'light' ? '#F4F1EA' : '#0B0C0F',
+    titleBarStyle: 'hidden',
+    ...(isMac ? { trafficLightPosition: { x: 14, y: 13 } } : { titleBarOverlay: { color: '#00000000', symbolColor: st.theme === 'light' ? '#2a2925' : '#cfcbc2', height: 40 } }),
+    icon: path.join(UI_DIR, 'icons', 'icon.png'),
+    webPreferences: { preload: path.join(__dirname, '..', 'preload', 'ui.js'), sandbox: true, contextIsolation: true, spellcheck: false },
+  });
+  win.loadFile(path.join(UI_DIR, 'index.html'), { query: { platform: process.platform } });
+  win.once('ready-to-show', () => win.show());
+  win.webContents.session.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media' || perm === 'clipboard-sanitized-write'));
+
+  tabs = new tabsMod.Tabs(win);
+  tabs.on('update', (list) => send('tabs:update', list));
+  tabs.on('found', (r) => send('find:result', r));
+  tabs.on('ask', (text) => send('agent:prefill', { text, run: true }));
+  tabs.on('speak', (text) => send('agent:event', { type: 'speak', text }));
+  tabs.on('tool', (t) => runPageTool(t));
+  tabs.on('auth-callback', (url, tab) => { if (cloud.handleAuthCallback(url)) { tab.view.webContents.loadURL('saarthi://account').catch(() => {}); send('toast', { text: 'Signed in to Saarthi' }); } });
+  tabs.on('page-key', (e, input) => { if (input.type === 'keyDown' && input.key === 'Escape' && agent?.running) { /* allow page escape */ } });
+
+  const restore = st.startup === 'restore' && st.restoreTabs?.length ? st.restoreTabs : null;
+  if (restore) restore.forEach((u, i) => tabs.create(u, { active: i === restore.length - 1 }));
+  else tabs.create('saarthi://newtab');
+
+  win.on('close', () => { st.restoreTabs = tabs.snapshotSession(); store.get().settings.flush(); });
+  win.on('enter-full-screen', () => send('fullscreen', true));
+  win.on('leave-full-screen', () => send('fullscreen', false));
+  buildMenu();
+}
+
+// ---------- Agent wiring ----------
+function agentTab() {
+  let t = agentTabId && tabs.tabs.get(agentTabId);
+  if (!t) {
+    const a = tabs.active;
+    // reuse the active tab only if it is a blank new tab, otherwise open a dedicated agent tab next to it
+    if (a && /^saarthi:\/\/newtab/.test(a.url)) { t = a; } else t = tabs.create('about:blank', { active: true, agent: true, openerIndex: tabs.order.indexOf(tabs.activeId) });
+    t.agent = true; agentTabId = t.id; tabs.emitUpdate();
+  }
+  return t;
+}
+
+function makeAgent() {
+  agent = new AgentCls({
+    emit: (ev) => send('agent:event', ev),
+    agentTab,
+    newAgentTab: (url) => { const t = tabs.create(url, { active: true, agent: true }); agentTabId = t.id; return t; },
+    pageContext: async () => { const a = tabs.active; return a && /^https?:/.test(a.url) ? { title: a.title, url: a.url } : null; },
+    ask: (question, signal) => new Promise((resolve, reject) => {
+      const id = Math.random().toString(36).slice(2);
+      pending.asks.set(id, resolve);
+      send('agent:event', { type: 'ask', id, question });
+      signal.addEventListener('abort', () => { pending.asks.delete(id); reject(new Error('Stopped')); }, { once: true });
+    }),
+    confirmAction: (text, signal) => new Promise((resolve) => {
+      const id = Math.random().toString(36).slice(2);
+      pending.confirms.set(id, resolve);
+      send('agent:event', { type: 'confirm', id, text });
+      signal.addEventListener('abort', () => resolve(false), { once: true });
+    }),
+    approve: (req, signal) => approve(req, signal),
+    openMindmap: (m) => openMindmap(m),
+  });
+}
+
+/** Phone-first approval; falls back to an in-browser approval card when no phone is paired/signed in. */
+async function approve(req, signal) {
+  const local = () => new Promise((resolve) => {
+    const id = Math.random().toString(36).slice(2);
+    pending.approvals.set(id, resolve);
+    send('agent:event', { type: 'approval', id, ...req, phone: false });
+    signal.addEventListener('abort', () => resolve('cancelled'), { once: true });
+  });
+  if (!cloud.isSignedIn()) return local();
+  try {
+    send('agent:event', { type: 'approval', id: null, ...req, phone: true });
+    const r = await cloud.requestApproval(req, signal);
+    send('agent:event', { type: 'approval_result', status: r.status });
+    if (r.status === 'no-phone') return local();
+    return r.status;
+  } catch (e) {
+    if (signal.aborted) return 'cancelled';
+    send('toast', { text: 'Phone approval unavailable: ' + e.message });
+    return local();
+  }
+}
+
+function openMindmap(m) {
+  const id = 'mm' + Date.now();
+  global.__mindmaps = global.__mindmaps || new Map();
+  global.__mindmaps.set(id, m);
+  tabs.create(`saarthi://mindmap?id=${id}`);
+}
+
+async function runPageTool(kind) {
+  const t = tabs.active;
+  if (!t || !/^https?:/.test(t.url)) return send('toast', { text: 'Open a web page first' });
+  const wc = t.view.webContents;
+  send('tool:busy', { kind, busy: true });
+  try {
+    if (kind === 'summary') { const s = await pageTools.summarize(wc, {}); send('agent:event', { type: 'summary', ...s, standalone: true }); }
+    else if (kind === 'mindmap') { openMindmap(await pageTools.mindmap(wc, {})); }
+    else if (kind === 'pdf') { const f = await pageTools.savePdf(wc); send('toast', { text: 'Saved PDF', file: f }); }
+    else if (kind === 'readerpdf') { const a = await pageTools.getArticle(wc); const f = await pageTools.htmlToPdf(pageTools.documentHtml(a.title, a.url, a.text), a.title); send('toast', { text: 'Saved clean article PDF', file: f }); }
+    else if (kind === 'longshot') { const r = await pageTools.longScreenshot(wc); send('toast', { text: `Long screenshot saved (${r.width}×${r.height})`, file: r.file, image: true }); }
+    else if (kind === 'shot') { const f = await pageTools.visibleScreenshot(wc); send('toast', { text: 'Screenshot saved', file: f, image: true }); }
+    else if (kind === 'read') { const a = await pageTools.getArticle(wc); send('agent:event', { type: 'speak', text: `${a.title}.\n${a.text}`, lang: a.lang, title: a.title }); }
+    else if (kind === 'reader') { const a = await pageTools.getArticle(wc); global.__reader = a; tabs.create('saarthi://reader'); }
+  } catch (e) {
+    send('toast', { text: e.message === 'NO_AI_KEY' ? 'Add a Groq or NVIDIA key in Settings → AI to use this.' : e.message, error: true });
+  } finally { send('tool:busy', { kind, busy: false }); }
+}
+
+// ---------- IPC ----------
+function isInternal(e) { try { return new URL(e.senderFrame.url).protocol === 'saarthi:' || e.sender === win.webContents; } catch { return false; } }
+function handle(ch, fn, { internal = false } = {}) {
+  ipcMain.handle(ch, async (e, ...args) => {
+    if (internal && !isInternal(e)) throw new Error('forbidden');
+    return fn(e, ...args);
+  });
+}
+
+function registerIpc() {
+  // tabs & navigation
+  handle('tabs:new', (_e, url) => { tabs.create(url || 'saarthi://newtab'); });
+  handle('tabs:close', (_e, id) => tabs.close(id ?? tabs.activeId));
+  handle('tabs:activate', (_e, id) => tabs.activate(id));
+  handle('tabs:move', (_e, id, i) => tabs.move(id, i));
+  handle('tabs:list', () => tabs.list());
+  handle('nav:go', (_e, input) => tabs.navigate(input));
+  handle('nav:back', () => tabs.active?.view.webContents.navigationHistory.goBack());
+  handle('nav:forward', () => tabs.active?.view.webContents.navigationHistory.goForward());
+  handle('nav:reload', (_e, hard) => hard ? tabs.active?.view.webContents.reloadIgnoringCache() : tabs.active?.view.webContents.reload());
+  handle('nav:stop', () => tabs.active?.view.webContents.stop());
+  handle('nav:home', () => tabs.navigate(store.get().settings.data.homepage));
+  handle('view:rect', (_e, r) => tabs.setRect(r));
+  handle('view:freeze', () => tabs.freeze());
+  handle('view:unfreeze', () => tabs.unfreeze());
+  handle('view:focus', () => tabs.active?.view.webContents.focus());
+  handle('find:start', (_e, text, opts) => text ? tabs.active?.view.webContents.findInPage(text, opts) : tabs.active?.view.webContents.stopFindInPage('clearSelection'));
+  handle('find:stop', () => tabs.active?.view.webContents.stopFindInPage('clearSelection'));
+  handle('zoom', (_e, dir) => {
+    const wc = tabs.active?.view.webContents; if (!wc) return 1;
+    const z = dir === 0 ? 1 : Math.min(3, Math.max(0.3, wc.getZoomFactor() + dir * 0.1));
+    wc.setZoomFactor(z); return z;
+  });
+  handle('suggest', (_e, q) => suggest(q));
+
+  // bookmarks
+  handle('bookmarks:toggle', () => {
+    const t = tabs.active; if (!t || !/^https?:/.test(t.url)) return false;
+    const b = store.get().bookmarks; const i = b.data.findIndex(x => x.url === t.url);
+    if (i >= 0) b.data.splice(i, 1); else b.data.unshift({ id: Date.now().toString(36), url: t.url, title: t.title, favicon: t.favicon, at: Date.now() });
+    b.save(); return i < 0;
+  });
+  handle('bookmarks:has', (_e, url) => store.get().bookmarks.data.some(x => x.url === url));
+  handle('bookmarks:list', () => store.get().bookmarks.data);
+  handle('bookmarks:remove', (_e, id) => { const b = store.get().bookmarks; b.data = b.data.filter(x => x.id !== id); b.save(); }, { internal: true });
+  handle('bookmarks:update', (_e, id, f) => { const b = store.get().bookmarks; const x = b.data.find(y => y.id === id); if (x) Object.assign(x, { title: f.title ?? x.title, url: f.url ?? x.url }); b.save(); }, { internal: true });
+
+  // history
+  handle('history:list', (_e, q = '', limit = 300) => {
+    const h = store.get().history.data; const ql = q.toLowerCase(); const out = [];
+    for (let i = h.length - 1; i >= 0 && out.length < limit; i--) if (!ql || h[i].url.toLowerCase().includes(ql) || (h[i].title || '').toLowerCase().includes(ql)) out.push({ ...h[i], i });
+    return out;
+  }, { internal: true });
+  handle('history:remove', (_e, at) => { const h = store.get().history; h.data = h.data.filter(x => x.at !== at); h.save(); }, { internal: true });
+  handle('history:clear', async (_e, opts = {}) => {
+    const h = store.get().history; const since = opts.since || 0;
+    h.data = since ? h.data.filter(x => x.at < since) : []; h.save();
+    const ses = session.fromPartition('persist:saarthi');
+    if (opts.cookies) await ses.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] });
+    if (opts.cache) await ses.clearCache();
+    return true;
+  }, { internal: true });
+
+  // downloads
+  handle('downloads:list', () => {
+    const live = [...downloads.values()].map(d => d.rec);
+    const ids = new Set(live.map(x => x.id));
+    return [...live, ...store.get().downloads.data.filter(x => !ids.has(x.id))];
+  });
+  handle('downloads:cancel', (_e, id) => downloads.get(id)?.item.cancel());
+  handle('downloads:pause', (_e, id) => { const d = downloads.get(id); if (!d) return; d.item.isPaused() ? d.item.resume() : d.item.pause(); });
+  handle('downloads:clear', () => { store.get().downloads.data = []; store.get().downloads.save(); downloads = new Map([...downloads].filter(([, d]) => d.rec.state === 'progressing')); });
+  handle('file:open', (_e, f) => { if (safeFile(f)) shell.openPath(f); });
+  handle('file:reveal', (_e, f) => { if (safeFile(f)) shell.showItemInFolder(f); });
+  handle('file:toPhone', async (_e, f, folder) => { if (!safeFile(f)) throw new Error('forbidden'); return cloud.sendToPhone(f, folder); });
+
+  // agent
+  handle('agent:run', async (_e, text) => { if (!agent) makeAgent(); agent.run(text).catch(() => {}); return true; });
+  handle('agent:stop', () => agent?.stop());
+  handle('agent:reset', () => { agent?.reset(); agentTabId = null; });
+  handle('agent:answer', (_e, id, text) => { pending.asks.get(id)?.(text); pending.asks.delete(id); });
+  handle('agent:confirm', (_e, id, ok) => { pending.confirms.get(id)?.(ok); pending.confirms.delete(id); });
+  handle('agent:approve', (_e, id, ok) => { pending.approvals.get(id)?.(ok ? 'approved' : 'denied'); pending.approvals.delete(id); });
+  handle('agent:status', () => llm.status());
+  handle('page:tool', (_e, kind) => runPageTool(kind));
+  handle('voice:transcribe', async (_e, buf, mime) => llm.transcribe(Buffer.from(buf), mime));
+  handle('open:file-url', (_e, f) => safeFile(f) ? `saarthi://file?p=${encodeURIComponent(f)}` : null);
+
+  // settings
+  handle('settings:get', () => { const s = { ...store.get().settings.data }; const v = store.get().vault.data; s.groqKey = v.groqKey ? '••••' + v.groqKey.slice(-4) : ''; s.nvidiaKey = v.nvidiaKey ? '••••' + v.nvidiaKey.slice(-4) : ''; return s; });
+  handle('settings:set', (_e, patch) => {
+    const s = store.get().settings; const v = store.get().vault;
+    for (const [k, val] of Object.entries(patch || {})) {
+      if (k === 'groqKey' || k === 'nvidiaKey') { if (!String(val).startsWith('••••')) { v.data[k] = String(val).trim(); v.flush(); } continue; }
+      if (k in store.DEFAULT_SETTINGS) s.data[k] = val;
+    }
+    s.save();
+    if ('theme' in patch) applyTheme();
+    if ('serverUrl' in patch) cloud.connect();
+    send('settings:changed', s.data);
+    return true;
+  }, { internal: true });
+  handle('settings:testKey', async (_e, provider, key) => {
+    const v = store.get().vault.data;
+    const k = key && !key.startsWith('••••') ? key : (provider === 'groq' ? v.groqKey : v.nvidiaKey);
+    return k ? llm.testKey(provider, k) : false;
+  }, { internal: true });
+  handle('settings:pickDir', async () => { const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] }); return r.canceled ? null : r.filePaths[0]; }, { internal: true });
+
+  // cloud account & phone
+  handle('cloud:session', () => cloud.publicSession());
+  handle('cloud:captcha', () => cloud.captcha(), { internal: true });
+  handle('cloud:login', (_e, email, pw, cap) => cloud.login(email, pw, cap), { internal: true });
+  handle('cloud:signup', (_e, payload) => cloud.signup(payload), { internal: true });
+  handle('cloud:logout', () => cloud.logout(), { internal: true });
+  handle('cloud:me', () => cloud.api('/auth/me'), { internal: true });
+  handle('cloud:devices', () => cloud.devices(), { internal: true });
+  handle('cloud:pair', () => cloud.pairStart(), { internal: true });
+  handle('cloud:removeDevice', (_e, id) => cloud.removeDevice(id), { internal: true });
+  handle('cloud:base', () => cloud.base());
+  handle('cloud:passkeyPage', () => { tabs.create(cloud.base() + '/account.html?handoff=desktop'); });
+
+  // passwords — management (internal pages only)
+  handle('pw:all', () => passwords.all(), { internal: true });
+  handle('pw:reveal', async (_e, id) => {
+    const { response } = await dialog.showMessageBox(win, { type: 'warning', buttons: ['Show password', 'Cancel'], defaultId: 1, cancelId: 1, message: 'Show this saved password?', detail: 'Make sure nobody is looking at your screen.' });
+    return response === 0 ? passwords.reveal(id) : null;
+  }, { internal: true });
+  handle('pw:remove', (_e, id) => passwords.remove(id), { internal: true });
+  handle('pw:update', (_e, id, f) => passwords.update(id, f), { internal: true });
+  handle('pw:add', (_e, url, u, p) => passwords.save(passwords.originOf(url), u, p), { internal: true });
+  handle('pw:export', async () => {
+    const { response } = await dialog.showMessageBox(win, { type: 'warning', buttons: ['Export', 'Cancel'], cancelId: 1, message: 'Export passwords as an unencrypted CSV file?', detail: 'Anyone with the file can read your passwords.' });
+    if (response) return false;
+    const r = await dialog.showSaveDialog(win, { defaultPath: 'saarthi-passwords.csv' });
+    if (r.canceled) return false; fs.writeFileSync(r.filePath, passwords.exportCsv()); return true;
+  }, { internal: true });
+  handle('pw:import', async () => {
+    const r = await dialog.showOpenDialog(win, { filters: [{ name: 'CSV', extensions: ['csv'] }], properties: ['openFile'] });
+    return r.canceled ? 0 : passwords.importCsv(fs.readFileSync(r.filePaths[0], 'utf8'));
+  }, { internal: true });
+
+  // passwords — page side (origin taken from the sending frame, never from the page)
+  const frameOrigin = (e) => { try { return new URL(e.senderFrame.url).origin; } catch { return ''; } };
+  handle('pw:query', (e) => store.get().settings.data.autofillPasswords ? passwords.query(frameOrigin(e)) : []);
+  handle('pw:fill', (e, id) => passwords.fill(frameOrigin(e), id));
+  handle('pw:generate', () => passwords.generate());
+  handle('pw:offer', (e, username, password) => {
+    const origin = frameOrigin(e);
+    if (!store.get().settings.data.offerSavePasswords || !/^https?:/.test(origin) || !password || passwords.isNever(origin)) return;
+    const st = passwords.status(origin, username, password);
+    if (st === 'same') return;
+    const id = Math.random().toString(36).slice(2);
+    pending.pw.set(id, { origin, username, password });
+    send('pw:prompt', { id, origin, username, update: st === 'update' });
+  });
+  handle('pw:decide', (_e, id, action) => {
+    const p = pending.pw.get(id); pending.pw.delete(id); if (!p) return;
+    if (action === 'save') passwords.save(p.origin, p.username, p.password);
+    if (action === 'never') passwords.never(p.origin);
+  });
+
+  // internal page helpers
+  handle('mindmap:get', (_e, id) => global.__mindmaps?.get(id) || null, { internal: true });
+  handle('reader:get', () => global.__reader || null, { internal: true });
+  handle('mindmap:save', async (_e, dataUrl, name) => {
+    const f = path.join(pageTools.outDir(), `${String(name).replace(/[^\p{L}\p{N}]+/gu, '-').slice(0, 50)}-mindmap.png`);
+    fs.writeFileSync(f, Buffer.from(dataUrl.split(',')[1], 'base64')); send('toast', { text: 'Mind map saved', file: f, image: true }); return f;
+  }, { internal: true });
+  handle('app:info', () => ({ version: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome, platform: process.platform }));
+  handle('app:menu', () => appMenu().popup({ window: win }));
+  handle('clipboard:write', (_e, t) => clipboard.writeText(String(t)));
+  handle('ui:theme', () => resolvedTheme());
+  // New-tab "Ask Saarthi" box → open the assistant panel and run the task
+  handle('ui:ask', (_e, text) => { send('agent:prefill', { text: String(text).slice(0, 4000), run: true }); }, { internal: true });
+  handle('history:top', (_e, n = 8) => {
+    const counts = new Map();
+    for (const x of store.get().history.data.slice(-3000)) {
+      let o; try { o = new URL(x.url); } catch { continue; }
+      if (!/^https?:$/.test(o.protocol)) continue;
+      const k = o.hostname; const c = counts.get(k) || { url: o.origin, title: x.title, n: 0 }; c.n++; counts.set(k, c);
+    }
+    return [...counts.values()].sort((a, b) => b.n - a.n).slice(0, n);
+  }, { internal: true });
+}
+
+function safeFile(f) { if (!f) return false; const p = path.resolve(f); return p.startsWith(pageTools.outDir()) || p.startsWith(app.getPath('downloads')) || p.startsWith(store.get().settings.data.downloadDir || '\0'); }
+
+function suggest(q) {
+  const ql = String(q).toLowerCase().trim();
+  if (!ql) return [];
+  const seen = new Set(); const out = [];
+  for (const b of store.get().bookmarks.data) if ((b.url + b.title).toLowerCase().includes(ql) && !seen.has(b.url)) { seen.add(b.url); out.push({ type: 'bookmark', url: b.url, title: b.title }); if (out.length >= 3) break; }
+  const h = store.get().history.data;
+  for (let i = h.length - 1; i >= 0 && out.length < 7; i--) { const x = h[i]; if ((x.url + x.title).toLowerCase().includes(ql) && !seen.has(x.url)) { seen.add(x.url); out.push({ type: 'history', url: x.url, title: x.title }); } }
+  return out;
+}
+
+function resolvedTheme() { const t = store.get().settings.data.theme; return t === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : t; }
+function applyTheme() {
+  const t = resolvedTheme();
+  nativeTheme.themeSource = store.get().settings.data.theme === 'system' ? 'system' : t;
+  if (!isMac && win?.setTitleBarOverlay) win.setTitleBarOverlay({ color: '#00000000', symbolColor: t === 'light' ? '#2a2925' : '#cfcbc2', height: 40 });
+  send('theme', t);
+  for (const tab of tabs?.tabs?.values?.() || []) { try { if (tab.view.webContents.getURL().startsWith('saarthi://')) tab.view.webContents.send('theme', t); } catch {} }
+}
+
+function appMenu() {
+  const go = (u) => () => tabs.create(u);
+  return Menu.buildFromTemplate([
+    { label: 'New tab', accelerator: 'CmdOrCtrl+T', click: go('saarthi://newtab') },
+    { label: 'Reopen closed tab', accelerator: 'CmdOrCtrl+Shift+T', click: () => tabs.reopenClosed() },
+    { type: 'separator' },
+    { label: 'History', accelerator: 'CmdOrCtrl+Y', click: go('saarthi://history') },
+    { label: 'Bookmarks', click: go('saarthi://bookmarks') },
+    { label: 'Downloads', click: go('saarthi://downloads') },
+    { label: 'Passwords', click: go('saarthi://passwords') },
+    { type: 'separator' },
+    { label: 'Summarize page', click: () => runPageTool('summary') },
+    { label: 'Mind map', click: () => runPageTool('mindmap') },
+    { label: 'Reader view', click: () => runPageTool('reader') },
+    { label: 'Save as PDF', accelerator: 'CmdOrCtrl+Shift+S', click: () => runPageTool('pdf') },
+    { label: 'Long screenshot', accelerator: 'CmdOrCtrl+Shift+L', click: () => runPageTool('longshot') },
+    { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: () => tabs.active?.view.webContents.print() },
+    { type: 'separator' },
+    { label: 'Account', click: go('saarthi://account') },
+    { label: 'Settings', accelerator: 'CmdOrCtrl+,', click: go('saarthi://settings') },
+    { label: 'About Saarthi', click: go('saarthi://about') },
+    { type: 'separator' },
+    { label: 'Developer tools', accelerator: isMac ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => tabs.active?.view.webContents.toggleDevTools() },
+    { role: 'quit' },
+  ]);
+}
+
+function buildMenu() {
+  const t = () => tabs;
+  const tabAt = (n) => () => { const ids = t().order; t().activate(n === 9 ? ids[ids.length - 1] : ids[n - 1]); };
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    { label: 'File', submenu: [
+      { label: 'New Tab', accelerator: 'CmdOrCtrl+T', click: () => t().create() },
+      { label: 'New Window', accelerator: 'CmdOrCtrl+N', click: () => t().create() },
+      { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: () => t().close(t().activeId) },
+      { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: () => t().reopenClosed() },
+      { label: 'Open Location', accelerator: 'CmdOrCtrl+L', click: () => send('focus:omnibox') },
+      { label: 'Print', accelerator: 'CmdOrCtrl+P', click: () => t().active?.view.webContents.print() },
+      { type: 'separator' }, isMac ? { role: 'close' } : { role: 'quit' },
+    ] },
+    { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+      { label: 'Find', accelerator: 'CmdOrCtrl+F', click: () => send('find:open') }] },
+    { label: 'View', submenu: [
+      { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => t().active?.view.webContents.reload() },
+      { label: 'Hard Reload', accelerator: 'CmdOrCtrl+Shift+R', click: () => t().active?.view.webContents.reloadIgnoringCache() },
+      { label: 'Zoom In', accelerator: 'CmdOrCtrl+=', click: () => send('zoom', 1) },
+      { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: () => send('zoom', -1) },
+      { label: 'Actual Size', accelerator: 'CmdOrCtrl+0', click: () => send('zoom', 0) },
+      { label: 'Toggle Assistant', accelerator: 'CmdOrCtrl+K', click: () => send('agent:toggle') },
+      { label: 'Developer Tools', accelerator: isMac ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => t().active?.view.webContents.toggleDevTools() },
+      { label: 'Browser UI DevTools', accelerator: 'CmdOrCtrl+Alt+Shift+I', click: () => win.webContents.openDevTools({ mode: 'detach' }) },
+      { role: 'togglefullscreen' },
+    ] },
+    { label: 'History', submenu: [
+      { label: 'Back', accelerator: isMac ? 'Cmd+[' : 'Alt+Left', click: () => t().active?.view.webContents.navigationHistory.goBack() },
+      { label: 'Forward', accelerator: isMac ? 'Cmd+]' : 'Alt+Right', click: () => t().active?.view.webContents.navigationHistory.goForward() },
+      { label: 'Show History', accelerator: 'CmdOrCtrl+Y', click: () => t().create('saarthi://history') },
+    ] },
+    { label: 'Bookmarks', submenu: [{ label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: () => send('bookmark:toggle') }, { label: 'Show Bookmarks', accelerator: 'CmdOrCtrl+Shift+O', click: () => t().create('saarthi://bookmarks') }] },
+    { label: 'Tab', submenu: [
+      { label: 'Next Tab', accelerator: 'Ctrl+Tab', click: () => { const o = t().order; t().activate(o[(o.indexOf(t().activeId) + 1) % o.length]); } },
+      { label: 'Previous Tab', accelerator: 'Ctrl+Shift+Tab', click: () => { const o = t().order; t().activate(o[(o.indexOf(t().activeId) - 1 + o.length) % o.length]); } },
+      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ label: `Tab ${n}`, accelerator: `CmdOrCtrl+${n}`, click: tabAt(n), visible: false })),
+    ] },
+    { role: 'windowMenu' },
+    { label: 'Help', submenu: [{ label: 'About Saarthi', click: () => t().create('saarthi://about') }, { label: 'Privacy Policy', click: () => t().create('https://saarthi.app/privacy.html') }] },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ---------- Boot ----------
+app.on('second-instance', (_e, argv) => {
+  const deep = argv.find(a => a.startsWith('saarthi://'));
+  if (deep?.startsWith('saarthi://auth-callback') && cloud.handleAuthCallback(deep)) send('toast', { text: 'Signed in to Saarthi' });
+  else if (deep) tabs?.create(deep);
+  if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+});
+app.on('open-url', (e, url) => { e.preventDefault(); if (url.startsWith('saarthi://auth-callback') && cloud?.handleAuthCallback(url)) send('toast', { text: 'Signed in to Saarthi' }); });
+
+app.userAgentFallback = chromeUA();
+app.whenReady().then(async () => {
+  store.init();
+  tabsMod = require('./tabs'); cloud = require('./cloud'); llm = require('./llm'); passwords = require('./passwords'); pageTools = require('./page-tools');
+  AgentCls = require('./agent/agent').Agent;
+  registerProtocol();
+  registerIpc();
+  createWindow();
+  applyTheme();
+  setupSession().catch(e => console.error(e));
+  cloud.connect();
+  cloud.events.on('session', (s) => send('cloud:session', s));
+  cloud.events.on('online', (o) => send('cloud:online', o));
+  cloud.events.on('device_paired', (m) => send('toast', { text: `Phone paired: ${m.device.name}` }));
+  cloud.events.on('transfer_delivered', (m) => send('toast', { text: `Saved on phone: ${m.savedTo}/${m.filename}` }));
+  nativeTheme.on('updated', () => { if (store.get().settings.data.theme === 'system') applyTheme(); });
+  if (app.isPackaged) { try { require('electron-updater').autoUpdater.checkForUpdatesAndNotify(); } catch {} }
+});
+app.on('window-all-closed', () => { store.flushAll(); app.quit(); });
+app.on('before-quit', () => store.flushAll());

@@ -1,0 +1,10 @@
+<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>About Saarthi</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="saarthi://about/pages/internal.css"></head>
+<body><div class="wrap" style="max-width:640px;text-align:center;padding-top:80px">
+<svg width="64" height="64" viewBox="0 0 32 32" fill="none" style="margin-bottom:18px"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25L16 2.5Z" stroke="var(--accent)" stroke-width="2"/><path d="M20.5 11.5c-1-1.3-2.6-2-4.4-2-2.6 0-4.4 1.4-4.4 3.3 0 4.4 9 2.3 9 6.6 0 2-1.9 3.3-4.6 3.3-1.9 0-3.6-.8-4.6-2.2" stroke="var(--text)" stroke-width="2.2" stroke-linecap="round"/></svg>
+<h1>Saarthi</h1><p class="muted" id="v" style="margin:8px 0 28px"></p>
+<div class="card" style="text-align:left"><p>Saarthi is an agentic browser built in India. It compares prices across stores, reads articles aloud, turns pages into summaries, PDFs and mind maps, and asks your phone before any payment.</p>
+<p class="muted small" style="margin-top:12px">AI by Groq and NVIDIA NIM. Built on Chromium via Electron. Ad &amp; tracker blocking by Ghostery's open-source engine. Fonts: Cabinet Grotesk &amp; Satoshi by Indian Type Foundry.</p></div>
+<p class="muted small" style="margin-top:22px">© 2026 Saarthi. <a href="saarthi://settings">Settings</a></p></div>
+<script src="saarthi://about/pages/internal.js"></script>
+<script>api('app:info').then(i => $('#v').textContent = `Version ${i.version} · Chromium ${i.chrome} · Electron ${i.electron}`)</script></body></html>

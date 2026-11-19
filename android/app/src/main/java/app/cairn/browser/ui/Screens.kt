@@ -517,7 +517,7 @@ fun AiSettings() {
             Choice("Reply language", listOf("auto" to "Same as my message", "en" to "English", "hi" to "Hindi", "hinglish" to "Hinglish", "es" to "Spanish", "fr" to "French", "de" to "German", "pt" to "Portuguese", "ar" to "Arabic", "ja" to "Japanese", "bn" to "Bengali", "ta" to "Tamil", "te" to "Telugu", "mr" to "Marathi"),
                 Prefs.replyLanguage, { Prefs.replyLanguage = it }, Ic.Translate); Divider()
             Choice("Shopping region", listOf("IN" to "India", "US" to "United States", "GB" to "United Kingdom"), Prefs.shoppingCountry, { Prefs.shoppingCountry = it }, Ic.ShoppingBag); Divider()
-            Choice("Max steps per task", listOf("15" to "15", "30" to "30", "50" to "50", "80" to "80"), Prefs.agentMaxSteps.toString(), { Prefs.agentMaxSteps = it.toInt() }, Ic.Route); Divider()
+            Choice("Max steps per task", listOf("20" to "20", "45" to "45", "60" to "60", "80" to "80"), Prefs.agentMaxSteps.toString(), { Prefs.agentMaxSteps = it.toInt() }, Ic.Route); Divider()
             Toggle(Ic.PanTool, "Ask before every click", "Slower, but you confirm each action", Prefs.agentConfirmEach) { Prefs.agentConfirmEach = it }; Divider()
             Toggle(Ic.Pip, "Live preview of background work", "A small floating window shows the pages Cairn is working on", Prefs.agentLivePreview) { Prefs.agentLivePreview = it }
         }

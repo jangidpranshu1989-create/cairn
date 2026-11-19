@@ -150,8 +150,10 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
             else -> act.moveTaskToBack(true)
         }
     }
-    val hidden = Ui.collapsed && tab != null && !tab.isNtp && !tab.loading && !Ui.find && !ReadAloud.active
+    val hidden = Ui.collapsed && tab != null && !tab.isNtp && !tab.loading && !Ui.find && !ReadAloud.active && Agent.controlling != tab
     Column(Modifier.fillMaxSize().background(C.chrome).statusBarsPadding().imePadding()) {
+        // The page gets its own area. The dock sits *below* it in the layout (never over it), so nothing on the page is
+        // hidden or unclickable behind the bar. While you scroll down the dock folds into a slim strip and the page grows.
         Box(Modifier.weight(1f).fillMaxWidth().background(C.bg)) {
             // Background agent pages live under the visible page so they lay out at real size but are never seen.
             AndroidView({ bgHost }, Modifier.fillMaxSize())
@@ -160,17 +162,20 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
             tab?.error?.let { ErrorPage(tab, it.code, it.description) }
             tab?.ssl?.let { SslPage(tab) }
             AgentEdge(Agent.controlling != null && Agent.controlling == tab)
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (imeVisible) Modifier else Modifier.navigationBarsPadding()).padding(bottom = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
+            // Small transient pills float just above the dock edge; they're narrow and centred so the page stays usable.
+            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 val guard = (tab?.sensitive == true && tab == Browser.current) || Agent.controlling?.sensitive == true
-                GuardBadge(guard && !imeVisible && !hidden, Modifier.padding(bottom = 8.dp))
-                AgentStatus(Modifier.padding(bottom = 8.dp))
-                AnimatedVisibility(Ui.find && tab != null, enter = fadeIn() + slideInVertically(cairnSpring()) { it }, exit = fadeOut() + slideOutVertically { it }) { tab?.let { Floating { FindBar(it) } } }
-                AnimatedVisibility(ReadAloud.active && !Ui.find, enter = fadeIn() + slideInVertically(cairnSpring()) { it }, exit = fadeOut() + slideOutVertically { it }) { Floating { ReadAloudBar() } }
-                AnimatedVisibility(!imeVisible && !Ui.find && !hidden, enter = fadeIn(tween(140)) + slideInVertically(cairnSpring(520f, .82f)) { it }, exit = fadeOut(tween(120)) + slideOutVertically(tween(200)) { it }) {
-                    Dock(tab, Modifier.padding(top = if (ReadAloud.active) 8.dp else 0.dp))
-                }
-                AnimatedVisibility(hidden && !imeVisible, enter = fadeIn(tween(200)), exit = fadeOut(tween(80))) { tab?.let { MiniBar(it) } }
+                GuardBadge(guard && !imeVisible && !hidden, Modifier.padding(bottom = 6.dp))
+                AgentStatus(Modifier)
+            }
+        }
+        Column(Modifier.fillMaxWidth().background(C.chrome).then(if (imeVisible) Modifier else Modifier.navigationBarsPadding())
+            .animateContentSize(spring(dampingRatio = .86f, stiffness = 520f)), horizontalAlignment = Alignment.CenterHorizontally) {
+            AnimatedVisibility(Ui.find && tab != null, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { tab?.let { Floating { FindBar(it) } } }
+            AnimatedVisibility(ReadAloud.active && !Ui.find, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { Floating { ReadAloudBar() } }
+            if (!imeVisible && !Ui.find) {
+                if (hidden) tab?.let { MiniBar(it) }
+                else Dock(tab, Modifier.padding(top = 6.dp, bottom = 6.dp))
             }
         }
     }
@@ -179,10 +184,11 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
 /** Shown in place of the dock while reading (Safari-style): just the site, tap to bring the dock back. */
 @Composable
 private fun MiniBar(tab: Tab) {
-    Row(Modifier.height(30.dp).clip(RoundedCornerShape(15.dp)).background(C.glass).clickable { Haptics.tick(); Ui.collapsed = false }.padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Icon(if (tab.secure) Ic.Lock else Ic.Info, null, Modifier.size(11.dp), tint = if (tab.secure) C.muted else C.warn); Spacer(Modifier.width(6.dp))
-        Text(tab.host.removePrefix("www."), color = C.text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    // A full-width strip (not a floating pill): tap anywhere on it, or scroll up, to bring the dock back.
+    Row(Modifier.fillMaxWidth().height(28.dp).clickable { Haptics.tick(); Ui.collapsed = false }.padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        Icon(if (tab.secure) Ic.Lock else Ic.Info, null, Modifier.size(10.dp), tint = if (tab.secure) C.faint else C.warn); Spacer(Modifier.width(6.dp))
+        Text(tab.host.removePrefix("www."), color = C.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

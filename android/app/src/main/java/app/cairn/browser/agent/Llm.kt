@@ -150,24 +150,45 @@ object Llm {
         else -> Lang.rule(Prefs.replyLanguage)
     }
 
-    /** Image understanding (lasso, "ask about this image"). Tries vision-capable models on whichever providers have keys. */
+    /** Removes hidden reasoning some open models print before the answer. */
+    fun stripThinking(t: String) = t.replace(Regex("(?s)<think>.*?</think>"), "").replace(Regex("(?s)^.*?</think>"), "").trim()
+
+    /**
+     * Image understanding (lasso, "ask about this image"). Order: Cairn Cloud (signed in, cloud mode) → Groq Qwen 3.8
+     * (fast, multimodal) → NVIDIA vision models. Each failure falls through to the next, so one retired model never
+     * breaks Circle-to-ask.
+     */
     suspend fun vision(prompt: String, jpegB64: String, maxTokens: Int = 1200): String = runInterruptible(Dispatchers.IO) {
         val content = JSONArray().put(JSONObject().put("type", "text").put("text", prompt))
             .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$jpegB64")))
         val msgs = JSONArray().put(JSONObject().put("role", "user").put("content", content))
-        val models = buildList {
-            if (keyFor("nvidia").isNotBlank()) { add("nvidia" to Prefs.nvidiaModel.takeIf { it.contains("vl") || it.contains("vision") }.orEmpty().ifBlank { "nvidia/nemotron-3.5-super-vl-120b-a12b" }); add("nvidia" to "meta/llama-3.2-90b-vision-instruct") }
-            if (keyFor("groq").isNotBlank()) add("groq" to "qwen/qwen3.8-27b")
-        }.distinct()
-        if (models.isEmpty()) throw NoAiException()
         var last: Exception? = null
+        if (Prefs.isSignedIn && (Prefs.aiMode == "cloud" || ownProviders().isEmpty())) {
+            try {
+                val j = Api.aiChat(JSONObject().put("messages", msgs).put("tier", "vision").put("maxTokens", maxTokens).put("temperature", 0.2).put("stream", false))
+                lastProvider = j.optString("_provider", "cloud")
+                return@runInterruptible stripThinking(j.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content"))
+            } catch (e: Exception) { last = e }
+        }
+        val models = buildList {
+            if (keyFor("groq").isNotBlank()) add("groq" to "qwen/qwen3.8-27b")
+            if (keyFor("nvidia").isNotBlank()) {
+                Prefs.nvidiaModel.takeIf { it.contains("vl") || it.contains("vision") || it.contains("omni") }?.let { add("nvidia" to it) }
+                add("nvidia" to "nvidia/nemotron-3.5-super-vl-120b-a12b"); add("nvidia" to "google/gemma-4-31b-it")
+                add("nvidia" to "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"); add("nvidia" to "meta/llama-3.2-90b-vision-instruct")
+            }
+        }.distinct()
+        if (models.isEmpty() && last == null) throw NoAiException()
         for ((p, model) in models) {
             val body = JSONObject().put("model", model).put("messages", msgs).put("max_tokens", maxTokens).put("temperature", 0.2)
             if (p == "nvidia") body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
             try {
                 http.newCall(Request.Builder().url("${bases[p]}/chat/completions").header("Authorization", "Bearer ${keyFor(p)}").post(body.toString().toRequestBody(JSON_T)).build()).execute().use { r ->
                     val txt = r.body?.string().orEmpty()
-                    if (r.isSuccessful) { lastProvider = p; return@runInterruptible JSONObject(txt).getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content").trim() }
+                    if (r.isSuccessful) {
+                        val out = stripThinking(JSONObject(txt).getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content"))
+                        if (out.isNotBlank()) { lastProvider = p; return@runInterruptible out }
+                    }
                     last = Exception("${labels[p]} vision error ${r.code}")
                 }
             } catch (e: java.io.InterruptedIOException) { throw e } catch (e: Exception) { last = e }

@@ -70,6 +70,7 @@ object Ui {
     var pairLink by mutableStateOf<Uri?>(null)
     var assistantDraft by mutableStateOf("")
     var lasso by mutableStateOf(false)                   // circle-to-act overlay
+    var lassoFrame by mutableStateOf<android.graphics.Bitmap?>(null)  // frozen page frame the lasso selects from
     var pip by mutableStateOf(true)                      // live mini-preview of background agent work
     var mentions = androidx.compose.runtime.mutableStateListOf<Tab>()  // @tab context for the next message
     val attachments = androidx.compose.runtime.mutableStateListOf<app.cairn.browser.agent.Attachment>()

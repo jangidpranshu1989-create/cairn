@@ -30,6 +30,7 @@ import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicLong
 
 const val NTP = "cairn://newtab"
+fun isBlankUrl(u: String?) = u.isNullOrBlank() || u == "about:blank" || u.startsWith("about:blank#") || u.startsWith("about:blank?")
 
 data class PageError(val url: String, val code: Int, val description: String)
 class SslProblem(val url: String, val error: SslError, val handler: SslErrorHandler)
@@ -176,7 +177,14 @@ object Browser {
         val w = t.web
         when {
             t.error != null && w?.canGoBack() == true -> { t.error = null; w.goBack() }
-            w?.canGoBack() == true -> w.goBack()
+            w?.canGoBack() == true -> {
+                // Skip runs of about:blank (NTP) entries so one Back press lands on a real page or the NTP once.
+                val list = w.copyBackForwardList(); var steps = -1
+                while (list.currentIndex + steps > 0 && isBlankUrl(list.getItemAtIndex(list.currentIndex + steps)?.url) &&
+                    isBlankUrl(list.getItemAtIndex(list.currentIndex + steps - 1)?.url)) steps--
+                if (t.isNtp && isBlankUrl(list.getItemAtIndex(list.currentIndex + steps)?.url) && list.currentIndex + steps > 0) steps--
+                w.goBackOrForward(steps)
+            }
             !t.isNtp && t.opener != null -> close(t)
             !t.isNtp -> { load(t, NTP); t.canBack = false }
             else -> return false
@@ -322,24 +330,30 @@ object Browser {
             return activity.openExternal(u, req.isForMainFrame && req.hasGesture())
         }
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
+            // about:blank is how a tab shows the New Tab page. Going back onto it must show the NTP, not an empty
+            // white WebView (that looked like a crash).
+            if (isBlankUrl(url)) { t.url = ""; t.title = ""; t.loading = false; t.error = null; t.progress = 100; return }
             t.loading = true; t.url = url; t.icon = favicon ?: BrowserDb.icon(url); t.blocked = 0; t.error = null; t.sensitive = false; t.translated = null
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
         }
         override fun onPageFinished(view: WebView, url: String) {
             t.loading = false; t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
-            if (url != "about:blank") { t.url = url; t.title = view.title?.takeIf { it != url } ?: t.title }
+            if (isBlankUrl(url)) { t.url = ""; t.title = ""; return }
+            t.url = url; t.title = view.title?.takeIf { it != url } ?: t.title
             if (!t.incognito && url.startsWith("http")) BrowserDb.addVisit(url, view.title ?: "")
             if (!t.incognito) persist()
             view.postDelayed({ if (current == t) capture(t) }, 450)
             view.postDelayed({ if (current == t && !t.loading) capture(t) }, 2200)
             if (url.startsWith("http")) {
                 flushCookies()
-                view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nreturn JSON.stringify(window.__cairn.guard())})()") { r ->
+                view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nreturn JSON.stringify(window.${app.cairn.browser.agent.PageJs.ns}.guard())})()") { r ->
                     t.sensitive = runCatching { JSONObject(org.json.JSONTokener(r).nextValue() as String).optBoolean("sensitive") }.getOrDefault(false)
                 }
                 if (!t.incognito && Prefs.memory) view.postDelayed({
-                    if (t.web != view || view.url != url) return@postDelayed
-                    view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nvar a=window.__cairn.article();return JSON.stringify({t:a.title,x:a.text})})()") { r ->
+                    // Never index login, OTP, card or checkout pages into on-device memory
+                    if (t.web != view || view.url != url || t.sensitive || app.cairn.browser.data.Recall.isPrivateUrl(url)) return@postDelayed
+                    view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nvar a=window.${app.cairn.browser.agent.PageJs.ns}.article();return JSON.stringify({t:a.title,x:a.text})})()") { r ->
                         runCatching { val j = JSONObject(org.json.JSONTokener(r).nextValue() as String); val title = j.optString("t"); val text = j.optString("x")
                             Thread { app.cairn.browser.data.Recall.index(url, title, text) }.start() }
                     }
@@ -347,7 +361,7 @@ object Browser {
             }
         }
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
-            if (url != "about:blank") t.url = url
+            t.url = if (isBlankUrl(url)) "" else url
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
         }
         override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
@@ -370,8 +384,12 @@ object Browser {
         }
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             // Recover instead of crashing the whole browser
-            view.post { val url = t.url; (t.view?.parent as? ViewGroup)?.removeView(t.view); t.web = null; t.view = null
-                t.error = PageError(url, -1000, "This page crashed"); activity.refreshContainer() }
+            view.post {
+                val url = t.url; (t.view?.parent as? ViewGroup)?.removeView(t.view); runCatching { view.destroy() }; t.web = null; t.view = null
+                if (t.isNtp) return@post
+                // The visible tab reloads straight away; background tabs reload when they're next shown.
+                if (t == current) { t.error = null; activity.refreshContainer() } else t.error = PageError(url, -1000, "This page was closed to save memory")
+            }
             return true
         }
     }

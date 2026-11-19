@@ -96,7 +96,8 @@ object Prefs {
     var nvidiaFastModel by str("nvidiaFastModel", "nvidia/nemotron-3.5-bolt-e4b")
     var replyLanguage by str("replyLanguage", "auto")
     var shoppingCountry by str("shoppingCountry", "IN")
-    var agentMaxSteps by int("agentMaxSteps", 30)
+    var agentMaxSteps by int("agentMaxStepsV2", 45)
+    var agentUseProfile by bool("agentUseProfile", true)  // let tasks use your name, email, phone and address
     var agentConfirmEach by bool("agentConfirmEach", false)
     var ttsRate by int("ttsRate", 100)                   // percent
     var ttsVoice by str("ttsVoice", "")

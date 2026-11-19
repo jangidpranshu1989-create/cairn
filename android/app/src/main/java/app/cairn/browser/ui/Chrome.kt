@@ -10,6 +10,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -135,12 +139,10 @@ fun Dock(tab: Tab?, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
     var top by remember { mutableFloatStateOf(0f) }
     var h by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(tab, Backdrop.tick, tab?.progress, top) { delay(16); Backdrop.sample(tab, top, h) }
-    LaunchedEffect(tab) { while (true) { delay(900); Backdrop.sample(tab, top, h) } }
     Glass(modifier.padding(horizontal = 10.dp).fillMaxWidth().height(60.dp).onGloballyPositioned { c ->
         val webTop = IntArray(2).also { runCatching { act.webHost.getLocationInWindow(it) } }[1]
         top = c.positionInWindow().y - webTop; h = c.size.height.toFloat()
-    }, 22.dp, sampled = tab != null && !tab.isNtp) {
+    }, 22.dp, sampled = false) {
         Row(Modifier.fillMaxSize().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             AddressCapsule(tab, Modifier.weight(1f))
             Spacer(Modifier.width(4.dp))
@@ -208,10 +210,29 @@ fun AgentStone() {
     }
 }
 
+/**
+ * Circle to ask. Like Android's Circle to Search, the page is frozen into a still frame first; the user then circles or
+ * taps anything on it. Selecting from a frozen frame means the crop is exact (no dimming scrim or lasso stroke baked in)
+ * and works even while the page scrolls or animates underneath.
+ */
 fun startLasso() {
     val t = Browser.current
-    if (t == null || t.isNtp || t.web == null) { act.toast("Open a page to circle something on it"); return }
-    Ui.assistant = false; Ui.lasso = true
+    val w = t?.web
+    if (t == null || t.isNtp || w == null || w.width <= 0) { act.toast("Open a page to circle something on it"); return }
+    val wasOpen = Ui.assistant || Ui.menu
+    Ui.assistant = false; Ui.menu = false
+    Haptics.gesture()
+    // Let any closing sheet leave the screen before copying pixels.
+    w.postDelayed({
+        val frame = Bitmap.createBitmap(w.width, w.height, Bitmap.Config.ARGB_8888)
+        val loc = IntArray(2); w.getLocationInWindow(loc)
+        fun soft() = runCatching { frame.applyCanvas { translate(-w.scrollX.toFloat(), -w.scrollY.toFloat()); w.draw(this) } }
+        fun show() { Ui.lassoFrame = frame; Ui.lasso = true }
+        runCatching {
+            android.view.PixelCopy.request(act.window, android.graphics.Rect(loc[0], loc[1], loc[0] + w.width, loc[1] + w.height), frame,
+                { r -> if (r != android.view.PixelCopy.SUCCESS) soft(); show() }, android.os.Handler(android.os.Looper.getMainLooper()))
+        }.onFailure { soft(); show() }
+    }, if (wasOpen) 320L else 16L)
 }
 
 @Composable
@@ -345,73 +366,123 @@ fun LassoOverlay() {
     if (!Ui.lasso) return
     val tab = Browser.current ?: run { Ui.lasso = false; return }
     val w = tab.web ?: run { Ui.lasso = false; return }
+    val frame = Ui.lassoFrame ?: run { Ui.lasso = false; return }
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
     val path = remember { mutableStateListOf<Offset>() }
     var done by remember { mutableStateOf<Rect?>(null) }
     var crop by remember { mutableStateOf<Bitmap?>(null) }
     var region by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val dash = remember { PathEffect.dashPathEffect(floatArrayOf(18f, 12f)) }
-    val t = rememberInfiniteTransition(label = "lasso")
-    val phase by t.animateFloat(0f, 60f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "ph")
+    var webAt by remember { mutableStateOf(Offset.Zero) }
+    var ask by remember { mutableStateOf("") }
+    val img = remember(frame) { frame.asImageBitmap() }
+    val inf = rememberInfiniteTransition(label = "lasso")
+    val phase by inf.animateFloat(0f, 60f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "ph")
+    val sweep by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "sw")
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = .8f, stiffness = 300f)) }
     val col = C.agent
-    BackHandler { Ui.lasso = false }
-    fun close() { Ui.lasso = false; path.clear(); done = null; crop = null }
-    fun act(prompt: String?) {
+    fun close() { Ui.lasso = false; Ui.lassoFrame = null; path.clear(); done = null; crop = null }
+    BackHandler { if (done != null) { done = null; path.clear(); crop = null; region = null } else close() }
+    fun select(r0: Rect) {
+        // Selection in overlay coordinates → frame (WebView) pixels
+        val off = webAt - origin
+        val r = Rect((r0.left - off.x).coerceIn(0f, frame.width - 1f), (r0.top - off.y).coerceIn(0f, frame.height - 1f),
+            (r0.right - off.x).coerceIn(1f, frame.width.toFloat()), (r0.bottom - off.y).coerceIn(1f, frame.height.toFloat()))
+        if (r.width < 12 || r.height < 12) { path.clear(); return }
+        done = r0; Haptics.confirm()
+        crop = Bitmap.createBitmap(frame, r.left.roundToInt(), r.top.roundToInt(), r.width.roundToInt().coerceAtMost(frame.width - r.left.roundToInt()), r.height.roundToInt().coerceAtMost(frame.height - r.top.roundToInt()))
+        region = null
+        scope.launch {
+            val m = PageJs.obj(w, "metrics()"); val sc = (m?.optDouble("w", 0.0)?.takeIf { it > 0 } ?: (w.width / w.resources.displayMetrics.density.toDouble())) / w.width
+            region = PageJs.obj(w, "region(${r.left * sc}, ${r.top * sc}, ${r.width * sc}, ${r.height * sc})") ?: org.json.JSONObject()
+        }
+    }
+    fun go(prompt: String?) {
         val b = crop ?: return; val r = region
         val links = r?.optJSONArray("links")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
+        val text = r?.optString("text").orEmpty()
         close(); Ui.assistant = true
-        Agent.lasso(b, r?.optString("text").orEmpty(), links, prompt)
+        Agent.lasso(b, text, links, prompt)
     }
-    Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow() }) {
+    Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow(); webAt = IntArray(2).also { a -> w.getLocationInWindow(a) }.let { a -> Offset(a[0].toFloat(), a[1].toFloat()) } }) {
+        val off = webAt - origin
         Canvas(Modifier.fillMaxSize().pointerInput(Unit) {
-            detectDragGestures(onDragStart = { path.clear(); done = null; path.add(it); Haptics.gesture() }, onDragEnd = {
+            detectTapGestures { p ->
+                // A tap selects a generous box around the finger (handy for a product photo or a word).
+                val hw = 120.dp.toPx(); val hh = 90.dp.toPx()
+                path.clear(); select(Rect(p.x - hw, p.y - hh, p.x + hw, p.y + hh))
+                path.addAll(listOf(Offset(p.x - hw, p.y - hh), Offset(p.x + hw, p.y - hh), Offset(p.x + hw, p.y + hh), Offset(p.x - hw, p.y + hh)))
+            }
+        }.pointerInput(Unit) {
+            detectDragGestures(onDragStart = { path.clear(); done = null; crop = null; path.add(it); Haptics.gesture() }, onDragEnd = {
                 if (path.size < 6) { path.clear(); return@detectDragGestures }
-                val r = Rect(path.minOf { it.x }, path.minOf { it.y }, path.maxOf { it.x }, path.maxOf { it.y })
-                done = r; Haptics.confirm()
-                scope.launch {
-                    // Exact screen pixels of the selection + the DOM text underneath it
-                    val loc = IntArray(2); w.getLocationInWindow(loc)
-                    val left = (r.left + origin.x).roundToInt().coerceAtLeast(loc[0]); val topPx = (r.top + origin.y).roundToInt().coerceAtLeast(loc[1])
-                    val bw = r.width.roundToInt().coerceAtLeast(8); val bh = r.height.roundToInt().coerceAtLeast(8)
-                    val bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
-                    val ok = kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { c ->
-                        runCatching { android.view.PixelCopy.request(act.window, android.graphics.Rect(left, topPx, left + bw, topPx + bh), bmp, { res -> c.resumeWith(Result.success(res == android.view.PixelCopy.SUCCESS)) }, android.os.Handler(android.os.Looper.getMainLooper())) }
-                            .onFailure { c.resumeWith(Result.success(false)) }
-                    }
-                    crop = if (ok) bmp else null
-                    val m = PageJs.obj(w, "metrics()"); val sc = (m?.optDouble("w", 0.0)?.takeIf { it > 0 } ?: (w.width / w.resources.displayMetrics.density.toDouble())) / w.width
-                    val x = (left - loc[0]) * sc; val y = (topPx - loc[1]) * sc
-                    region = PageJs.obj(w, "region($x, $y, ${bw * sc}, ${bh * sc})")
-                    if (crop == null) crop = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).applyCanvas { translate(-(left - loc[0]).toFloat(), -(topPx - loc[1]).toFloat()); w.draw(this) }
-                }
+                select(Rect(path.minOf { it.x }, path.minOf { it.y }, path.maxOf { it.x }, path.maxOf { it.y }))
             }) { c, _ -> c.consume(); path.add(c.position) }
         }) {
-            drawRect(Color.Black.copy(alpha = .38f))
-            if (path.size > 1) {
-                val p = Path().apply { moveTo(path[0].x, path[0].y); path.drop(1).forEach { lineTo(it.x, it.y) }; if (done != null) close() }
-                if (done != null) drawPath(p, Color.White.copy(alpha = .10f))
-                drawPath(p, col, style = Stroke(4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = if (done != null) PathEffect.dashPathEffect(floatArrayOf(18f, 12f), phase) else null))
+            // Frozen page, slightly zoomed out on entry, under a soft veil; the selection is cut out at full brightness.
+            val sc = 1f - .03f * appear.value
+            drawContext.transform.scale(sc, sc, Offset(size.width / 2, size.height / 2))
+            drawImage(img, IntOffset(off.x.roundToInt(), off.y.roundToInt()))
+            drawContext.transform.scale(1 / sc, 1 / sc, Offset(size.width / 2, size.height / 2))
+            val veil = Color.Black.copy(alpha = .42f * appear.value)
+            val sel = done
+            if (sel == null) drawRect(veil)
+            else {
+                val hole = Path().apply { addRoundRect(androidx.compose.ui.geometry.RoundRect(sel, androidx.compose.ui.geometry.CornerRadius(18.dp.toPx()))) }
+                clipPath(hole, ClipOp.Difference) { drawRect(veil) }
+                drawPath(hole, Brush.sweepGradient(listOf(col, Color.White, col.copy(alpha = .5f), col), sel.center), style = Stroke(3.dp.toPx()))
+            }
+            // Shimmering glow sweeping around the screen edge while waiting for a selection
+            if (sel == null) {
+                val g = 3.dp.toPx(); val brush = Brush.sweepGradient(listOf(col.copy(alpha = 0f), col, Color.White.copy(alpha = .9f), col, col.copy(alpha = 0f)), Offset(size.width * sweep, size.height * (1 - sweep)))
+                drawRoundRect(brush, Offset(g / 2, g / 2), androidx.compose.ui.geometry.Size(size.width - g, size.height - g), androidx.compose.ui.geometry.CornerRadius(28.dp.toPx()), style = Stroke(g), alpha = appear.value)
+            }
+            if (path.size > 1 && sel == null) {
+                val p = Path().apply { moveTo(path[0].x, path[0].y); path.drop(1).forEach { lineTo(it.x, it.y) } }
+                drawPath(p, col.copy(alpha = .35f), style = Stroke(14.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                drawPath(p, Color.White, style = Stroke(4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(1f, 0f), phase)))
             }
         }
-        // Header hint
-        Row(Modifier.align(Alignment.TopCenter).padding(top = 14.dp).clip(RoundedCornerShape(18.dp)).background(C.surface).padding(start = 14.dp, end = 4.dp).height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Header
+        Row(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp).graphicsLayer { alpha = appear.value; translationY = (1 - appear.value) * -40f }
+            .clip(RoundedCornerShape(20.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(20.dp)).padding(start = 14.dp, end = 4.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Ic.Lasso, null, Modifier.size(16.dp), tint = C.agent); Spacer(Modifier.width(8.dp))
-            Text(if (done == null) "Circle anything to ask Cairn" else "What should Cairn do?", color = C.text, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
+            Text(if (done == null) "Circle or tap anything" else "Ask about your selection", color = C.text, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.width(4.dp))
-            Box(Modifier.size(30.dp).clip(CircleShape).clickable { close() }, contentAlignment = Alignment.Center) { Icon(Ic.Close, "Cancel", Modifier.size(16.dp), tint = C.muted) }
+            Box(Modifier.size(32.dp).clip(CircleShape).clickable { close() }, contentAlignment = Alignment.Center) { Icon(Ic.Close, "Cancel", Modifier.size(16.dp), tint = C.muted) }
         }
-        done?.let { r ->
-            val d = LocalDensity.current
-            val y = with(d) { (r.bottom + 12.dp.toPx()).coerceAtMost(with(d) { 2000.dp.toPx() }).toDp() }
-            Row(Modifier.padding(top = y).padding(horizontal = 12.dp).align(Alignment.TopCenter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(Ic.Sparkle to "Explain" to null, Ic.ShoppingBag to "Find cheaper" to "Find this product cheaper from a trusted store", Ic.Translate to "Translate" to "Translate this into English", Ic.ScanText to "Copy text" to "__copy").forEach { (a, prompt) ->
-                    val (ic, label) = a
-                    Row(Modifier.clip(RoundedCornerShape(16.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(16.dp)).clickable(enabled = crop != null) {
-                        if (prompt == "__copy") { copyText(act, "Text", region?.optString("text").orEmpty()); act.toast("Text copied"); close() } else act(prompt)
-                    }.padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (crop == null) AgentDots() else Icon(ic, null, Modifier.size(15.dp), tint = C.text)
-                        Spacer(Modifier.width(6.dp)); Text(label, color = C.text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+        // Action sheet, always on screen at the bottom (never pushed off-screen by a low selection)
+        androidx.compose.animation.AnimatedVisibility(done != null, Modifier.align(Alignment.BottomCenter), enter = fadeIn(tween(160)) + slideInVertically(cairnSpring(420f, .82f)) { it }, exit = fadeOut(tween(120)) + slideOutVertically { it }) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)).background(C.bg).border(1.dp, C.line2, RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+                .navigationBarsPadding().imePadding().padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    crop?.let { Image(it.asImageBitmap(), "Selection", Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, C.agent.copy(alpha = .6f), RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop) }
+                    Spacer(Modifier.width(10.dp))
+                    Row(Modifier.weight(1f).height(46.dp).clip(RoundedCornerShape(23.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(23.dp)).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.foundation.text.BasicTextField(ask, { ask = it }, Modifier.weight(1f), singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = C.text, fontSize = 15.sp, fontFamily = Inter), cursorBrush = SolidColor(C.agent),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { go(ask.ifBlank { null }) }),
+                            decorationBox = { inner -> if (ask.isEmpty()) Text("Ask anything about this…", color = C.faint, fontSize = 15.sp); inner() })
+                        Box(Modifier.size(38.dp).clip(CircleShape).background(C.accent).clickable { go(ask.ifBlank { null }) }, contentAlignment = Alignment.Center) { Icon(Ic.ArrowUpward, "Ask", Modifier.size(18.dp), tint = C.accentInk) }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(Triple(Ic.Sparkle, "Explain", null as String?), Triple(Ic.Search, "Search this", "Search the web for what's in my selection and tell me what it is, with sources"),
+                        Triple(Ic.ShoppingBag, "Find cheaper", "Identify this product and find it cheaper from a trusted store"), Triple(Ic.Translate, "Translate", "Translate the text in my selection into English"),
+                        Triple(Ic.ScanText, "Copy text", "__copy")).forEach { (ic, label, prompt) ->
+                        Row(Modifier.clip(RoundedCornerShape(16.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(16.dp)).clickable {
+                            Haptics.tick()
+                            if (prompt == "__copy") {
+                                val txt = region?.optString("text").orEmpty()
+                                if (txt.isBlank()) go("Transcribe all the text in my selection exactly, nothing else.") else { copyText(act, "Text", txt); act.toast("Text copied"); close() }
+                            } else go(prompt)
+                        }.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(ic, null, Modifier.size(15.dp), tint = C.agent); Spacer(Modifier.width(7.dp)); Text(label, color = C.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
                 }
             }

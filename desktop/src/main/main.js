@@ -1,13 +1,13 @@
-// Saarthi Browser — main process
+// Cairn Browser — main process
 const { app, BrowserWindow, ipcMain, protocol, net, session, Menu, dialog, shell, nativeTheme, clipboard } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 
-protocol.registerSchemesAsPrivileged([{ scheme: 'saarthi', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false, stream: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: 'cairn', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false, stream: true } }]);
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
-if (process.defaultApp) app.setAsDefaultProtocolClient('saarthi', process.execPath, [path.resolve(process.argv[1])]);
-else app.setAsDefaultProtocolClient('saarthi');
+if (process.defaultApp) app.setAsDefaultProtocolClient('cairn', process.execPath, [path.resolve(process.argv[1])]);
+else app.setAsDefaultProtocolClient('cairn');
 
 const store = require('./store');
 let tabsMod, cloud, llm, passwords, pageTools, AgentCls;
@@ -28,7 +28,7 @@ function chromeUA() {
 
 function send(ch, data) { if (win && !win.isDestroyed()) win.webContents.send(ch, data); }
 
-// ---------- saarthi:// internal pages ----------
+// ---------- cairn:// internal pages ----------
 function registerProtocol() {
   const handler = (req) => {
     const u = new URL(req.url);
@@ -44,13 +44,13 @@ function registerProtocol() {
     if (!file.startsWith(UI_DIR)) return new Response('Forbidden', { status: 403 });
     return net.fetch(pathToFileURL(file).toString());
   };
-  protocol.handle('saarthi', handler);
-  session.fromPartition('persist:saarthi').protocol.handle('saarthi', handler);
+  protocol.handle('cairn', handler);
+  session.fromPartition('persist:cairn').protocol.handle('cairn', handler);
 }
 
 // ---------- Session: shield, privacy headers, permissions, downloads ----------
 async function setupSession() {
-  const ses = session.fromPartition('persist:saarthi');
+  const ses = session.fromPartition('persist:cairn');
   ses.setUserAgent(chromeUA());
   const s = () => store.get().settings.data;
 
@@ -63,7 +63,7 @@ async function setupSession() {
   ses.setPermissionRequestHandler(async (wc, permission, cb, details) => {
     const always = ['clipboard-sanitized-write', 'fullscreen', 'pointerLock', 'window-management'];
     if (always.includes(permission)) return cb(true);
-    if (wc.getURL().startsWith('saarthi://')) return cb(true);
+    if (wc.getURL().startsWith('cairn://')) return cb(true);
     const origin = (() => { try { return new URL(details.requestingUrl).host; } catch { return 'This site'; } })();
     const labels = { media: details.mediaTypes?.includes('video') ? 'use your camera' : 'use your microphone', geolocation: 'know your location', notifications: 'show notifications', 'clipboard-read': 'read your clipboard', midi: 'use MIDI devices', openExternal: 'open an external app' };
     const site = (() => { try { return new URL(details.requestingUrl).origin; } catch { return ''; } })();
@@ -141,12 +141,12 @@ function createWindow() {
   tabs.on('ask', (text) => send('agent:prefill', { text, run: true }));
   tabs.on('speak', (text) => send('agent:event', { type: 'speak', text }));
   tabs.on('tool', (t) => runPageTool(t));
-  tabs.on('auth-callback', (url, tab) => { if (cloud.handleAuthCallback(url)) { tab.view.webContents.loadURL('saarthi://account').catch(() => {}); send('toast', { text: 'Signed in to Saarthi' }); } });
+  tabs.on('auth-callback', (url, tab) => { if (cloud.handleAuthCallback(url)) { tab.view.webContents.loadURL('cairn://account').catch(() => {}); send('toast', { text: 'Signed in to Cairn' }); } });
   tabs.on('page-key', (e, input) => { if (input.type === 'keyDown' && input.key === 'Escape' && agent?.running) { /* allow page escape */ } });
 
   const restore = st.startup === 'restore' && st.restoreTabs?.length ? st.restoreTabs : null;
   if (restore) restore.forEach((u, i) => tabs.create(u, { active: i === restore.length - 1 }));
-  else tabs.create('saarthi://newtab');
+  else tabs.create('cairn://newtab');
 
   win.on('close', () => { st.restoreTabs = tabs.snapshotSession(); store.get().settings.flush(); });
   win.on('enter-full-screen', () => send('fullscreen', true));
@@ -160,7 +160,7 @@ function agentTab() {
   if (!t) {
     const a = tabs.active;
     // reuse the active tab only if it is a blank new tab, otherwise open a dedicated agent tab next to it
-    if (a && /^saarthi:\/\/newtab/.test(a.url)) { t = a; } else t = tabs.create('about:blank', { active: true, agent: true, openerIndex: tabs.order.indexOf(tabs.activeId) });
+    if (a && /^cairn:\/\/newtab/.test(a.url)) { t = a; } else t = tabs.create('about:blank', { active: true, agent: true, openerIndex: tabs.order.indexOf(tabs.activeId) });
     t.agent = true; agentTabId = t.id; tabs.emitUpdate();
   }
   return t;
@@ -215,7 +215,7 @@ function openMindmap(m) {
   const id = 'mm' + Date.now();
   global.__mindmaps = global.__mindmaps || new Map();
   global.__mindmaps.set(id, m);
-  tabs.create(`saarthi://mindmap?id=${id}`);
+  tabs.create(`cairn://mindmap?id=${id}`);
 }
 
 async function runPageTool(kind) {
@@ -231,14 +231,14 @@ async function runPageTool(kind) {
     else if (kind === 'longshot') { const r = await pageTools.longScreenshot(wc); send('toast', { text: `Long screenshot saved (${r.width}×${r.height})`, file: r.file, image: true }); }
     else if (kind === 'shot') { const f = await pageTools.visibleScreenshot(wc); send('toast', { text: 'Screenshot saved', file: f, image: true }); }
     else if (kind === 'read') { const a = await pageTools.getArticle(wc); send('agent:event', { type: 'speak', text: `${a.title}.\n${a.text}`, lang: a.lang, title: a.title }); }
-    else if (kind === 'reader') { const a = await pageTools.getArticle(wc); global.__reader = a; tabs.create('saarthi://reader'); }
+    else if (kind === 'reader') { const a = await pageTools.getArticle(wc); global.__reader = a; tabs.create('cairn://reader'); }
   } catch (e) {
     send('toast', { text: e.message === 'NO_AI_KEY' ? 'Add a Groq or NVIDIA key in Settings → AI to use this.' : e.message, error: true });
   } finally { send('tool:busy', { kind, busy: false }); }
 }
 
 // ---------- IPC ----------
-function isInternal(e) { try { return new URL(e.senderFrame.url).protocol === 'saarthi:' || e.sender === win.webContents; } catch { return false; } }
+function isInternal(e) { try { return new URL(e.senderFrame.url).protocol === 'cairn:' || e.sender === win.webContents; } catch { return false; } }
 function handle(ch, fn, { internal = false } = {}) {
   ipcMain.handle(ch, async (e, ...args) => {
     if (internal && !isInternal(e)) throw new Error('forbidden');
@@ -248,7 +248,7 @@ function handle(ch, fn, { internal = false } = {}) {
 
 function registerIpc() {
   // tabs & navigation
-  handle('tabs:new', (_e, url) => { tabs.create(url || 'saarthi://newtab'); });
+  handle('tabs:new', (_e, url) => { tabs.create(url || 'cairn://newtab'); });
   handle('tabs:close', (_e, id) => tabs.close(id ?? tabs.activeId));
   handle('tabs:activate', (_e, id) => tabs.activate(id));
   handle('tabs:move', (_e, id, i) => tabs.move(id, i));
@@ -294,7 +294,7 @@ function registerIpc() {
   handle('history:clear', async (_e, opts = {}) => {
     const h = store.get().history; const since = opts.since || 0;
     h.data = since ? h.data.filter(x => x.at < since) : []; h.save();
-    const ses = session.fromPartition('persist:saarthi');
+    const ses = session.fromPartition('persist:cairn');
     if (opts.cookies) await ses.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] });
     if (opts.cache) await ses.clearCache();
     return true;
@@ -324,7 +324,7 @@ function registerIpc() {
   handle('page:tool', (_e, kind) => runPageTool(kind));
   handle('voice:speak', async (_e, text) => llm.speech(text));
   handle('voice:transcribe', async (_e, buf, mime) => llm.transcribe(Buffer.from(buf), mime));
-  handle('open:file-url', (_e, f) => safeFile(f) ? `saarthi://file?p=${encodeURIComponent(f)}` : null);
+  handle('open:file-url', (_e, f) => safeFile(f) ? `cairn://file?p=${encodeURIComponent(f)}` : null);
 
   // settings
   handle('settings:get', () => { const s = { ...store.get().settings.data }; const v = store.get().vault.data; s.groqKey = v.groqKey ? '••••' + v.groqKey.slice(-4) : ''; s.nvidiaKey = v.nvidiaKey ? '••••' + v.nvidiaKey.slice(-4) : ''; return s; });
@@ -373,7 +373,7 @@ function registerIpc() {
   handle('pw:export', async () => {
     const { response } = await dialog.showMessageBox(win, { type: 'warning', buttons: ['Export', 'Cancel'], cancelId: 1, message: 'Export passwords as an unencrypted CSV file?', detail: 'Anyone with the file can read your passwords.' });
     if (response) return false;
-    const r = await dialog.showSaveDialog(win, { defaultPath: 'saarthi-passwords.csv' });
+    const r = await dialog.showSaveDialog(win, { defaultPath: 'cairn-passwords.csv' });
     if (r.canceled) return false; fs.writeFileSync(r.filePath, passwords.exportCsv()); return true;
   }, { internal: true });
   handle('pw:import', async () => {
@@ -417,7 +417,7 @@ function registerIpc() {
   handle('app:menu', () => appMenu().popup({ window: win }));
   handle('clipboard:write', (_e, t) => clipboard.writeText(String(t)));
   handle('ui:theme', () => resolvedTheme());
-  // New-tab "Ask Saarthi" box → open the assistant panel and run the task
+  // New-tab "Ask Cairn" box → open the assistant panel and run the task
   handle('ui:ask', (_e, text) => { send('agent:prefill', { text: String(text).slice(0, 4000), run: true }); }, { internal: true });
   handle('history:top', (_e, n = 8) => {
     const counts = new Map();
@@ -448,19 +448,19 @@ function applyTheme() {
   nativeTheme.themeSource = store.get().settings.data.theme === 'system' ? 'system' : t;
   if (!isMac && win?.setTitleBarOverlay) win.setTitleBarOverlay({ color: '#00000000', symbolColor: t === 'light' ? '#2a2925' : '#cfcbc2', height: 40 });
   send('theme', t);
-  for (const tab of tabs?.tabs?.values?.() || []) { try { if (tab.view.webContents.getURL().startsWith('saarthi://')) tab.view.webContents.send('theme', t); } catch {} }
+  for (const tab of tabs?.tabs?.values?.() || []) { try { if (tab.view.webContents.getURL().startsWith('cairn://')) tab.view.webContents.send('theme', t); } catch {} }
 }
 
 function appMenu() {
   const go = (u) => () => tabs.create(u);
   return Menu.buildFromTemplate([
-    { label: 'New tab', accelerator: 'CmdOrCtrl+T', click: go('saarthi://newtab') },
+    { label: 'New tab', accelerator: 'CmdOrCtrl+T', click: go('cairn://newtab') },
     { label: 'Reopen closed tab', accelerator: 'CmdOrCtrl+Shift+T', click: () => tabs.reopenClosed() },
     { type: 'separator' },
-    { label: 'History', accelerator: 'CmdOrCtrl+Y', click: go('saarthi://history') },
-    { label: 'Bookmarks', click: go('saarthi://bookmarks') },
-    { label: 'Downloads', click: go('saarthi://downloads') },
-    { label: 'Passwords', click: go('saarthi://passwords') },
+    { label: 'History', accelerator: 'CmdOrCtrl+Y', click: go('cairn://history') },
+    { label: 'Bookmarks', click: go('cairn://bookmarks') },
+    { label: 'Downloads', click: go('cairn://downloads') },
+    { label: 'Passwords', click: go('cairn://passwords') },
     { type: 'separator' },
     { label: 'Summarize page', click: () => runPageTool('summary') },
     { label: 'Mind map', click: () => runPageTool('mindmap') },
@@ -469,9 +469,9 @@ function appMenu() {
     { label: 'Long screenshot', accelerator: 'CmdOrCtrl+Shift+L', click: () => runPageTool('longshot') },
     { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: () => tabs.active?.view.webContents.print() },
     { type: 'separator' },
-    { label: 'Account', click: go('saarthi://account') },
-    { label: 'Settings', accelerator: 'CmdOrCtrl+,', click: go('saarthi://settings') },
-    { label: 'About Saarthi', click: go('saarthi://about') },
+    { label: 'Account', click: go('cairn://account') },
+    { label: 'Settings', accelerator: 'CmdOrCtrl+,', click: go('cairn://settings') },
+    { label: 'About Cairn', click: go('cairn://about') },
     { type: 'separator' },
     { label: 'Developer tools', accelerator: isMac ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => tabs.active?.view.webContents.toggleDevTools() },
     { role: 'quit' },
@@ -508,28 +508,28 @@ function buildMenu() {
     { label: 'History', submenu: [
       { label: 'Back', accelerator: isMac ? 'Cmd+[' : 'Alt+Left', click: () => t().active?.view.webContents.navigationHistory.goBack() },
       { label: 'Forward', accelerator: isMac ? 'Cmd+]' : 'Alt+Right', click: () => t().active?.view.webContents.navigationHistory.goForward() },
-      { label: 'Show History', accelerator: 'CmdOrCtrl+Y', click: () => t().create('saarthi://history') },
+      { label: 'Show History', accelerator: 'CmdOrCtrl+Y', click: () => t().create('cairn://history') },
     ] },
-    { label: 'Bookmarks', submenu: [{ label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: () => send('bookmark:toggle') }, { label: 'Show Bookmarks', accelerator: 'CmdOrCtrl+Shift+O', click: () => t().create('saarthi://bookmarks') }] },
+    { label: 'Bookmarks', submenu: [{ label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: () => send('bookmark:toggle') }, { label: 'Show Bookmarks', accelerator: 'CmdOrCtrl+Shift+O', click: () => t().create('cairn://bookmarks') }] },
     { label: 'Tab', submenu: [
       { label: 'Next Tab', accelerator: 'Ctrl+Tab', click: () => { const o = t().order; t().activate(o[(o.indexOf(t().activeId) + 1) % o.length]); } },
       { label: 'Previous Tab', accelerator: 'Ctrl+Shift+Tab', click: () => { const o = t().order; t().activate(o[(o.indexOf(t().activeId) - 1 + o.length) % o.length]); } },
       ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ label: `Tab ${n}`, accelerator: `CmdOrCtrl+${n}`, click: tabAt(n), visible: false })),
     ] },
     { role: 'windowMenu' },
-    { label: 'Help', submenu: [{ label: 'About Saarthi', click: () => t().create('saarthi://about') }, { label: 'Privacy Policy', click: () => t().create('https://saarthi.app/privacy.html') }] },
+    { label: 'Help', submenu: [{ label: 'About Cairn', click: () => t().create('cairn://about') }, { label: 'Privacy Policy', click: () => t().create('https://cairn.app/privacy.html') }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 // ---------- Boot ----------
 app.on('second-instance', (_e, argv) => {
-  const deep = argv.find(a => a.startsWith('saarthi://'));
-  if (deep?.startsWith('saarthi://auth-callback') && cloud.handleAuthCallback(deep)) send('toast', { text: 'Signed in to Saarthi' });
+  const deep = argv.find(a => a.startsWith('cairn://'));
+  if (deep?.startsWith('cairn://auth-callback') && cloud.handleAuthCallback(deep)) send('toast', { text: 'Signed in to Cairn' });
   else if (deep) tabs?.create(deep);
   if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
 });
-app.on('open-url', (e, url) => { e.preventDefault(); if (url.startsWith('saarthi://auth-callback') && cloud?.handleAuthCallback(url)) send('toast', { text: 'Signed in to Saarthi' }); });
+app.on('open-url', (e, url) => { e.preventDefault(); if (url.startsWith('cairn://auth-callback') && cloud?.handleAuthCallback(url)) send('toast', { text: 'Signed in to Cairn' }); });
 
 app.userAgentFallback = chromeUA();
 app.whenReady().then(async () => {
@@ -547,7 +547,7 @@ app.whenReady().then(async () => {
   cloud.events.on('device_paired', (m) => send('toast', { text: `Phone paired: ${m.device.name}` }));
   cloud.events.on('transfer_delivered', (m) => send('toast', { text: `Saved on phone: ${m.savedTo}/${m.filename}` }));
   nativeTheme.on('updated', () => { if (store.get().settings.data.theme === 'system') applyTheme(); });
-  if (app.isPackaged && process.env.SAARTHI_NO_UPDATE !== '1') {
+  if (app.isPackaged && process.env.CAIRN_NO_UPDATE !== '1') {
     try {
       const { autoUpdater } = require('electron-updater');
       autoUpdater.logger = null;

@@ -1,18 +1,18 @@
 <!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Settings</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="saarthi://settings/pages/internal.css"><link rel="stylesheet" href="saarthi://settings/pages/layout.css"></head>
+<link rel="stylesheet" href="cairn://settings/pages/internal.css"><link rel="stylesheet" href="cairn://settings/pages/layout.css"></head>
 <body><div class="shell">
 <nav class="side" id="side">
-  <div class="logo"><svg width="24" height="24" viewBox="0 0 32 32" fill="none"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25L16 2.5Z" stroke="var(--accent)" stroke-width="2.2"/><path d="M20.5 11.5c-1-1.3-2.6-2-4.4-2-2.6 0-4.4 1.4-4.4 3.3 0 4.4 9 2.3 9 6.6 0 2-1.9 3.3-4.6 3.3-1.9 0-3.6-.8-4.6-2.2" stroke="var(--text)" stroke-width="2.4" stroke-linecap="round"/></svg>Settings</div>
+  <div class="logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path fill="currentColor" d="M4.3 17.4c0-2 3.4-3.3 7.9-3.3 4.4 0 7.5 1.3 7.5 3.3 0 1.8-3 2.9-7.6 2.9-4.7 0-7.8-1.1-7.8-2.9Z"/><path fill="currentColor" d="M6.6 11c0-1.7 2.3-2.9 5.3-2.9 3 0 4.9 1.1 4.9 2.7 0 1.6-2.1 2.6-5.1 2.6-3 0-5.1-1-5.1-2.4Z"/><path fill="var(--agent,#D9C3A0)" d="M9.3 5.75c0-1.3 1.3-2.3 3.1-2.3 1.7 0 2.7.9 2.7 2.1 0 1.2-1.2 2-2.9 2-1.8 0-2.9-.7-2.9-1.8Z"/></svg>Settings</div>
   <a href="#general" data-s="general">General</a>
   <a href="#ai" data-s="ai">AI &amp; Agent</a>
   <a href="#privacy" data-s="privacy">Privacy &amp; security</a>
   <a href="#phone" data-s="phone">Phone &amp; sync</a>
   <a href="#downloads" data-s="downloads">Downloads</a>
-  <a href="saarthi://passwords">Passwords</a>
-  <a href="saarthi://account">Account</a>
+  <a href="cairn://passwords">Passwords</a>
+  <a href="cairn://account">Account</a>
   <span class="sp"></span>
-  <a href="#about" data-s="about">About Saarthi</a>
+  <a href="#about" data-s="about">About Cairn</a>
 </nav>
 <main class="content">
 
@@ -22,17 +22,17 @@
   </div>
   <div class="group"><h3>Search</h3>
     <div class="opt"><div class="l"><b>Search engine</b><small>Used in the address bar and by the agent's fallback.</small></div>
-      <select class="input" data-k="searchEngine"><option value="google">Google</option><option value="duckduckgo">DuckDuckGo</option><option value="bing">Bing</option><option value="brave">Brave Search</option></select></div>
+      <select class="input" data-k="searchEngine"><option value="duckduckgo">DuckDuckGo</option><option value="bing">Bing</option><option value="brave">Brave Search</option></select></div>
   </div>
   <div class="group"><h3>On startup</h3>
-    <div class="opt"><div class="l"><b>When Saarthi starts</b></div><div class="seg" data-k="startup"><button data-v="newtab">Open a new tab</button><button data-v="restore">Continue where I left off</button></div></div>
+    <div class="opt"><div class="l"><b>When Cairn starts</b></div><div class="seg" data-k="startup"><button data-v="newtab">Open a new tab</button><button data-v="restore">Continue where I left off</button></div></div>
     <div class="opt"><div class="l"><b>Home page</b><small>Opened by the home button.</small></div><input class="input" data-k="homepage" style="width:280px"></div>
   </div>
 </section>
 
-<section class="sec" id="s-ai"><h1>AI &amp; Agent</h1><p class="muted">Saarthi uses Groq for speed and NVIDIA NIM as an automatic fallback.</p>
+<section class="sec" id="s-ai"><h1>AI &amp; Agent</h1><p class="muted">Cairn uses Groq for speed and NVIDIA NIM as an automatic fallback.</p>
   <div class="group"><h3>AI source</h3>
-    <div class="opt"><div class="l"><b>Run AI with</b><small>Your own keys stay encrypted on this device. Saarthi Cloud uses your account's daily quota.</small></div><div class="seg" data-k="aiMode"><button data-v="byok">My own API keys</button><button data-v="cloud">Saarthi Cloud</button></div></div>
+    <div class="opt"><div class="l"><b>Run AI with</b><small>Your own keys stay encrypted on this device. Cairn Cloud uses your account's daily quota.</small></div><div class="seg" data-k="aiMode"><button data-v="byok">My own API keys</button><button data-v="cloud">Cairn Cloud</button></div></div>
     <div class="opt col"><div class="l"><b>Groq API key</b><small>Free key at <a href="https://console.groq.com/keys">console.groq.com/keys</a>. Powers chat, agent and Whisper voice input.</small></div>
       <div class="keyrow"><input class="input" id="groqKey" placeholder="gsk_…" spellcheck="false"><button class="btn" data-test="groq">Test</button><button class="btn primary" data-save="groqKey">Save</button><span class="status" id="st-groq"></span></div></div>
     <div class="opt col"><div class="l"><b>NVIDIA NIM API key</b><small>Get one at <a href="https://build.nvidia.com">build.nvidia.com</a>. Nemotron models for vision and fallback.</small></div>
@@ -57,9 +57,9 @@
   </div>
 </section>
 
-<section class="sec" id="s-privacy"><h1>Privacy &amp; security</h1><p class="muted">Saarthi has no ads and never sells your data.</p>
+<section class="sec" id="s-privacy"><h1>Privacy &amp; security</h1><p class="muted">Cairn has no ads and never sells your data.</p>
   <div class="group"><h3>Protection</h3>
-    <div class="opt"><div class="l"><b>Saarthi Shield</b><small>Block ads, trackers and cryptominers on every site.</small></div><label class="sw"><input type="checkbox" data-k="shield"><span></span></label></div>
+    <div class="opt"><div class="l"><b>Cairn Shield</b><small>Block ads, trackers and cryptominers on every site.</small></div><label class="sw"><input type="checkbox" data-k="shield"><span></span></label></div>
     <div class="opt"><div class="l"><b>Send Do Not Track &amp; Global Privacy Control</b></div><label class="sw"><input type="checkbox" data-k="doNotTrack"><span></span></label></div>
     <div class="opt"><div class="l"><b>Offer to save passwords</b></div><label class="sw"><input type="checkbox" data-k="offerSavePasswords"><span></span></label></div>
     <div class="opt"><div class="l"><b>Autofill saved passwords</b></div><label class="sw"><input type="checkbox" data-k="autofillPasswords"><span></span></label></div>
@@ -76,11 +76,11 @@
   </div>
 </section>
 
-<section class="sec" id="s-phone"><h1>Phone &amp; sync</h1><p class="muted">Pair the Saarthi Android app to approve payments with your fingerprint and receive files.</p>
+<section class="sec" id="s-phone"><h1>Phone &amp; sync</h1><p class="muted">Pair the Cairn Android app to approve payments with your fingerprint and receive files.</p>
   <div class="group" id="phoneGroup"><h3>Pair a phone</h3><div class="opt" id="phoneBody"><div class="l muted">Loading…</div></div></div>
   <div class="group"><h3>Paired devices</h3><div id="devList"><div class="opt"><div class="l muted">No phones paired yet.</div></div></div></div>
   <div class="group"><h3>Server</h3>
-    <div class="opt"><div class="l"><b>Saarthi Cloud URL</b><small>Change only if you self-host the Saarthi server.</small></div><input class="input" data-k="serverUrl" style="width:300px"></div>
+    <div class="opt"><div class="l"><b>Cairn Cloud URL</b><small>Change only if you self-host the Cairn server.</small></div><input class="input" data-k="serverUrl" style="width:300px"></div>
   </div>
 </section>
 
@@ -91,8 +91,8 @@
   </div>
 </section>
 
-<section class="sec" id="s-about"><h1>About Saarthi</h1><p class="muted">Your browser's charioteer.</p>
-  <div class="group"><div class="opt"><div class="l"><b id="ver">Saarthi</b><small id="verD"></small></div><a class="btn" href="saarthi://about">Details</a></div></div>
+<section class="sec" id="s-about"><h1>About Cairn</h1><p class="muted">Your browser's charioteer.</p>
+  <div class="group"><div class="opt"><div class="l"><b id="ver">Cairn</b><small id="verD"></small></div><a class="btn" href="cairn://about">Details</a></div></div>
 </section>
 </main></div>
-<script src="saarthi://settings/pages/internal.js"></script><script src="saarthi://settings/pages/settings.js"></script></body></html>
+<script src="cairn://settings/pages/internal.js"></script><script src="cairn://settings/pages/settings.js"></script></body></html>

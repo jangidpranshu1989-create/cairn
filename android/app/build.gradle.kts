@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -14,20 +15,36 @@ val ksProps = Properties().apply {
     val f = rootProject.file("keystore.properties"); if (f.exists()) f.inputStream().use { load(it) }
 }
 
+// Built-in AI keys, so Cairn works right after install with no setup. Supplied at build time from
+// env vars / Gradle properties GROQ_API_KEY and NVIDIA_API_KEY (CI: repository secrets) or android/keys.properties
+// (never committed). They are XOR-masked in the APK so they don't show up in a plain `strings` dump.
+val keyProps = Properties().apply {
+    val f = rootProject.file("keys.properties"); if (f.exists()) f.inputStream().use { load(it) }
+}
+fun builtInKey(name: String): String {
+    val v = (System.getenv(name) ?: (project.findProperty(name) as String?) ?: keyProps.getProperty(name) ?: "").trim()
+    if (v.isEmpty()) return ""
+    val salt = "cairn-stones-v2".toByteArray()
+    val x = v.toByteArray().mapIndexed { i, b -> (b.toInt() xor salt[i % salt.size].toInt()).toByte() }.toByteArray()
+    return Base64.getEncoder().encodeToString(x)
+}
+
 android {
-    namespace = "app.saarthi.browser"
+    namespace = "app.cairn.browser"
     compileSdk = 35
     buildToolsVersion = "35.0.0"
 
     defaultConfig {
-        applicationId = "app.saarthi.browser"
+        applicationId = "app.cairn.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
-        // Default Saarthi Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
-        buildConfigField("String", "DEFAULT_SERVER", "\"https://api.saarthi.app\"")
-        buildConfigField("String", "SITE", "\"https://saarthi.app\"")
+        versionCode = 3
+        versionName = "2.0.0"
+        // Default Cairn Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
+        buildConfigField("String", "DEFAULT_SERVER", "\"https://api.cairn.app\"")
+        buildConfigField("String", "SITE", "\"https://cairn.app\"")
+        buildConfigField("String", "K_GROQ", "\"${builtInKey("GROQ_API_KEY")}\"")
+        buildConfigField("String", "K_NVIDIA", "\"${builtInKey("NVIDIA_API_KEY")}\"")
     }
 
     signingConfigs {
@@ -61,7 +78,6 @@ dependencies {
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.core:core-ktx:1.15.0")
@@ -76,4 +92,5 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.media:media:1.7.0")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 }

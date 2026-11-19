@@ -2,14 +2,14 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https: http: saarthi:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; media-src 'self' blob:; connect-src 'self'">
-<title>Saarthi</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https: http: cairn:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; media-src 'self' blob:; connect-src 'self'">
+<title>Cairn</title>
 <link rel="stylesheet" href="ui.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute">
   <defs>
-    <symbol id="i-logo" viewBox="0 0 32 32"><path d="M16 3 4 9.5v13L16 29l12-6.5v-13L16 3Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M10.5 19.5c1.5 1.6 3.4 2.4 5.6 2.4 3.1 0 5.2-1.5 5.2-3.7 0-4.6-10.1-2.5-10.1-6.9 0-1.9 1.9-3.3 4.8-3.3 1.9 0 3.5.6 4.8 1.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-logo" viewBox="0 0 24 24"><path fill="currentColor" d="M4.3 17.4c0-2 3.4-3.3 7.9-3.3 4.4 0 7.5 1.3 7.5 3.3 0 1.8-3 2.9-7.6 2.9-4.7 0-7.8-1.1-7.8-2.9Z"/><path fill="currentColor" d="M6.6 11c0-1.7 2.3-2.9 5.3-2.9 3 0 4.9 1.1 4.9 2.7 0 1.6-2.1 2.6-5.1 2.6-3 0-5.1-1-5.1-2.4Z"/><path fill="var(--agent)" d="M9.3 5.75c0-1.3 1.3-2.3 3.1-2.3 1.7 0 2.7.9 2.7 2.1 0 1.2-1.2 2-2.9 2-1.8 0-2.9-.7-2.9-1.8Z"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
     <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
     <symbol id="i-reload" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></symbol>
@@ -51,7 +51,7 @@
 </svg>
 
 <header id="tabbar">
-  <button class="logo" id="logoBtn" title="Saarthi menu"><svg width="20" height="20"><use href="#i-logo"/></svg></button>
+  <button class="logo" id="logoBtn" title="Cairn menu"><svg width="20" height="20"><use href="#i-logo"/></svg></button>
   <div id="tabs" role="tablist"></div>
   <button id="newtab" title="New tab (Ctrl+T)"><svg class="ic"><use href="#i-plus"/></svg></button>
 </header>
@@ -62,14 +62,14 @@
   <button class="tb" id="reload" title="Reload"><svg class="ic" id="reloadIc"><use href="#i-reload"/></svg></button>
   <div id="omni">
     <svg class="ic lock" id="lockIc" width="15" height="15"><use href="#i-search"/></svg>
-    <input id="url" spellcheck="false" autocomplete="off" placeholder="Search, type a URL, or ask Saarthi to do something…">
-    <button class="omni-act" id="askBtn" title="Ask Saarthi (Tab)"><svg class="ic" width="14" height="14"><use href="#i-spark"/></svg>Ask</button>
+    <input id="url" spellcheck="false" autocomplete="off" placeholder="Search, type a URL, or ask Cairn to do something…">
+    <button class="omni-act" id="askBtn" title="Ask Cairn (Tab)"><svg class="ic" width="14" height="14"><use href="#i-spark"/></svg>Ask</button>
     <button class="tb" id="star" title="Bookmark (Ctrl+D)" style="width:28px;height:28px"><svg class="ic" width="15" height="15"><use href="#i-star"/></svg></button>
   </div>
-  <button class="tb" id="shieldBtn" title="Saarthi Shield: ads & trackers blocked"><svg class="ic"><use href="#i-shield"/></svg><span class="badge hidden" id="shieldCount">0</span></button>
+  <button class="tb" id="shieldBtn" title="Cairn Shield: ads & trackers blocked"><svg class="ic"><use href="#i-shield"/></svg><span class="badge hidden" id="shieldCount">0</span></button>
   <button class="tb" id="toolsBtn" title="Page tools: summary, mind map, PDF, screenshot"><svg class="ic"><use href="#i-doc"/></svg></button>
   <button class="tb" id="dlBtn" title="Downloads"><svg class="ic"><use href="#i-down"/></svg><svg id="dlRing" viewBox="0 0 24 24" class="hidden"><circle cx="12" cy="12" r="11" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="69" stroke-dashoffset="69" transform="rotate(-90 12 12)"/></svg></button>
-  <button id="assistantBtn" title="Saarthi Assistant (Ctrl+K)"><svg class="ic" width="15" height="15"><use href="#i-spark"/></svg>Assistant</button>
+  <button id="assistantBtn" title="Cairn Assistant (Ctrl+K)"><svg class="ic" width="15" height="15"><use href="#i-spark"/></svg>Assistant</button>
   <button id="avatar" title="Account">?</button>
   <button class="tb" id="menuBtn" title="Menu"><svg class="ic"><use href="#i-menu"/></svg></button>
 </nav>
@@ -102,9 +102,9 @@
 <main id="main">
   <div id="pageWrap"><div id="page"></div><img id="freeze" alt=""></div>
   <div id="resizer"></div>
-  <aside id="panel" aria-label="Saarthi Assistant">
+  <aside id="panel" aria-label="Cairn Assistant">
     <div class="ph">
-      <div class="title"><svg class="mark"><use href="#i-logo"/></svg>Saarthi <span class="model" id="modelTag">AI</span></div>
+      <div class="title"><svg class="mark"><use href="#i-logo"/></svg>Cairn <span class="model" id="modelTag">AI</span></div>
       <button class="tb" id="newChat" title="New conversation"><svg class="ic"><use href="#i-new"/></svg></button>
       <button class="tb" id="closePanel" title="Close"><svg class="ic"><use href="#i-x"/></svg></button>
     </div>
@@ -118,7 +118,7 @@
     </div>
     <div id="composer">
       <div class="cbox">
-        <textarea id="input" rows="1" placeholder="Ask anything or give Saarthi a task…"></textarea>
+        <textarea id="input" rows="1" placeholder="Ask anything or give Cairn a task…"></textarea>
         <div class="crow">
           <button class="chip" id="ctxChip" title="Include current page"><svg class="ic" width="12" height="12"><use href="#i-globe"/></svg><span id="ctxLabel">This page</span></button>
           <div style="flex:1"></div>
@@ -126,7 +126,7 @@
           <button id="send" title="Send" disabled><svg class="ic"><use href="#i-send"/></svg></button>
         </div>
       </div>
-      <div class="hint">Saarthi can make mistakes. Payments always need your approval.</div>
+      <div class="hint">Cairn can make mistakes. Payments always need your approval.</div>
     </div>
   </aside>
 </main>

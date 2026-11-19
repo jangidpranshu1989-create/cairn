@@ -67,10 +67,10 @@
     const o = e.target.closest('[data-reset]')?.dataset.reset; if (!o) return;
     const sp = { ...(S.sitePermissions || {}) }; delete sp[o]; await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; renderPerms(); toast('Permissions reset');
   });
-  api('cloud:base').then(b => { $('#privacyLink').href = 'https://saarthi.app/privacy.html'; });
+  api('cloud:base').then(b => { $('#privacyLink').href = 'https://cairn.app/privacy.html'; });
 
   // downloads
-  const dl = () => $('#dlDir').textContent = S.downloadDir || 'Default Downloads folder (Saarthi files go to Downloads/Saarthi)';
+  const dl = () => $('#dlDir').textContent = S.downloadDir || 'Default Downloads folder (Cairn files go to Downloads/Cairn)';
   dl();
   $('#dlPick').onclick = async () => { const d = await api('settings:pickDir'); if (d) { await save({ downloadDir: d }); dl(); } };
 
@@ -78,8 +78,8 @@
   async function loadPhone() {
     const sess = await api('cloud:session');
     const body = $('#phoneBody');
-    if (!sess.signedIn) { body.innerHTML = `<div class="l"><b>Sign in first</b><small>Phone pairing uses your Saarthi account so approvals reach only your phone.</small></div><a class="btn primary" href="saarthi://account">Sign in</a>`; $('#devList').innerHTML = ''; return; }
-    body.innerHTML = `<div class="l"><b>Pair with QR code</b><small>Open the Saarthi app on Android → "Pair with computer", then scan the code.</small></div><button class="btn primary" id="pairBtn">Show pairing code</button>`;
+    if (!sess.signedIn) { body.innerHTML = `<div class="l"><b>Sign in first</b><small>Phone pairing uses your Cairn account so approvals reach only your phone.</small></div><a class="btn primary" href="cairn://account">Sign in</a>`; $('#devList').innerHTML = ''; return; }
+    body.innerHTML = `<div class="l"><b>Pair with QR code</b><small>Open the Cairn app on Android → "Pair with computer", then scan the code.</small></div><button class="btn primary" id="pairBtn">Show pairing code</button>`;
     $('#pairBtn').onclick = startPair;
     loadDevices();
   }
@@ -105,6 +105,6 @@
   }
 
   const info = await api('app:info');
-  $('#ver').textContent = 'Saarthi ' + info.version; $('#verD').textContent = `Chromium ${info.chrome} · Electron ${info.electron} · ${info.platform}`;
+  $('#ver').textContent = 'Cairn ' + info.version; $('#verD').textContent = `Chromium ${info.chrome} · Electron ${info.electron} · ${info.platform}`;
   show();
 })();

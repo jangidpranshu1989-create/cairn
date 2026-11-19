@@ -1,6 +1,6 @@
 // LLM access for the desktop app.
 // Mode "byok": call Groq / NVIDIA NIM directly with the user's keys (stored encrypted locally).
-// Mode "cloud": call the Saarthi server proxy (keys stay server-side, quotas per account).
+// Mode "cloud": call the Cairn server proxy (keys stay server-side, quotas per account).
 const store = require('./store');
 const cloud = require('./cloud');
 
@@ -9,12 +9,20 @@ const PROVIDERS = {
   nvidia: { base: 'https://integrate.api.nvidia.com/v1', label: 'NVIDIA NIM' },
 };
 
+const BUILTIN = (() => {
+  try {
+    const j = require('./builtin.json');
+    const un = (b) => Buffer.from([...Buffer.from(b || '', 'base64')].map((x, i) => x ^ (0x5A + i * 7) & 0xff)).toString();
+    return { groq: un(j.g), nvidia: un(j.n) };
+  } catch { return { groq: '', nvidia: '' }; }
+})();
+
 function cfg() {
   const s = store.get().settings.data;
   const v = store.get().vault.data;
   return {
-    groqKey: v.groqKey || s.groqKey || process.env.GROQ_API_KEY || '',
-    nvidiaKey: v.nvidiaKey || s.nvidiaKey || process.env.NVIDIA_API_KEY || '',
+    groqKey: v.groqKey || s.groqKey || process.env.GROQ_API_KEY || BUILTIN.groq,
+    nvidiaKey: v.nvidiaKey || s.nvidiaKey || process.env.NVIDIA_API_KEY || BUILTIN.nvidia,
     groqModel: s.groqModel, groqFastModel: s.groqFastModel,
     nvidiaModel: s.nvidiaModel, nvidiaFastModel: s.nvidiaFastModel,
     preferred: s.preferredProvider, mode: s.aiMode,

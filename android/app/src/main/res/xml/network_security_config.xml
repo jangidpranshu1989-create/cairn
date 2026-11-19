@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Saarthi is a web browser, so web pages may use plain HTTP (shown as "Not secure" and upgraded to HTTPS when possible).
+<!-- Cairn is a web browser, so web pages may use plain HTTP (shown as "Not secure" and upgraded to HTTPS when possible).
      The app's own API traffic always uses HTTPS. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true">

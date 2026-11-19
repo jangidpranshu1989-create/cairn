@@ -12,7 +12,7 @@ const upload = multer({
   storage: multer.diskStorage({ destination: dir, filename: (_r, _f, cb) => cb(null, id('f_')) }),
   limits: { fileSize: config.maxTransferBytes },
 });
-const safeFolder = (s) => String(s || 'Saarthi').replace(/[^\p{L}\p{N} _\-/]/gu, '').replace(/\.\.+/g, '').replace(/^\/+/, '').slice(0, 120) || 'Saarthi';
+const safeFolder = (s) => String(s || 'Cairn').replace(/[^\p{L}\p{N} _\-/]/gu, '').replace(/\.\.+/g, '').replace(/^\/+/, '').slice(0, 120) || 'Cairn';
 const safeName = (s) => String(s || 'file').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 180);
 
 export const transfersRouter = express.Router();

@@ -1,12 +1,12 @@
-<!-- title: Privacy Policy — Saarthi
-desc: How Saarthi handles your data: browsing data stays on your device, AI requests go only to the provider you choose, and we never sell data or show ads.
+<!-- title: Privacy Policy — Cairn
+desc: How Cairn handles your data: browsing data stays on your device, AI requests go only to the provider you choose, and we never sell data or show ads.
 -->
 <section class="page-hero">
   <div class="wrap">
     <span class="eyebrow rv">Legal</span>
     <h1 class="rv">Privacy Policy</h1>
     <p class="lead rv">The short version: your browsing stays on your device, we never sell your data, and the agent never pays without you.</p>
-    <p class="meta-line rv">Last updated {{DATE}} · Applies to the Saarthi browser, Saarthi for Android, saarthi.app and Saarthi Cloud</p>
+    <p class="meta-line rv">Last updated {{DATE}} · Applies to the Cairn browser, Cairn for Android, cairn.app and Cairn Cloud</p>
   </div>
 </section>
 
@@ -16,8 +16,8 @@ desc: How Saarthi handles your data: browsing data stays on your device, AI requ
       <a href="#summary">Summary</a>
       <a href="#device">Data on your device</a>
       <a href="#ai">AI requests</a>
-      <a href="#cloud">Saarthi Cloud account</a>
-      <a href="#phone">Saarthi for Android</a>
+      <a href="#cloud">Cairn Cloud account</a>
+      <a href="#phone">Cairn for Android</a>
       <a href="#web">This website</a>
       <a href="#sharing">Sharing</a>
       <a href="#retention">Retention</a>
@@ -29,9 +29,9 @@ desc: How Saarthi handles your data: browsing data stays on your device, AI requ
     <div class="prose">
       <h2 id="summary" style="margin-top:0">Summary</h2>
       <ul>
-        <li><strong>No ads, no data sales, no tracking pixels.</strong> Saarthi has no advertising business and does not sell or rent personal data.</li>
+        <li><strong>No ads, no data sales, no tracking pixels.</strong> Cairn has no advertising business and does not sell or rent personal data.</li>
         <li><strong>Browsing data is local.</strong> History, bookmarks, downloads, saved passwords and settings are stored on your computer.</li>
-        <li><strong>AI goes where you point it.</strong> When you use the assistant, the relevant text is sent to the AI provider you selected (Groq or NVIDIA), or through Saarthi Cloud if you use hosted AI.</li>
+        <li><strong>AI goes where you point it.</strong> When you use the assistant, the relevant text is sent to the AI provider you selected (Groq or NVIDIA), or through Cairn Cloud if you use hosted AI.</li>
         <li><strong>An account is optional.</strong> You only need one for phone pairing, payment approvals, file transfer and sync.</li>
         <li><strong>The agent cannot pay on its own.</strong> Payments always require your explicit approval.</li>
       </ul>
@@ -45,20 +45,20 @@ desc: How Saarthi handles your data: browsing data stays on your device, AI requ
           <tr><td>Saved passwords</td><td>Encrypted with your operating system's keychain (Windows DPAPI, macOS Keychain, Linux Secret Service) via Electron safeStorage</td></tr>
           <tr><td>Your Groq / NVIDIA API keys</td><td>Encrypted with the OS keychain; sent only to that provider</td></tr>
           <tr><td>Site permissions (camera, microphone, location, notifications)</td><td>Local; review and reset in Settings → Privacy</td></tr>
-          <tr><td>PDFs, screenshots and downloads</td><td>Saved to the folder you choose (default Downloads/Saarthi)</td></tr>
+          <tr><td>PDFs, screenshots and downloads</td><td>Saved to the folder you choose (default Downloads/Cairn)</td></tr>
         </tbody>
       </table>
-      <p>Websites you visit receive the same information they would from any Chromium browser. Saarthi Shield blocks known ad and tracker domains, and Saarthi can send Do Not Track and Global Privacy Control signals (on by default).</p>
+      <p>Websites you visit receive the same information they would from any Chromium browser. Cairn Shield blocks known ad and tracker domains, and Cairn can send Do Not Track and Global Privacy Control signals (on by default).</p>
 
       <h2 id="ai">AI requests</h2>
-      <p>When you ask the assistant something, Saarthi sends the information needed for that task to the AI provider. Depending on the task this can include your message, the text of the current page or a page the agent opened, a list of the page's buttons, links and form fields, a selection you made, or a voice recording for transcription.</p>
+      <p>When you ask the assistant something, Cairn sends the information needed for that task to the AI provider. Depending on the task this can include your message, the text of the current page or a page the agent opened, a list of the page's buttons, links and form fields, a selection you made, or a voice recording for transcription.</p>
       <ul>
-        <li><strong>Your own key (default):</strong> requests go directly from your computer to <a href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">Groq</a> or <a href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/" rel="noopener" target="_blank">NVIDIA</a> and are governed by their terms. Saarthi does not receive them.</li>
-        <li><strong>Saarthi Cloud AI:</strong> if you choose hosted AI, requests pass through our server to the same providers. We do not store prompts or responses; we only keep a daily request counter per account to enforce fair-use limits.</li>
+        <li><strong>Your own key (default):</strong> requests go directly from your computer to <a href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">Groq</a> or <a href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/" rel="noopener" target="_blank">NVIDIA</a> and are governed by their terms. Cairn does not receive them.</li>
+        <li><strong>Cairn Cloud AI:</strong> if you choose hosted AI, requests pass through our server to the same providers. We do not store prompts or responses; we only keep a daily request counter per account to enforce fair-use limits.</li>
         <li><strong>Password fields are never sent to AI.</strong> Values typed into password, card number, CVV and PIN fields are masked before the page is described to the AI.</li>
       </ul>
 
-      <h2 id="cloud">Saarthi Cloud account</h2>
+      <h2 id="cloud">Cairn Cloud account</h2>
       <p>If you create an account, our server stores:</p>
       <ul>
         <li>Your name and email address, and your password as a bcrypt hash (we never store or see the plain password).</li>
@@ -72,16 +72,16 @@ desc: How Saarthi handles your data: browsing data stays on your device, AI requ
       </ul>
       <p>We use this data only to provide the service — signing you in, delivering approvals and files, and preventing abuse. We send email only for account security (verification and password reset) unless you join a waitlist.</p>
 
-      <h2 id="phone">Saarthi for Android</h2>
-      <p>Saarthi for Android stores its sign-in token in the Android Keystore and keeps a connection to Saarthi Cloud so approvals arrive instantly. Biometric checks are performed by Android; we never receive fingerprints or face data. Files you accept are saved to Download/Saarthi or the folder you named. The app has no analytics or advertising SDKs.</p>
+      <h2 id="phone">Cairn for Android</h2>
+      <p>Cairn for Android stores its sign-in token in the Android Keystore and keeps a connection to Cairn Cloud so approvals arrive instantly. Biometric checks are performed by Android; we never receive fingerprints or face data. Files you accept are saved to Download/Cairn or the folder you named. The app has no analytics or advertising SDKs.</p>
 
       <h2 id="web">This website</h2>
-      <p>saarthi.app uses no cookies, no analytics and no third-party scripts. Fonts are self-hosted. If you use the contact form or the Pro waitlist, we store your name (optional), email, message and IP address (to block spam) and use them only to reply to you or tell you about Pro.</p>
+      <p>cairn.app uses no cookies, no analytics and no third-party scripts. Fonts are self-hosted. If you use the contact form or the Pro waitlist, we store your name (optional), email, message and IP address (to block spam) and use them only to reply to you or tell you about Pro.</p>
 
       <h2 id="sharing">Who we share data with</h2>
       <ul>
         <li><strong>AI providers</strong> (Groq, NVIDIA) — only the content of requests you make, as described above.</li>
-        <li><strong>Hosting and email providers</strong> that run Saarthi Cloud on our behalf, under contracts that limit use to providing the service.</li>
+        <li><strong>Hosting and email providers</strong> that run Cairn Cloud on our behalf, under contracts that limit use to providing the service.</li>
         <li><strong>Authorities</strong>, only when required by valid law and after reviewing the request.</li>
       </ul>
       <p>Online stores the agent visits for you see a normal browser visit. When you ask the agent to buy something, the checkout details you approved are submitted to that store, under that store's privacy policy.</p>
@@ -92,20 +92,20 @@ desc: How Saarthi handles your data: browsing data stays on your device, AI requ
       <h2 id="rights">Your rights and choices</h2>
       <ul>
         <li><strong>Access and export:</strong> export your passwords as CSV from Passwords; request a copy of your account data by email.</li>
-        <li><strong>Delete:</strong> delete your account from the Account page in the browser (saarthi://account), or email us.</li>
+        <li><strong>Delete:</strong> delete your account from the Account page in the browser (cairn://account), or email us.</li>
         <li><strong>Correct:</strong> email us to correct your name or email address.</li>
         <li><strong>Withdraw consent:</strong> sign out, unpair your phone, or remove your API keys at any time.</li>
       </ul>
-      <p>These rights apply to everyone, including under India's Digital Personal Data Protection Act, 2023 and the GDPR. You can also contact our Grievance Officer at <a href="mailto:privacy@saarthi.app">privacy@saarthi.app</a>; we respond within 30 days.</p>
+      <p>These rights apply to everyone, including under India's Digital Personal Data Protection Act, 2023 and the GDPR. You can also contact our Grievance Officer at <a href="mailto:privacy@cairn.app">privacy@cairn.app</a>; we respond within 30 days.</p>
 
       <h2 id="security">Security</h2>
       <p>Connections use TLS. Passwords are hashed with bcrypt, sessions use short-lived tokens with rotating refresh tokens, sign-in is rate-limited and CAPTCHA-protected, and accounts lock after repeated failures. See our <a href="security.html">Security page</a> for details and how to report a vulnerability.</p>
 
       <h2 id="children">Children</h2>
-      <p>Saarthi is not directed to children under 13, and a parent or guardian must consent for users under 18 where required by law. Purchases made with the agent are subject to the store's own age rules.</p>
+      <p>Cairn is not directed to children under 13, and a parent or guardian must consent for users under 18 where required by law. Purchases made with the agent are subject to the store's own age rules.</p>
 
       <h2 id="changes">Changes and contact</h2>
-      <p>If we materially change this policy we'll update the date above and notify account holders by email before the change takes effect. Questions: <a href="mailto:privacy@saarthi.app">privacy@saarthi.app</a> or our <a href="contact.html">contact page</a>.</p>
+      <p>If we materially change this policy we'll update the date above and notify account holders by email before the change takes effect. Questions: <a href="mailto:privacy@cairn.app">privacy@cairn.app</a> or our <a href="contact.html">contact page</a>.</p>
     </div>
   </div>
 </section>

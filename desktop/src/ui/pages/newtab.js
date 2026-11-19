@@ -5,7 +5,7 @@
     mode = m; localStorage.setItem('nt-mode', m);
     $$('.m').forEach(b => { const on = b.dataset.m === m; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
     box.classList.toggle('ask', m === 'ask');
-    q.placeholder = m === 'ask' ? 'Ask anything or give Saarthi a task…' : 'Search the web or type a URL';
+    q.placeholder = m === 'ask' ? 'Ask anything or give Cairn a task…' : 'Search the web or type a URL';
   };
   $$('.m').forEach(b => b.onclick = () => { setMode(b.dataset.m); q.focus(); });
   setMode(mode);
@@ -30,9 +30,9 @@
   $$('.idea').forEach(c => c.onclick = () => { setMode('ask'); q.value = c.textContent; grow(); q.focus(); });
 
   const defaults = [
-    { url: 'https://www.google.com', title: 'Google' }, { url: 'https://www.youtube.com', title: 'YouTube' },
     { url: 'https://www.wikipedia.org', title: 'Wikipedia' }, { url: 'https://www.amazon.in', title: 'Amazon' },
-    { url: 'https://mail.google.com', title: 'Gmail' }, { url: 'https://github.com', title: 'GitHub' },
+    { url: 'https://www.flipkart.com', title: 'Flipkart' }, { url: 'https://github.com', title: 'GitHub' },
+    { url: 'https://x.com', title: 'X' }, { url: 'https://www.linkedin.com', title: 'LinkedIn' },
     { url: 'https://www.reddit.com', title: 'Reddit' }, { url: 'https://news.ycombinator.com', title: 'Hacker News' },
   ];
   const nice = (u, t) => { const hh = host(u); const known = defaults.find(d => host(d.url) === hh); if (known) return known.title; const base = hh.split('.').slice(-2, -1)[0] || hh; return base.charAt(0).toUpperCase() + base.slice(1); };

@@ -73,4 +73,4 @@ app.use((err, _req, res, _next) => {
 
 const server = http.createServer(app);
 attachHub(server);
-server.listen(config.port, () => console.log(`Saarthi server on :${config.port} (groq=${!!config.groqKey}, nvidia=${!!config.nvidiaKey})`));
+server.listen(config.port, () => console.log(`Cairn server on :${config.port} (groq=${!!config.groqKey}, nvidia=${!!config.nvidiaKey})`));

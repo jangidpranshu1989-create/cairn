@@ -1,6 +1,6 @@
-// Saarthi website — small, dependency-free interactions.
+// Cairn website — small, dependency-free interactions.
 (() => {
-  const API = 'https://api.saarthi.app'; // Saarthi Cloud (server/), handles /api/public/contact
+  const API = 'https://api.cairn.app'; // Cairn Cloud (server/), handles /api/public/contact
   const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
   document.documentElement.classList.remove('no-js');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -58,7 +58,7 @@
   $$('[data-os-name]').forEach(el => el.textContent = names[os]);
   $$('[data-os-link]').forEach(a => { const t = $(`.dl[data-os="${os === 'ios' ? 'win' : os}"] .files a`); if (t) a.href = t.href; });
 
-  // Forms → Saarthi Cloud (falls back to email if the server is unreachable)
+  // Forms → Cairn Cloud (falls back to email if the server is unreachable)
   $$('form[data-api]').forEach(f => {
     const msg = $('.form-msg', f), btn = $('button[type=submit]', f);
     f.addEventListener('submit', async (e) => {
@@ -74,8 +74,8 @@
       } catch (err) {
         msg.className = 'form-msg err';
         if (err.user) msg.textContent = err.message;
-        else { const sub = encodeURIComponent(f.dataset.api === 'waitlist' ? 'Saarthi Pro waitlist' : 'Saarthi: ' + (data.topic || 'Hello')); const body = encodeURIComponent(data.message || 'Please add me to the Pro waitlist.');
-          msg.innerHTML = `Could not reach our server. <a class="tlink" href="mailto:hello@saarthi.app?subject=${sub}&body=${body}">Email us instead</a>`; }
+        else { const sub = encodeURIComponent(f.dataset.api === 'waitlist' ? 'Cairn Pro waitlist' : 'Cairn: ' + (data.topic || 'Hello')); const body = encodeURIComponent(data.message || 'Please add me to the Pro waitlist.');
+          msg.innerHTML = `Could not reach our server. <a class="tlink" href="mailto:hello@cairn.app?subject=${sub}&body=${body}">Email us instead</a>`; }
       } finally { btn.disabled = false; btn.innerHTML = label; }
     });
   });

@@ -90,7 +90,7 @@ authRouter.post('/signup', authLimiter, async (req, res) => {
     .run(uid, email, name, await bcrypt.hash(password, 12), now());
   audit(uid, 'signup');
   const verifyToken = jwt.sign({ sub: uid, purpose: 'verify' }, config.jwtSecret, { expiresIn: '2d' });
-  sendMail(email, 'Verify your Saarthi account', `Welcome to Saarthi.\n\nVerify your email: ${config.publicUrl}/api/auth/verify?t=${verifyToken}`).catch(() => {});
+  sendMail(email, 'Verify your Cairn account', `Welcome to Cairn.\n\nVerify your email: ${config.publicUrl}/api/auth/verify?t=${verifyToken}`).catch(() => {});
   const user = db.prepare('SELECT * FROM users WHERE id=?').get(uid);
   res.json({ user: publicUser(user), ...issueTokens(uid, { userAgent: req.get('user-agent'), ip: req.ip }) });
 });
@@ -175,7 +175,7 @@ authRouter.post('/forgot', authLimiter, async (req, res) => {
     if (u) {
       const token = crypto.randomBytes(32).toString('base64url');
       db.prepare('INSERT INTO reset_tokens (token_hash, user_id, expires_at) VALUES (?,?,?)').run(sha256(token), u.id, now() + 30 * 60_000);
-      await sendMail(email.data, 'Reset your Saarthi password', `Reset your password (valid 30 minutes): ${config.publicUrl}/reset.html?t=${token}`).catch(() => {});
+      await sendMail(email.data, 'Reset your Cairn password', `Reset your password (valid 30 minutes): ${config.publicUrl}/reset.html?t=${token}`).catch(() => {});
     }
   }
   res.json({ ok: true }); // never reveal whether an email exists

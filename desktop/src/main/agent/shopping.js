@@ -37,8 +37,30 @@ function extractListingsFn(linkPattern, storeId) {
   const emiCtx = (el) => /\/mo|per month|month|emi|\bno cost\b|save|off|cashback|bank offer|exchange/i.test((el.parentElement?.innerText || '').slice(0, 80));
   const rating = (t) => { const m = t.match(/\b([1-5](?:\.\d)?)\s*(?:out of 5|★|stars?|\s*\(\s*[\d,]+\s*\))/i); const v = m ? Number(m[1]) : null; return v && v >= 1 && v <= 5 ? v : null; };
   const JUNK = /unavailable|visit nearest|add to (cart|bag|compare)|buy now|notify me|out of stock|bank offer|no cost emi|free delivery|sponsored|compare|exchange offer|coming soon|bestseller|only \d+ left/i;
-  const bestImg = (card) => [...card.querySelectorAll('img')].filter(i => !/\.svg(\?|$)|data:image\/svg|sprite|icon|star|logo|badge/i.test(i.currentSrc || i.src) && ((i.naturalWidth || i.width || Number(i.getAttribute('width')) || 100) >= 60) && (i.currentSrc || i.src || i.dataset.src))
-    .sort((a, b) => (b.naturalWidth || b.width) - (a.naturalWidth || a.width))[0];
+  // Every plausible URL for an <img>: srcset / lazy-load attributes / <picture> sources / <noscript> copies, largest first.
+  const imgUrls = (i) => {
+    if (!i) return [];
+    const c = [];
+    const bad = /^data:|blank|spacer|placeholder|transparent|1x1|pixel\.|loader|lazy[-_.]?(load|img)?\.(gif|png|svg)|\.svg(\?|$)/i;
+    const push = (u, w) => { if (!u || bad.test(u)) return; try { c.push({ u: new URL(u.trim(), location.href).href, w }); } catch (e) {} };
+    const set = (s) => (s || '').split(/,\s+(?=\S)/).forEach(p => { const [u, d] = p.trim().split(/\s+/); const n = parseFloat(d) || 1; push(u, /x$/i.test(d || '') ? n * 300 : n); });
+    set(i.getAttribute('srcset')); set(i.getAttribute('data-srcset')); set(i.getAttribute('data-lazy-srcset'));
+    i.closest('picture')?.querySelectorAll('source').forEach(s => { if (!/avif/i.test(s.type || '')) { set(s.getAttribute('srcset')); set(s.getAttribute('data-srcset')); } });
+    ['data-src', 'data-original', 'data-lazy-src', 'data-lazy', 'data-image', 'data-img', 'data-zoom-image', 'data-hires', 'data-old-hires', 'data-a-hires'].forEach(a => push(i.getAttribute(a), 600));
+    try { const dyn = JSON.parse(i.getAttribute('data-a-dynamic-image') || '{}'); Object.entries(dyn).forEach(([u, d]) => push(u, (d && d[0]) || 500)); } catch (e) {}
+    if (i.complete && i.naturalWidth > 1) push(i.currentSrc || i.src, i.naturalWidth); else push(i.getAttribute('src'), 200);
+    const ok = c.filter(x => x.w >= 240 && x.w <= 1400).sort((a, b) => a.w - b.w);       // smallest that is still sharp
+    const rest = c.filter(x => !ok.includes(x)).sort((a, b) => b.w - a.w);
+    return [...ok, ...rest].map(x => x.u).filter((u, k, a) => a.indexOf(u) === k).slice(0, 4);
+  };
+  const cardImages = (card) => {
+    const imgs = [...card.querySelectorAll('img')].filter(i => !/sprite|icon|star|logo|badge|rating|flag/i.test((i.className || '') + ' ' + (i.getAttribute('src') || '') + ' ' + (i.alt || '')) && (i.getBoundingClientRect().width || Number(i.getAttribute('width')) || 100) >= 50);
+    imgs.sort((a, b) => (b.getBoundingClientRect().width * b.getBoundingClientRect().height) - (a.getBoundingClientRect().width * a.getBoundingClientRect().height));
+    let urls = imgs.flatMap(imgUrls);
+    if (!urls.length) card.querySelectorAll('noscript').forEach(n => { const m = n.textContent.match(/src=["']([^"']+)/); if (m) urls.push(new URL(m[1], location.href).href); });
+    if (!urls.length) card.querySelectorAll('[style*="background-image"]').forEach(e => { const m = e.style.backgroundImage.match(/url\(["']?([^"')]+)/); if (m && !/^data:/.test(m[1])) urls.push(new URL(m[1], location.href).href); });
+    return { img: imgs[0], urls: urls.filter((u, k, a) => a.indexOf(u) === k).slice(0, 4) };
+  };
   const reviews = (t) => { const m = t.match(/([\d,]{2,})\s*(?:ratings|reviews|rating)/i) || t.match(/\((\d[\d,]*)\)/); return m ? num(m[1]) : null; };
 
   if (storeId === 'amazon') {
@@ -51,7 +73,7 @@ function extractListingsFn(linkPattern, storeId) {
       out.push({ title, url: new URL(a.getAttribute('href'), location.href).href, price: num(price.match(money)?.[1] || 0), mrp: mrp ? num(mrp.match(money)?.[1] || 0) : null,
         rating: rating(card.querySelector('.a-icon-alt')?.textContent || ''), reviews: num((card.querySelector('[aria-label$="ratings"], span.s-underline-text')?.textContent || '').replace(/[^\d]/g, '')) || null,
         sponsored: !!card.querySelector('.puis-sponsored-label-text, [aria-label="View Sponsored information or leave ad feedback"]'),
-        image: card.querySelector('img.s-image')?.src || '' });
+        ...(() => { const u = imgUrls(card.querySelector('img.s-image')); return { image: u[0] || '', images: u }; })() });
     });
     return out.slice(0, 16);
   }
@@ -77,7 +99,7 @@ function extractListingsFn(linkPattern, storeId) {
       if (size > bestSize || (size === bestSize && v < best)) { bestSize = size; best = v; }
     }
     if (!best) { const m = (card.innerText || '').match(money); if (m) best = num(m[1]); }
-    const img = bestImg(card);
+    const { img, urls: imgs } = cardImages(card);
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const ok = (s) => s.length > 12 && s.length < 220 && !money.test(s) && !JUNK.test(s);
     const strong = [a.getAttribute('title'), a.getAttribute('aria-label'), card.querySelector('h1,h2,h3,h4,[class*=title i],[class*=name i]')?.textContent, img?.alt].map(clean).filter(ok);
@@ -85,7 +107,7 @@ function extractListingsFn(linkPattern, storeId) {
     const title = strong.sort((x, y) => y.length - x.length)[0] || weak.sort((x, y) => y.length - x.length)[0];
     if (!title || !best) continue;
     const t = card.innerText || '';
-    out.push({ title, url: href, price: best, mrp: mrp && mrp > best ? mrp : null, rating: rating(t), reviews: reviews(t), sponsored: /sponsored|\bad\b/i.test(t.slice(0, 60)), image: img?.currentSrc || img?.src || img?.dataset.src || '' });
+    out.push({ title, url: href, price: best, mrp: mrp && mrp > best ? mrp : null, rating: rating(t), reviews: reviews(t), sponsored: /sponsored|\bad\b/i.test(t.slice(0, 60)), image: imgs[0] || '', images: imgs });
     if (out.length >= 16) break;
   }
   return out;
@@ -168,7 +190,7 @@ async function compare(query, { country = 'IN', onProgress = () => {}, signal, m
     return r;
   })));
   let all = settled.flatMap(r => r.items);
-  if (process.env.SAARTHI_DEBUG_SHOP) for (const x of all) console.log('RAW', x.store, x.price, x.title.slice(0, 80));
+  if (process.env.CAIRN_DEBUG_SHOP) for (const x of all) console.log('RAW', x.store, x.price, x.title.slice(0, 80));
   const pre = heuristicFilter(query, all);
   if (pre.length >= 2 || (pre.length && all.length < 6)) all = pre;
   if (!all.length) return { query, results: [], stores: settled.map(r => ({ name: r.store.name, count: 0, error: r.error })) };

@@ -6,7 +6,7 @@ import { config } from './config.js';
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(path.join(config.dataDir, 'transfers'), { recursive: true });
 
-export const db = new Database(path.join(config.dataDir, 'saarthi.db'));
+export const db = new Database(path.join(config.dataDir, 'cairn.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS transfers (
   filename TEXT NOT NULL,
   mime TEXT NOT NULL,
   size INTEGER NOT NULL,
-  target_folder TEXT NOT NULL DEFAULT 'Saarthi',
+  target_folder TEXT NOT NULL DEFAULT 'Cairn',
   status TEXT NOT NULL DEFAULT 'pending', -- pending | delivered
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL

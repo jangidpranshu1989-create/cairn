@@ -1,0 +1,420 @@
+package app.cairn.browser.ui
+
+import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.graphics.applyCanvas
+import app.cairn.browser.agent.Agent
+import app.cairn.browser.agent.PageJs
+import app.cairn.browser.agent.PageTools
+import app.cairn.browser.browser.Browser
+import app.cairn.browser.browser.NTP
+import app.cairn.browser.browser.Tab
+import app.cairn.browser.data.Prefs
+import app.cairn.browser.data.Search
+import app.cairn.browser.service.Voice
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+
+// ============================================================ Motion
+/** One spring for the whole app, so every surface moves with the same physical feel. */
+fun <T> cairnSpring(stiff: Float = 420f, damp: Float = 0.86f) = spring<T>(dampingRatio = damp, stiffness = stiff)
+
+/** Scales down slightly while pressed; used on every tappable surface in the chrome. */
+fun Modifier.pressScale(pressed: Boolean): Modifier = composed {
+    val s by animateFloatAsState(if (pressed) 0.94f else 1f, cairnSpring(900f, 0.6f), label = "press")
+    this.scale(s)
+}
+
+/** Shimmer used by skeleton loaders. */
+fun Modifier.shimmer(corner: androidx.compose.ui.unit.Dp = 8.dp): Modifier = composed {
+    val t = rememberInfiniteTransition(label = "shimmer")
+    val x by t.animateFloat(-1f, 2f, infiniteRepeatable(tween(1300, easing = LinearEasing)), label = "x")
+    val base = C.surface2; val hi = C.surface3
+    this.clip(RoundedCornerShape(corner)).drawBehind {
+        drawRect(base)
+        val w = size.width
+        drawRect(Brush.linearGradient(listOf(Color.Transparent, hi.copy(alpha = .9f), Color.Transparent), start = Offset(w * x - w * .5f, 0f), end = Offset(w * x, size.height)))
+    }
+}
+
+// ============================================================ Glass (backdrop blur over the live page)
+/**
+ * WebView pixels can't be blurred by Compose (they are drawn by Chromium's compositor), so the dock samples the strip of
+ * page directly behind it at 1/8 scale, blurs it on the CPU (two box-blur passes — a few hundred pixels, sub-millisecond)
+ * and draws that under a translucent tint. It refreshes only when the page scrolls or loads.
+ */
+object Backdrop {
+    var image by mutableStateOf<ImageBitmap?>(null); private set
+    var tick by mutableIntStateOf(0)
+    private var last = 0L
+
+    fun sample(t: Tab?, top: Float, height: Float) {
+        val w = t?.web ?: run { image = null; return }
+        if (t.isNtp || w.width <= 0 || height <= 0f) { image = null; return }
+        val now = android.os.SystemClock.uptimeMillis(); if (now - last < 120) return; last = now
+        runCatching {
+            val s = 1f / 8f
+            val bw = (w.width * s).roundToInt().coerceAtLeast(4); val bh = (height * s).roundToInt().coerceAtLeast(4)
+            val b = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+            b.applyCanvas { scale(s, s); translate(-w.scrollX.toFloat(), -(w.scrollY.toFloat() + top)); w.draw(this) }
+            if (!uniform(b)) { blur(b, 3); blur(b, 3); image = b.asImageBitmap() } else image = null
+        }
+    }
+    private fun uniform(b: Bitmap): Boolean { val p = b.getPixel(0, 0); return (0 until 8).all { b.getPixel((b.width - 1) * it / 7, (b.height - 1) * (it % 2)) == p } }
+    private fun blur(b: Bitmap, r: Int) {
+        val w = b.width; val h = b.height; val px = IntArray(w * h); b.getPixels(px, 0, w, 0, 0, w, h); val out = IntArray(w * h)
+        fun pass(src: IntArray, dst: IntArray, horiz: Boolean) {
+            val n = if (horiz) w else h; val m = if (horiz) h else w
+            for (j in 0 until m) for (i in 0 until n) {
+                var ra = 0; var ga = 0; var ba = 0; var c = 0
+                for (k in -r..r) { val ii = (i + k).coerceIn(0, n - 1); val p = src[if (horiz) j * w + ii else ii * w + j]; ra += (p shr 16) and 255; ga += (p shr 8) and 255; ba += p and 255; c++ }
+                dst[if (horiz) j * w + i else i * w + j] = (0xFF shl 24) or ((ra / c) shl 16) or ((ga / c) shl 8) or (ba / c)
+            }
+        }
+        pass(px, out, true); pass(out, px, false); b.setPixels(px, 0, w, 0, 0, w, h)
+    }
+}
+
+/** Glass surface: blurred page behind + tint + a hairline that is brighter at the top edge (light catching glass). */
+@Composable
+fun Glass(modifier: Modifier, corner: androidx.compose.ui.unit.Dp, sampled: Boolean, content: @Composable BoxScope.() -> Unit) {
+    val shape = RoundedCornerShape(corner)
+    Box(modifier.shadow2(corner).clip(shape)
+        .background(if (sampled && Backdrop.image != null) C.glass else C.surface)
+        .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = if (C.dark) .13f else .55f), Color.White.copy(alpha = if (C.dark) .03f else .15f))), shape)) {
+        if (sampled) Backdrop.image?.let { Image(it, null, Modifier.matchParentSize(), contentScale = ContentScale.FillBounds, alpha = .9f) }
+        if (sampled && Backdrop.image != null) Box(Modifier.matchParentSize().background(C.glass))
+        content()
+    }
+}
+private fun Modifier.shadow2(corner: androidx.compose.ui.unit.Dp) = this.drawBehind {
+    val r = corner.toPx()
+    for (i in 1..4) drawRoundRect(Color.Black.copy(alpha = 0.05f), topLeft = Offset(0f, i * 1.5f), size = size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(r + i, r + i))
+}
+
+// ============================================================ Dock
+@Composable
+fun Dock(tab: Tab?, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    var top by remember { mutableFloatStateOf(0f) }
+    var h by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(tab, Backdrop.tick, tab?.progress, top) { delay(16); Backdrop.sample(tab, top, h) }
+    LaunchedEffect(tab) { while (true) { delay(900); Backdrop.sample(tab, top, h) } }
+    Glass(modifier.padding(horizontal = 10.dp).fillMaxWidth().height(60.dp).onGloballyPositioned { c ->
+        val webTop = IntArray(2).also { runCatching { act.webHost.getLocationInWindow(it) } }[1]
+        top = c.positionInWindow().y - webTop; h = c.size.height.toFloat()
+    }, 22.dp, sampled = tab != null && !tab.isNtp) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            AddressCapsule(tab, Modifier.weight(1f))
+            Spacer(Modifier.width(4.dp))
+            AgentStone()
+            TabsTile(tab)
+            IconBtn(Ic.MoreVert, "Menu", size = 44.dp) { Haptics.tick(); Ui.menu = true }
+        }
+    }
+}
+
+@Composable
+fun AddressCapsule(tab: Tab?, modifier: Modifier) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var drag by remember { mutableFloatStateOf(0f) }
+    val swipe = with(LocalDensity.current) { 64.dp.toPx() }
+    val dx by animateFloatAsState(drag * .35f, cairnSpring(), label = "dx")
+    Box(modifier.height(44.dp).clip(RoundedCornerShape(15.dp)).background(if (tab?.incognito == true) C.surface3 else C.surface2.copy(alpha = .72f))
+        .pointerInput(tab) {
+            detectHorizontalDragGestures(onDragEnd = {
+                val list = Browser.tabs.filter { it.incognito == tab?.incognito }; val i = list.indexOf(tab)
+                val next = if (drag < -swipe) list.getOrNull(i + 1) else if (drag > swipe) list.getOrNull(i - 1) else null
+                if (next != null) { Haptics.gesture(); Browser.select(next) }
+                drag = 0f
+            }) { _, d -> drag += d }
+        }
+        .combinedClickableCompat(onClick = { Ui.omniboxText = null; Ui.omnibox = true }, onLongClick = { tab?.takeIf { !it.isNtp }?.let { Haptics.long(); copyText(ctx, "Link", it.url); act.toast("Link copied") } })) {
+        Row(Modifier.fillMaxSize().offset { IntOffset(dx.roundToInt(), 0) }.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (tab == null || tab.isNtp) {
+                Icon(Ic.Search, null, Modifier.size(16.dp), tint = C.faint); Spacer(Modifier.width(9.dp))
+                Text(if (tab?.incognito == true) "Search privately" else "Search or ask", color = C.faint, fontSize = 15.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                IconBtn(Ic.Mic, "Voice search", size = 36.dp, tint = C.muted) { act.listen { t -> Browser.open(t) } }
+            } else {
+                val q = Search.queryOf(tab.url)
+                Box(Modifier.size(26.dp).clip(CircleShape).clickable { Ui.siteInfo = true }, contentAlignment = Alignment.Center) {
+                    when {
+                        tab.sensitive -> Icon(Ic.GppGood, "Cairn Guard is active", Modifier.size(15.dp), tint = C.ok)
+                        q != null -> Icon(Ic.Search, null, Modifier.size(15.dp), tint = C.muted)
+                        !tab.secure -> Icon(Ic.Info, "Not secure", Modifier.size(15.dp), tint = C.warn)
+                        else -> Favicon(tab.url, tab.icon, 16.dp, 4.dp)
+                    }
+                }
+                Spacer(Modifier.width(7.dp))
+                Text(q ?: tab.host.removePrefix("www.").ifBlank { tab.url }, color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                tab.translated?.let { Text(it.take(2).uppercase(), color = C.agent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(end = 4.dp).border(1.dp, C.agent.copy(alpha = .5f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) }
+                IconBtn(if (tab.loading) Ic.Close else Ic.Refresh, if (tab.loading) "Stop" else "Reload", size = 36.dp, tint = C.muted) { Haptics.tick(); if (tab.loading) Browser.stop(tab) else Browser.reload(tab) }
+            }
+        }
+        // Progress hairline along the bottom of the capsule
+        val p by animateFloatAsState(if (tab?.loading == true) tab.progress / 100f else 1f, tween(240), label = "p")
+        val alpha by animateFloatAsState(if (tab?.loading == true) 1f else 0f, tween(if (tab?.loading == true) 80 else 420), label = "pa")
+        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(p.coerceAtLeast(.04f)).height(2.dp).background((if (Agent.controlling == tab && tab != null) C.agent else C.text).copy(alpha = .8f * alpha)))
+    }
+}
+
+/** The Cairn stone: opens the agent; long-press starts Circle-to-Act. Spins a sandstone arc while the agent works. */
+@Composable
+fun AgentStone() {
+    val t = rememberInfiniteTransition(label = "stone")
+    val rot by t.animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "rot")
+    val col = C.agent
+    Box(Modifier.size(44.dp).clip(CircleShape).combinedClickableCompat(onClick = { Haptics.tick(); Ui.assistant = true }, onLongClick = { Haptics.long(); startLasso() }),
+        contentAlignment = Alignment.Center) {
+        if (Agent.running) Canvas(Modifier.size(36.dp).rotate(rot)) { drawArc(col, 0f, 110f, false, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round)) }
+        Logo(22.dp, lift = if (Agent.running) 1f else 0f)
+    }
+}
+
+fun startLasso() {
+    val t = Browser.current
+    if (t == null || t.isNtp || t.web == null) { act.toast("Open a page to circle something on it"); return }
+    Ui.assistant = false; Ui.lasso = true
+}
+
+@Composable
+fun TabsTile(tab: Tab?) {
+    val n = if (tab?.incognito == true) Browser.privateTabs().size else Browser.normalTabs().size
+    Box(Modifier.size(44.dp).clip(CircleShape).combinedClickableCompat(onClick = { Haptics.tick(); Browser.current?.let { Browser.capture(it) }; Ui.tabSwitcher = true },
+        onLongClick = { Haptics.long(); Browser.newTab(NTP, tab?.incognito == true); Ui.omnibox = true }), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(22.dp).clip(RoundedCornerShape(7.dp)).border(1.6.dp, C.text, RoundedCornerShape(7.dp)).background(if (tab?.incognito == true) C.surface3 else Color.Transparent), contentAlignment = Alignment.Center) {
+            AnimatedContent(n, transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) }, label = "n") { v ->
+                Text(if (v > 99) "∞" else v.toString(), color = C.text, fontSize = if (v > 9) 10.sp else 11.5.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+// ============================================================ Guard badge
+@Composable
+fun GuardBadge(visible: Boolean, modifier: Modifier = Modifier) {
+    AnimatedVisibility(visible, modifier, enter = fadeIn(tween(180)) + scaleIn(cairnSpring(), initialScale = .9f), exit = fadeOut(tween(160)) + scaleOut(targetScale = .9f)) {
+        Row(Modifier.clip(RoundedCornerShape(14.dp)).background(C.ok.copy(alpha = if (C.dark) .16f else .12f)).border(1.dp, C.ok.copy(alpha = .35f), RoundedCornerShape(14.dp))
+            .clickable { act.toast("Cairn never reads or types passwords, PINs, OTPs or card numbers. They're masked from the AI.") }.padding(horizontal = 11.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(Ic.GppGood, null, Modifier.size(14.dp), tint = C.ok); Spacer(Modifier.width(6.dp))
+            Text("Cairn Guard Active — Passwords & PINs Masked", color = C.ok, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        }
+    }
+}
+
+// ============================================================ Agent status (sheet closed)
+@Composable
+fun AgentStatus(modifier: Modifier = Modifier) {
+    AnimatedVisibility(Agent.running && !Ui.assistant, modifier, enter = fadeIn() + slideInVertically(cairnSpring()) { it / 2 }, exit = fadeOut() + slideOutVertically { it / 2 }) {
+        Glass(Modifier.padding(horizontal = 24.dp).height(42.dp), 21.dp, sampled = false) {
+            Row(Modifier.fillMaxHeight().clickable { Ui.assistant = true }.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                AgentDots(); Spacer(Modifier.width(10.dp))
+                AnimatedContent(Agent.status.ifBlank { "Working…" }, transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) }, label = "st") { s ->
+                    Text(s, color = C.text, fontSize = 13.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 220.dp))
+                }
+                Spacer(Modifier.width(4.dp))
+                Box(Modifier.height(30.dp).clip(RoundedCornerShape(15.dp)).clickable { Haptics.reject(); Agent.stop() }.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                    Text("Stop", color = C.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+    }
+}
+
+/** Three stones breathing in sequence — Cairn's "working" indicator. */
+@Composable
+fun AgentDots(color: Color = C.agent) {
+    val t = rememberInfiniteTransition(label = "dots")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        repeat(3) { i ->
+            val a by t.animateFloat(.25f, 1f, infiniteRepeatable(keyframes { durationMillis = 900; .25f at 0; 1f at 300 + i * 0; .25f at 900 }, initialStartOffset = StartOffset(i * 150)), label = "d$i")
+            Box(Modifier.padding(horizontal = 1.5.dp).size(5.dp).clip(CircleShape).background(color.copy(alpha = a)))
+        }
+    }
+}
+
+// ============================================================ Live mini-preview (PiP) of background agent pages
+@Composable
+fun LivePreview(modifier: Modifier = Modifier) {
+    val pages = PageTools.live
+    val show = pages.isNotEmpty() && Ui.pip && Prefs.agentLivePreview
+    var idx by remember { mutableIntStateOf(0) }
+    var frame by remember { mutableStateOf<ImageBitmap?>(null) }
+    var off by remember { mutableStateOf(Offset.Zero) }
+    LaunchedEffect(show, pages.size) {
+        while (show && pages.isNotEmpty()) {
+            val p = pages.getOrNull(idx % pages.size) ?: break
+            val w = p.web
+            frame = runCatching {
+                if (w.width <= 0) null else {
+                    val s = 260f / w.width
+                    Bitmap.createBitmap(260, (w.height * s).roundToInt().coerceAtMost(420).coerceAtLeast(1), Bitmap.Config.ARGB_8888).applyCanvas {
+                        scale(s, s); translate(-w.scrollX.toFloat(), -w.scrollY.toFloat()); w.draw(this)
+                    }.asImageBitmap()
+                }
+            }.getOrNull() ?: frame
+            delay(450)
+        }
+    }
+    AnimatedVisibility(show, modifier.offset { IntOffset(off.x.roundToInt(), off.y.roundToInt()) }, enter = fadeIn() + scaleIn(cairnSpring(), initialScale = .7f, transformOrigin = TransformOrigin(1f, 1f)), exit = fadeOut() + scaleOut(targetScale = .7f, transformOrigin = TransformOrigin(1f, 1f))) {
+        Column(Modifier.width(132.dp).clip(RoundedCornerShape(16.dp)).background(C.surface).border(1.dp, C.agent.copy(alpha = .45f), RoundedCornerShape(16.dp))
+            .pointerInput(Unit) { detectDragGestures { c, d -> c.consume(); off += d } }
+            .clickable { if (pages.size > 1) idx = (idx + 1) % pages.size else Ui.assistant = true }) {
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 2.dp).height(26.dp), verticalAlignment = Alignment.CenterVertically) {
+                AgentDots(); Spacer(Modifier.width(6.dp))
+                val p = pages.getOrNull(idx % pages.size.coerceAtLeast(1))
+                Text(p?.label ?: "", color = C.text, fontSize = 10.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (pages.size > 1) Text("${idx % pages.size + 1}/${pages.size}", color = C.faint, fontSize = 9.5.sp)
+                Box(Modifier.size(22.dp).clip(CircleShape).clickable { Ui.pip = false }, contentAlignment = Alignment.Center) { Icon(Ic.Close, "Hide preview", Modifier.size(12.dp), tint = C.faint) }
+            }
+            Box(Modifier.fillMaxWidth().height(170.dp).background(Color.White)) {
+                frame?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = Alignment.TopCenter) } ?: Box(Modifier.fillMaxSize().shimmer(0.dp))
+            }
+        }
+    }
+}
+
+// ============================================================ Voice
+@Composable
+fun VoiceOverlay() {
+    val on = Voice.phase != Voice.Phase.Idle
+    AnimatedVisibility(on, enter = fadeIn(tween(160)), exit = fadeOut(tween(160))) {
+        BackHandler { Voice.cancel() }
+        Box(Modifier.fillMaxSize().background(C.scrim).clickable { Voice.finish() }, contentAlignment = Alignment.BottomCenter) {
+            Column(Modifier.padding(16.dp).navigationBarsPadding().fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(C.surface).padding(vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                val lvl by animateFloatAsState(Voice.level, cairnSpring(600f, .7f), label = "lvl")
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
+                    Box(Modifier.size((64 + 52 * lvl).dp).clip(CircleShape).background(C.agent.copy(alpha = .14f)))
+                    Box(Modifier.size((64 + 26 * lvl).dp).clip(CircleShape).background(C.agent.copy(alpha = .22f)))
+                    Box(Modifier.size(64.dp).clip(CircleShape).background(C.agent), contentAlignment = Alignment.Center) {
+                        if (Voice.phase == Voice.Phase.Transcribing) AgentDots(C.accentInk) else Icon(Ic.Mic, null, Modifier.size(26.dp), tint = Color(0xFF1C1C1F))
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(if (Voice.phase == Voice.Phase.Transcribing) "Transcribing…" else "Listening", color = C.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(if (Voice.phase == Voice.Phase.Transcribing) "One moment" else "Speak in any language · tap to finish", color = C.faint, fontSize = 13.sp)
+                Spacer(Modifier.height(18.dp))
+                Text("Cancel", color = C.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { Voice.cancel() }.padding(horizontal = 18.dp, vertical = 8.dp))
+            }
+        }
+    }
+}
+
+// ============================================================ Circle to Act
+@Composable
+fun LassoOverlay() {
+    if (!Ui.lasso) return
+    val tab = Browser.current ?: run { Ui.lasso = false; return }
+    val w = tab.web ?: run { Ui.lasso = false; return }
+    val scope = rememberCoroutineScope()
+    val path = remember { mutableStateListOf<Offset>() }
+    var done by remember { mutableStateOf<Rect?>(null) }
+    var crop by remember { mutableStateOf<Bitmap?>(null) }
+    var region by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val dash = remember { PathEffect.dashPathEffect(floatArrayOf(18f, 12f)) }
+    val t = rememberInfiniteTransition(label = "lasso")
+    val phase by t.animateFloat(0f, 60f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "ph")
+    val col = C.agent
+    BackHandler { Ui.lasso = false }
+    fun close() { Ui.lasso = false; path.clear(); done = null; crop = null }
+    fun act(prompt: String?) {
+        val b = crop ?: return; val r = region
+        val links = r?.optJSONArray("links")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
+        close(); Ui.assistant = true
+        Agent.lasso(b, r?.optString("text").orEmpty(), links, prompt)
+    }
+    Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow() }) {
+        Canvas(Modifier.fillMaxSize().pointerInput(Unit) {
+            detectDragGestures(onDragStart = { path.clear(); done = null; path.add(it); Haptics.gesture() }, onDragEnd = {
+                if (path.size < 6) { path.clear(); return@detectDragGestures }
+                val r = Rect(path.minOf { it.x }, path.minOf { it.y }, path.maxOf { it.x }, path.maxOf { it.y })
+                done = r; Haptics.confirm()
+                scope.launch {
+                    // Exact screen pixels of the selection + the DOM text underneath it
+                    val loc = IntArray(2); w.getLocationInWindow(loc)
+                    val left = (r.left + origin.x).roundToInt().coerceAtLeast(loc[0]); val topPx = (r.top + origin.y).roundToInt().coerceAtLeast(loc[1])
+                    val bw = r.width.roundToInt().coerceAtLeast(8); val bh = r.height.roundToInt().coerceAtLeast(8)
+                    val bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+                    val ok = kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { c ->
+                        runCatching { android.view.PixelCopy.request(act.window, android.graphics.Rect(left, topPx, left + bw, topPx + bh), bmp, { res -> c.resumeWith(Result.success(res == android.view.PixelCopy.SUCCESS)) }, android.os.Handler(android.os.Looper.getMainLooper())) }
+                            .onFailure { c.resumeWith(Result.success(false)) }
+                    }
+                    crop = if (ok) bmp else null
+                    val m = PageJs.obj(w, "metrics()"); val sc = (m?.optDouble("w", 0.0)?.takeIf { it > 0 } ?: (w.width / w.resources.displayMetrics.density.toDouble())) / w.width
+                    val x = (left - loc[0]) * sc; val y = (topPx - loc[1]) * sc
+                    region = PageJs.obj(w, "region($x, $y, ${bw * sc}, ${bh * sc})")
+                    if (crop == null) crop = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).applyCanvas { translate(-(left - loc[0]).toFloat(), -(topPx - loc[1]).toFloat()); w.draw(this) }
+                }
+            }) { c, _ -> c.consume(); path.add(c.position) }
+        }) {
+            drawRect(Color.Black.copy(alpha = .38f))
+            if (path.size > 1) {
+                val p = Path().apply { moveTo(path[0].x, path[0].y); path.drop(1).forEach { lineTo(it.x, it.y) }; if (done != null) close() }
+                if (done != null) drawPath(p, Color.White.copy(alpha = .10f))
+                drawPath(p, col, style = Stroke(4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = if (done != null) PathEffect.dashPathEffect(floatArrayOf(18f, 12f), phase) else null))
+            }
+        }
+        // Header hint
+        Row(Modifier.align(Alignment.TopCenter).padding(top = 14.dp).clip(RoundedCornerShape(18.dp)).background(C.surface).padding(start = 14.dp, end = 4.dp).height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Ic.Lasso, null, Modifier.size(16.dp), tint = C.agent); Spacer(Modifier.width(8.dp))
+            Text(if (done == null) "Circle anything to ask Cairn" else "What should Cairn do?", color = C.text, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width(4.dp))
+            Box(Modifier.size(30.dp).clip(CircleShape).clickable { close() }, contentAlignment = Alignment.Center) { Icon(Ic.Close, "Cancel", Modifier.size(16.dp), tint = C.muted) }
+        }
+        done?.let { r ->
+            val d = LocalDensity.current
+            val y = with(d) { (r.bottom + 12.dp.toPx()).coerceAtMost(with(d) { 2000.dp.toPx() }).toDp() }
+            Row(Modifier.padding(top = y).padding(horizontal = 12.dp).align(Alignment.TopCenter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(Ic.Sparkle to "Explain" to null, Ic.ShoppingBag to "Find cheaper" to "Find this product cheaper from a trusted store", Ic.Translate to "Translate" to "Translate this into English", Ic.ScanText to "Copy text" to "__copy").forEach { (a, prompt) ->
+                    val (ic, label) = a
+                    Row(Modifier.clip(RoundedCornerShape(16.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(16.dp)).clickable(enabled = crop != null) {
+                        if (prompt == "__copy") { copyText(act, "Text", region?.optString("text").orEmpty()); act.toast("Text copied"); close() } else act(prompt)
+                    }.padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (crop == null) AgentDots() else Icon(ic, null, Modifier.size(15.dp), tint = C.text)
+                        Spacer(Modifier.width(6.dp)); Text(label, color = C.text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+        }
+    }
+}

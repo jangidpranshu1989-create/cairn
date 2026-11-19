@@ -20,7 +20,7 @@ export const config = {
   refreshTtlSec: 60 * 60 * 24 * 30,
   // WebAuthn / passkeys
   rpId: process.env.RP_ID || 'localhost',
-  rpName: process.env.RP_NAME || 'Saarthi',
+  rpName: process.env.RP_NAME || 'Cairn',
   rpOrigins: (process.env.RP_ORIGINS || 'http://localhost:8787').split(',').map(s => s.trim()),
   corsOrigins: (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim()),
   // AI providers
@@ -33,7 +33,7 @@ export const config = {
   sttModel: process.env.STT_MODEL || 'whisper-large-v3-turbo',
   // Mail (password reset / verification)
   smtpUrl: process.env.SMTP_URL || '',
-  mailFrom: process.env.MAIL_FROM || 'Saarthi <no-reply@saarthi.app>',
+  mailFrom: process.env.MAIL_FROM || 'Cairn <no-reply@cairn.app>',
   // Limits
   maxTransferBytes: Number(process.env.MAX_TRANSFER_MB || 100) * 1024 * 1024,
   transferTtlHours: Number(process.env.TRANSFER_TTL_HOURS || 24),

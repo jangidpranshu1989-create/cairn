@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Builds the static Saarthi website (saarthi/website/*.html) from shared layout + page bodies.
+"""Builds the static Cairn website (cairn/website/*.html) from shared layout + page bodies.
 Run:  python3 tools/build_site.py
 """
 import pathlib, datetime
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / 'website'
 PAGES = pathlib.Path(__file__).resolve().parent / 'site_pages'
-VERSION = '1.1.0'
-RELEASES = 'https://github.com/saarthi-app/saarthi/releases/latest/download'
+VERSION = '2.0.0'
+RELEASES = 'https://github.com/jangidpranshu1989-create/cairn/releases/latest/download'
 
-LOGO = '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25L16 2.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M20.5 11.5c-1-1.3-2.6-2-4.4-2-2.6 0-4.4 1.4-4.4 3.3 0 4.4 9 2.3 9 6.6 0 2-1.9 3.3-4.6 3.3-1.9 0-3.6-.8-4.6-2.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>'
+LOGO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.3 17.4c0-2 3.4-3.3 7.9-3.3 4.4 0 7.5 1.3 7.5 3.3 0 1.8-3 2.9-7.6 2.9-4.7 0-7.8-1.1-7.8-2.9Z"/><path fill="currentColor" d="M6.6 11c0-1.7 2.3-2.9 5.3-2.9 3 0 4.9 1.1 4.9 2.7 0 1.6-2.1 2.6-5.1 2.6-3 0-5.1-1-5.1-2.4Z"/><path fill="var(--agent)" d="M9.3 5.75c0-1.3 1.3-2.3 3.1-2.3 1.7 0 2.7.9 2.7 2.1 0 1.2-1.2 2-2.9 2-1.8 0-2.9-.7-2.9-1.8Z"/></svg>'
 
 def ic(paths, w=1.8):
     return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{paths}</svg>'
@@ -50,7 +50,7 @@ def header(active):
     mlinks = ''.join(f'<a href="{h}">{t}</a>' for h, t in NAV + [('changelog.html', 'Changelog'), ('contact.html', 'Contact')])
     return f'''<a class="skip" href="#main">Skip to content</a>
 <header class="hdr"><div class="wrap">
-  <a class="brand" href="index.html" aria-label="Saarthi home">{LOGO}<span>Saarthi</span></a>
+  <a class="brand" href="index.html" aria-label="Cairn home">{LOGO}<span>Cairn</span></a>
   <nav class="nav" aria-label="Main">{links}</nav>
   <div class="cta">
     <a class="btn sm hide-m" href="contact.html">Contact</a>
@@ -58,17 +58,17 @@ def header(active):
     <button class="menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
   </div>
 </div></header>
-<nav class="mnav" id="mnav" aria-label="Mobile">{mlinks}<a class="btn lg primary" href="download.html">Download Saarthi</a></nav>'''
+<nav class="mnav" id="mnav" aria-label="Mobile">{mlinks}<a class="btn lg primary" href="download.html">Download Cairn</a></nav>'''
 
 FOOTER = f'''<footer class="ftr"><div class="wrap">
   <div class="grid">
-    <div class="about"><a class="brand" href="index.html">{LOGO}<span>Saarthi</span></a><p>The agentic browser that understands Hindi, Hinglish and every language you think in. Made in India.</p></div>
+    <div class="about"><a class="brand" href="index.html">{LOGO}<span>Cairn</span></a><p>The agentic browser that understands Hindi, Hinglish and every language you think in. Made in India.</p></div>
     <div><h4>Product</h4><ul><li><a href="features.html">Features</a></li><li><a href="download.html">Download</a></li><li><a href="pricing.html">Pricing</a></li><li><a href="changelog.html">Changelog</a></li></ul></div>
     <div><h4>Platforms</h4><ul><li><a href="download.html#windows">Windows</a></li><li><a href="download.html#mac">macOS</a></li><li><a href="download.html#linux">Linux</a></li><li><a href="download.html#android">Android</a></li></ul></div>
     <div><h4>Company</h4><ul><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li><li><a href="security.html">Security</a></li></ul></div>
     <div><h4>Legal</h4><ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of service</a></li><li><a href="security.html#disclosure">Responsible disclosure</a></li></ul></div>
   </div>
-  <div class="base"><span>© <span data-year>2026</span> Saarthi. All rights reserved.</span><span>v{VERSION} · Built with Groq &amp; NVIDIA NIM</span></div>
+  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v{VERSION} · Built with Groq &amp; NVIDIA NIM</span></div>
 </div></footer>'''
 
 def page(fname, title, desc, body, active=None):
@@ -83,13 +83,13 @@ def page(fname, title, desc, body, active=None):
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{desc}">
 <meta property="og:type" content="website">
-<meta property="og:image" content="https://saarthi.app/assets/og.png">
-<meta property="og:url" content="https://saarthi.app/{"" if fname == "index.html" else fname}">
-<link rel="canonical" href="https://saarthi.app/{"" if fname == "index.html" else fname}">
+<meta property="og:image" content="https://cairn.app/assets/og.png">
+<meta property="og:url" content="https://cairn.app/{"" if fname == "index.html" else fname}">
+<link rel="canonical" href="https://cairn.app/{"" if fname == "index.html" else fname}">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="preload" href="fonts/cabinet-grotesk-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="fonts/satoshi-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/InterDisplay-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>

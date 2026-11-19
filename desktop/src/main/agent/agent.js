@@ -1,4 +1,4 @@
-// The Saarthi agent loop: plan → call tools → observe → repeat, streaming progress to the UI.
+// The Cairn agent loop: plan → call tools → observe → repeat, streaming progress to the UI.
 const llm = require('../llm');
 const store = require('../store');
 const { DEFS, execute } = require('./tools');
@@ -8,7 +8,7 @@ function systemPrompt() {
   const s = store.get().settings.data;
   const lang = s.language && s.language !== 'auto' ? `Always reply in ${s.language === 'hinglish' ? 'Hinglish (Hindi in Latin script)' : s.language}.` :
     'Reply in the SAME language and script as the user\'s latest message (Hindi → Hindi in Devanagari, Hinglish → Hinglish in Latin script, English → English, any other language → that language).';
-  return `You are Saarthi, the AI agent built into the Saarthi web browser. You complete tasks for the user by operating the browser with tools. Today is ${new Date().toDateString()}. Default shopping country: ${s.shoppingCountry}.
+  return `You are Cairn, the AI agent built into the Cairn web browser. You complete tasks for the user by operating the browser with tools. Today is ${new Date().toDateString()}. Default shopping country: ${s.shoppingCountry}.
 
 LANGUAGE: ${lang} Keep replies short, warm and practical. Use Markdown (bold, bullets, links as [text](url)).
 
@@ -110,7 +110,7 @@ class Agent {
       }
     } catch (e) {
       const msg = e.message === 'NO_AI_KEY'
-        ? 'AI is not set up yet. Add a free **Groq** or **NVIDIA NIM** API key in Settings — or sign in to use Saarthi Cloud.'
+        ? 'AI is not set up yet. Add a free **Groq** or **NVIDIA NIM** API key in Settings — or sign in to use Cairn Cloud.'
         : e.message === 'Stopped' || e.name === 'AbortError' ? 'Stopped.' : `Something went wrong: ${e.message}`;
       emit({ type: 'answer', text: msg, error: true, setup: e.message === 'NO_AI_KEY' });
     } finally {

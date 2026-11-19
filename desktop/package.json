@@ -1,6 +1,6 @@
 {
-  "name": "saarthi-browser",
-  "version": "1.1.0",
+  "name": "cairn-browser",
+  "version": "2.0.0",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -8,15 +8,17 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "prepack": "node scripts-embed-keys.js",
+    "embed-keys": "node scripts-embed-keys.js"
   },
   "keywords": [],
   "author": {
-    "name": "Saarthi",
-    "email": "hello@saarthi.app"
+    "name": "Cairn",
+    "email": "hello@cairn.app"
   },
   "license": "UNLICENSED",
-  "description": "Saarthi \u2014 the agentic browser that shops, reads and works for you.",
+  "description": "Cairn \u2014 the agentic browser that shops, reads and works for you.",
   "devDependencies": {
     "electron": "^45.4.1",
     "electron-builder": "^26.18.0"
@@ -25,12 +27,12 @@
     "@ghostery/adblocker-electron": "^2.20.3",
     "electron-updater": "^6.8.11"
   },
-  "productName": "Saarthi",
-  "homepage": "https://saarthi.app",
+  "productName": "Cairn",
+  "homepage": "https://cairn.app",
   "build": {
-    "appId": "app.saarthi.browser",
-    "productName": "Saarthi",
-    "copyright": "\u00a9 2026 Saarthi",
+    "appId": "app.cairn.browser",
+    "productName": "Cairn",
+    "copyright": "\u00a9 2026 Cairn",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -43,9 +45,9 @@
     "asar": true,
     "protocols": [
       {
-        "name": "Saarthi",
+        "name": "Cairn",
         "schemes": [
-          "saarthi"
+          "cairn"
         ]
       }
     ],
@@ -69,8 +71,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Saarthi",
-      "artifactName": "Saarthi-Setup-${arch}.${ext}"
+      "shortcutName": "Cairn",
+      "artifactName": "Cairn-Setup-${arch}.${ext}"
     },
     "mac": {
       "target": [
@@ -95,10 +97,10 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Saarthi uses the microphone for voice commands.",
+        "NSMicrophoneUsageDescription": "Cairn uses the microphone for voice commands.",
         "NSCameraUsageDescription": "Websites may request camera access."
       },
-      "artifactName": "Saarthi-mac-${arch}.${ext}"
+      "artifactName": "Cairn-mac-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -107,22 +109,22 @@
       ],
       "category": "Network;WebBrowser",
       "icon": "build/icon.png",
-      "maintainer": "hello@saarthi.app",
-      "artifactName": "Saarthi-linux-${arch}.${ext}"
+      "maintainer": "hello@cairn.app",
+      "artifactName": "Cairn-linux-${arch}.${ext}"
     },
     "publish": [
       {
         "provider": "github",
-        "owner": "saarthi-app",
-        "repo": "saarthi"
+        "owner": "cairn-app",
+        "repo": "cairn"
       }
     ],
     "appImage": {
-      "artifactName": "Saarthi-linux-x64.${ext}"
+      "artifactName": "Cairn-linux-x64.${ext}"
     },
     "deb": {
-      "artifactName": "Saarthi-linux-x64.${ext}"
+      "artifactName": "Cairn-linux-x64.${ext}"
     }
   },
-  "desktopName": "saarthi.desktop"
+  "desktopName": "cairn.desktop"
 }

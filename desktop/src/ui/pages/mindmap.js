@@ -11,7 +11,7 @@
   const norm = (n, depth = 0, color) => ({ id: uid++, title: String(n.title || n.name || n.label || '').slice(0, 80), depth, color, collapsed: false,
     children: (n.children || []).map((c, i) => norm(c, depth + 1, depth === 0 ? PAL[i % PAL.length] : color)) });
   const root = norm(data.tree || { title: data.title });
-  const measure = (() => { const c = document.createElement('canvas').getContext('2d'); return (t, d) => { c.font = d === 0 ? '800 17px "Cabinet Grotesk"' : '600 13px Satoshi'; return c.measureText(t).width; }; })();
+  const measure = (() => { const c = document.createElement('canvas').getContext('2d'); return (t, d) => { c.font = d === 0 ? '800 17px "Inter"' : '600 13px Inter'; return c.measureText(t).width; }; })();
   const wrap = (t, max) => { const w = t.split(/\s+/), lines = []; let cur = ''; for (const x of w) { if ((cur + ' ' + x).trim().length > max && cur) { lines.push(cur); cur = x; } else cur = (cur + ' ' + x).trim(); } if (cur) lines.push(cur); return lines.slice(0, 3); };
   const H_GAP = 64, V_GAP = 14;
 
@@ -48,7 +48,7 @@
       const lh = isRoot ? 22 : 18;
       nodes += `<g class="node${isRoot ? ' root' : ''}" data-id="${n.id}" transform="translate(${n.x - n.w / 2},${n.y - n.h / 2})"><rect width="${n.w}" height="${n.h}" fill="${fill}" stroke="${stroke}"/>` +
         n.lines.map((l, i) => `<text x="${n.w / 2}" y="${9 + lh * (i + 0.78)}" text-anchor="middle">${esc(l)}</text>`).join('') +
-        (n.collapsed && n.children.length ? `<circle cx="${n.dir < 0 ? 0 : n.w}" cy="${n.h / 2}" r="9" fill="${n.color}"/><text x="${n.dir < 0 ? 0 : n.w}" y="${n.h / 2 + 4}" text-anchor="middle" style="font:700 11px Satoshi;fill:#111">${n.children.length}</text>` : '') + '</g>';
+        (n.collapsed && n.children.length ? `<circle cx="${n.dir < 0 ? 0 : n.w}" cy="${n.h / 2}" r="9" fill="${n.color}"/><text x="${n.dir < 0 ? 0 : n.w}" y="${n.h / 2 + 4}" text-anchor="middle" style="font:700 11px Inter;fill:#111">${n.children.length}</text>` : '') + '</g>';
     };
     walk(root);
     vp.innerHTML = links + nodes;
@@ -73,7 +73,7 @@
     const resolve = (s) => s.replace(/var\((--[\w-]+)\)/g, (_, v) => cs.getPropertyValue(v).trim());
     const clone = vp.cloneNode(true); clone.removeAttribute('transform');
     clone.querySelectorAll('[fill],[stroke]').forEach(el => { for (const a of ['fill', 'stroke']) if (el.getAttribute(a)) el.setAttribute(a, resolve(el.getAttribute(a))); });
-    const css = `text{font:600 13px Satoshi,sans-serif;fill:${cs.getPropertyValue('--text')}}.root text{font:800 17px 'Cabinet Grotesk',sans-serif;fill:${cs.getPropertyValue('--accent-ink')}}.link{fill:none;stroke-width:2;opacity:.55}`;
+    const css = `text{font:600 13px Inter,sans-serif;fill:${cs.getPropertyValue('--text')}}.root text{font:800 17px 'Inter',sans-serif;fill:${cs.getPropertyValue('--accent-ink')}}.link{fill:none;stroke-width:2;opacity:.55}`;
     const xml = `<svg xmlns="http://www.w3.org/2000/svg" width="${(b.width + pad * 2) * scale}" height="${(b.height + pad * 2) * scale}" viewBox="${b.x - pad} ${b.y - pad} ${b.width + pad * 2} ${b.height + pad * 2}"><style>${css}</style><rect x="${b.x - pad}" y="${b.y - pad}" width="${b.width + pad * 2}" height="${b.height + pad * 2}" fill="${cs.getPropertyValue('--bg-2')}"/>${clone.innerHTML}</svg>`;
     const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(resolve(xml));
     await img.decode();

@@ -1,4 +1,4 @@
-// Tool definitions (OpenAI function-calling schema) + implementations for the Saarthi agent.
+// Tool definitions (OpenAI function-calling schema) + implementations for the Cairn agent.
 const dom = require('./dom');
 const shopping = require('./shopping');
 const pageTools = require('../page-tools');
@@ -29,7 +29,7 @@ const DEFS = [
   fn('make_mindmap', 'Create a visual mind map of the current page and open it.'),
   fn('save_pdf', 'Save as PDF. source="page" prints the current page; "last_article" makes a clean reader PDF of the last read_article; "summary" saves the last summary.', { source: { type: 'string', enum: ['page', 'last_article', 'summary'] } }, ['source']),
   fn('screenshot', 'Take a screenshot of the current page. full=true captures the entire scrolling page (long screenshot).', { full: B('full page') }),
-  fn('download_file', 'Download a file from a URL to the Saarthi downloads folder.', { url: S('file URL'), filename: S('optional name') }, ['url']),
+  fn('download_file', 'Download a file from a URL to the Cairn downloads folder.', { url: S('file URL'), filename: S('optional name') }, ['url']),
   fn('send_to_phone', 'Send a file to the user\'s paired Android phone and save it in a folder there (e.g. "Documents/Wikipedia"). file="last" sends the most recent PDF/screenshot/download.', { file: S('"last" or absolute path'), folder: S('folder on phone') }, ['file']),
   fn('request_approval', 'REQUIRED before placing an order, paying, or any irreversible purchase. Sends an approval pop-up to the user\'s phone (biometric). Returns approved/denied.', { kind: { type: 'string', enum: ['payment', 'purchase', 'sensitive'] }, title: S('short, e.g. "Pay ₹69,900 to Flipkart"'), amount: S('e.g. ₹69,900'), merchant: S('store'), item: S('item name') }, ['kind', 'title']),
   fn('ask_user', 'Ask the user a question and wait for the answer (e.g. choose a variant, provide OTP, confirm address, or log in manually).', { question: S('question in the user\'s language') }, ['question']),
@@ -111,7 +111,7 @@ async function execute(name, args, ctx) {
       const tab = args.new_tab ? ctx.newAgentTab(url) : ctx.agentTab();
       if (!args.new_tab) await tab.webContents.loadURL(url).catch(() => {});
       await settle(tab.webContents, 8000);
-      await dom.overlay(tab.webContents, 'move', 40, 40, 'Saarthi');
+      await dom.overlay(tab.webContents, 'move', 40, 40, 'Cairn');
       return `Opened ${tab.webContents.getURL()} — "${tab.webContents.getTitle()}". Call read_page to see it.`;
     }
     case 'read_page': {
@@ -208,10 +208,10 @@ async function execute(name, args, ctx) {
     case 'send_to_phone': {
       const file = args.file === 'last' || !args.file ? ctx.lastFile : args.file;
       if (!file) return 'No file yet. Create one first (save_pdf / screenshot / download_file).';
-      if (!cloud.isSignedIn()) return 'User is not signed in to Saarthi account, so the phone cannot be reached. Tell them to sign in and pair their phone (Settings → Phone).';
-      ctx.step('phone', `Sending to phone → ${args.folder || 'Saarthi'}`);
+      if (!cloud.isSignedIn()) return 'User is not signed in to Cairn account, so the phone cannot be reached. Tell them to sign in and pair their phone (Settings → Phone).';
+      ctx.step('phone', `Sending to phone → ${args.folder || 'Cairn'}`);
       const r = await cloud.sendToPhone(file, args.folder);
-      return r.deliveredLive ? `Sent. Phone is online and is saving it to Download/Saarthi/${r.transfer.folder}.` : `Queued. The phone will save it to Download/Saarthi/${r.transfer.folder} when the Saarthi app connects.`;
+      return r.deliveredLive ? `Sent. Phone is online and is saving it to Download/Cairn/${r.transfer.folder}.` : `Queued. The phone will save it to Download/Cairn/${r.transfer.folder} when the Cairn app connects.`;
     }
     case 'request_approval': {
       ctx.step('lock', `Waiting for your approval: ${args.title}`);

@@ -6,7 +6,6 @@ const store = require('./store');
 const { PARTITION } = require('./agent/background');
 
 const SEARCH = {
-  google: 'https://www.google.com/search?q=',
   duckduckgo: 'https://duckduckgo.com/?q=',
   bing: 'https://www.bing.com/search?q=',
   brave: 'https://search.brave.com/search?q=',
@@ -14,11 +13,11 @@ const SEARCH = {
 
 function resolveInput(input) {
   const t = String(input || '').trim();
-  if (!t) return 'saarthi://newtab';
-  if (/^(https?|saarthi|file|about|data|view-source):/i.test(t)) return t;
+  if (!t) return 'cairn://newtab';
+  if (/^(https?|cairn|file|about|data|view-source):/i.test(t)) return t;
   if (/^localhost(:\d+)?(\/.*)?$/i.test(t) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/.*)?$/.test(t)) return 'http://' + t;
   if (!/\s/.test(t) && /^[^\s]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(t)) return 'https://' + t;
-  return (SEARCH[store.get().settings.data.searchEngine] || SEARCH.google) + encodeURIComponent(t);
+  return (SEARCH[store.get().settings.data.searchEngine] || SEARCH.duckduckgo) + encodeURIComponent(t);
 }
 
 class Tabs extends EventEmitter {
@@ -36,7 +35,7 @@ class Tabs extends EventEmitter {
 
   get active() { return this.tabs.get(this.activeId); }
 
-  create(url = 'saarthi://newtab', { active = true, agent = false, openerIndex } = {}) {
+  create(url = 'cairn://newtab', { active = true, agent = false, openerIndex } = {}) {
     const id = ++this.seq;
     const view = new WebContentsView({
       webPreferences: {
@@ -73,18 +72,18 @@ class Tabs extends EventEmitter {
     wc.on('found-in-page', (_e, r) => this.emit('found', r));
     wc.on('did-fail-load', (_e, code, desc, url, isMain) => {
       if (!isMain || code === -3) return;
-      wc.loadURL(`saarthi://error?code=${code}&desc=${encodeURIComponent(desc)}&url=${encodeURIComponent(url)}`).catch(() => {});
+      wc.loadURL(`cairn://error?code=${code}&desc=${encodeURIComponent(desc)}&url=${encodeURIComponent(url)}`).catch(() => {});
     });
-    wc.on('render-process-gone', () => wc.loadURL(`saarthi://error?code=crash&url=${encodeURIComponent(tab.url)}`).catch(() => {}));
+    wc.on('render-process-gone', () => wc.loadURL(`cairn://error?code=crash&url=${encodeURIComponent(tab.url)}`).catch(() => {}));
     wc.setWindowOpenHandler(({ url, disposition }) => {
-      if (/^https?:|^saarthi:/.test(url)) this.create(url, { active: disposition !== 'background-tab', openerIndex: this.order.indexOf(tab.id) });
+      if (/^https?:|^cairn:/.test(url)) this.create(url, { active: disposition !== 'background-tab', openerIndex: this.order.indexOf(tab.id) });
       return { action: 'deny' };
     });
     wc.on('will-navigate', (e, url) => {
-      if (url.startsWith('saarthi://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); }
+      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); }
     });
     wc.on('will-redirect', (e, url) => {
-      if (url.startsWith('saarthi://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); }
+      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); }
     });
     wc.on('context-menu', (_e, p) => this.contextMenu(tab, p));
     wc.on('before-input-event', (e, input) => this.emit('page-key', e, input, tab));
@@ -107,7 +106,7 @@ class Tabs extends EventEmitter {
     if (prev && prev !== tab) this.win.contentView.removeChildView(prev.view);
     this.activeId = id;
     if (!this.frozen) { this.win.contentView.addChildView(tab.view); tab.view.setBounds(this.rect); }
-    if (!/^saarthi:\/\/newtab/.test(tab.url)) tab.view.webContents.focus();
+    if (!/^cairn:\/\/newtab/.test(tab.url)) tab.view.webContents.focus();
     this.emitUpdate();
   }
 
@@ -174,7 +173,7 @@ class Tabs extends EventEmitter {
     if (p.linkURL) items.push(
       { label: 'Open link in new tab', click: () => this.create(p.linkURL, { active: false, openerIndex: this.order.indexOf(tab.id) }) },
       { label: 'Copy link address', click: () => clipboard.writeText(p.linkURL) },
-      { label: 'Ask Saarthi about this link', click: () => this.emit('ask', `Open and summarize this link: ${p.linkURL}`) },
+      { label: 'Ask Cairn about this link', click: () => this.emit('ask', `Open and summarize this link: ${p.linkURL}`) },
       { type: 'separator' });
     if (p.mediaType === 'image') items.push(
       { label: 'Open image in new tab', click: () => this.create(p.srcURL) },
@@ -183,7 +182,7 @@ class Tabs extends EventEmitter {
       { type: 'separator' });
     if (p.selectionText) items.push(
       { label: 'Copy', role: 'copy' },
-      { label: `Ask Saarthi: "${p.selectionText.slice(0, 24)}${p.selectionText.length > 24 ? '…' : ''}"`, click: () => this.emit('ask', `Explain this:\n"${p.selectionText.slice(0, 2000)}"`) },
+      { label: `Ask Cairn: "${p.selectionText.slice(0, 24)}${p.selectionText.length > 24 ? '…' : ''}"`, click: () => this.emit('ask', `Explain this:\n"${p.selectionText.slice(0, 2000)}"`) },
       { label: 'Translate selection', click: () => this.emit('ask', `Translate this into English (or into my reply language if I have set one):\n"${p.selectionText.slice(0, 2000)}"`) },
       { label: 'Read selection aloud', click: () => this.emit('speak', p.selectionText) },
       { label: `Search for "${p.selectionText.slice(0, 20)}"`, click: () => this.create(resolveInput(p.selectionText)) },

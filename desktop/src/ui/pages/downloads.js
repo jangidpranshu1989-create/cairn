@@ -4,7 +4,7 @@
   async function load() {
     const ql = q.value.trim().toLowerCase();
     const items = (await api('downloads:list')).filter(d => !ql || (d.filename + d.url).toLowerCase().includes(ql)).sort((a, b) => b.at - a.at);
-    if (!items.length) { out.innerHTML = `<div class="empty"><div class="ei">${ICON('down', 22)}</div>${ql ? 'No matches.' : 'Files you download — and PDFs, mind maps and screenshots Saarthi makes — appear here.'}</div>`; return; }
+    if (!items.length) { out.innerHTML = `<div class="empty"><div class="ei">${ICON('down', 22)}</div>${ql ? 'No matches.' : 'Files you download — and PDFs, mind maps and screenshots Cairn makes — appear here.'}</div>`; return; }
     out.innerHTML = '<div class="list">' + items.map(d => {
       const st = d.state === 'progressing' ? `${size(d.received)} of ${size(d.total)}${d.paused ? ' · paused' : ''}` : d.state === 'completed' ? size(d.total || d.received) : d.state === 'cancelled' ? 'Cancelled' : 'Failed';
       const pct = d.total ? Math.round(100 * d.received / d.total) : 0;

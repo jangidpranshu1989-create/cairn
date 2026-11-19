@@ -1,12 +1,12 @@
 <resources>
-    <style name="Theme.Saarthi" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.Cairn" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:colorAccent">@color/ink</item>
     </style>
-    <color name="bg">#0F0F0F</color>
-    <color name="ink">#EDEDEB</color>
-    <color name="agent">#82A9D9</color>
+    <color name="bg">#1C1C1F</color>
+    <color name="ink">#EEEDEA</color>
+    <color name="agent">#D9C3A0</color>
 </resources>

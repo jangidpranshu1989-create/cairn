@@ -1,16 +1,16 @@
 // Preload for every tab.
-//  - saarthi:// internal pages get a privileged bridge (main re-checks the sender origin).
+//  - cairn:// internal pages get a privileged bridge (main re-checks the sender origin).
 //  - https pages get password autofill / save prompts / strong password suggestions.
 const { contextBridge, ipcRenderer } = require('electron');
 
-if (location.protocol === 'saarthi:') {
-  contextBridge.exposeInMainWorld('saarthi', {
+if (location.protocol === 'cairn:') {
+  contextBridge.exposeInMainWorld('cairn', {
     invoke: (ch, ...args) => ipcRenderer.invoke(ch, ...args),
     on: (ch, fn) => { const l = (_e, d) => fn(d); ipcRenderer.on(ch, l); return () => ipcRenderer.removeListener(ch, l); },
     platform: process.platform,
   });
 } else if (/^https?:$/.test(location.protocol)) {
-  const SHADOW_ID = '__saarthi_pw';
+  const SHADOW_ID = '__cairn_pw';
   let saved = null; // [{id, username}]
   let chip = null;
 
@@ -45,7 +45,7 @@ if (location.protocol === 'saarthi:') {
       button:hover,button:focus{background:rgba(255,255,255,.07)}
       .k{width:22px;height:22px;border-radius:6px;background:#EDEDEB;color:#141414;display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
       small{display:block;color:#A1A19D;font-size:11px}
-    </style><div class="b" style="left:${Math.round(r.left)}px;top:${Math.round(r.bottom + 6)}px"><div class="h">Saarthi Passwords</div></div>`;
+    </style><div class="b" style="left:${Math.round(r.left)}px;top:${Math.round(r.bottom + 6)}px"><div class="h">Cairn Passwords</div></div>`;
     const box = sh.querySelector('.b');
     for (const it of items) {
       const b = document.createElement('button');
@@ -68,7 +68,7 @@ if (location.protocol === 'saarthi:') {
       const c = await ipcRenderer.invoke('pw:fill', s.id); if (!c) return;
       const u = userFieldFor(pw); if (u && c.username) setValue(u, c.username); setValue(pw, c.password);
     } }));
-    if (isPw && isNew) items.push({ icon: '✦', label: 'Use a strong password', sub: 'Generated and saved by Saarthi', run: async () => {
+    if (isPw && isNew) items.push({ icon: '✦', label: 'Use a strong password', sub: 'Generated and saved by Cairn', run: async () => {
       const g = await ipcRenderer.invoke('pw:generate'); pwFields().filter(p => !p.value || p === el).forEach(p => setValue(p, g));
     } });
     if (items.length) showChip(el, items);

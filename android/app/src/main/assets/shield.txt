@@ -1,4 +1,4 @@
-# Saarthi Shield — ad and tracker hosts (suffix match). Curated from public lists (EasyPrivacy / Peter Lowe).
+# Cairn Shield — ad and tracker hosts (suffix match). Curated from public lists (EasyPrivacy / Peter Lowe).
 doubleclick.net
 googlesyndication.com
 googleadservices.com

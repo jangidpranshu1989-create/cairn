@@ -1,6 +1,6 @@
-/* Saarthi browser chrome */
+/* Cairn browser chrome */
 (() => {
-  const S = window.saarthi;
+  const S = window.cairn;
   const $ = (s) => document.querySelector(s);
   const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
   const icon = (id, size = 14) => `<svg class="ic" width="${size}" height="${size}"><use href="#i-${id}"/></svg>`;
@@ -49,7 +49,7 @@
   const tabsEl = $('#tabs');
   function favicon(t) {
     if (t.loading) return '<span class="spin"></span>';
-    if (t.url.startsWith('saarthi://')) return `<span class="fav" style="color:var(--accent)"><svg width="16" height="16"><use href="#i-logo"/></svg></span>`;
+    if (t.url.startsWith('cairn://')) return `<span class="fav" style="color:var(--accent)"><svg width="16" height="16"><use href="#i-logo"/></svg></span>`;
     if (t.favicon) return `<img class="fav" src="${esc(t.favicon)}" alt="" data-fb="${esc((host(t.url)[0] || '•').toUpperCase())}">`;
     return `<span class="fav ph">${esc((host(t.url)[0] || '•').toUpperCase())}</span>`;
   }
@@ -61,8 +61,8 @@
       if (!el) { el = h('div', 'tab'); el.dataset.id = t.id; el.setAttribute('role', 'tab'); el.draggable = true; }
       el.className = 'tab' + (t.active ? ' active' : '');
       el.title = `${t.title}\n${t.url}`;
-      const title = t.url === 'saarthi://newtab' || t.url === 'about:blank' ? 'New Tab' : t.title || t.url;
-      el.innerHTML = `${favicon(t)}<span class="t">${esc(title)}</span>${t.agent && agentBusy ? '<span class="agentdot" title="Saarthi is working here"></span>' : ''}${t.audible ? `<span class="aud">${icon('speak', 13)}</span>` : ''}<button class="x" title="Close tab">${icon('x', 12)}</button>`;
+      const title = t.url === 'cairn://newtab' || t.url === 'about:blank' ? 'New Tab' : t.title || t.url;
+      el.innerHTML = `${favicon(t)}<span class="t">${esc(title)}</span>${t.agent && agentBusy ? '<span class="agentdot" title="Cairn is working here"></span>' : ''}${t.audible ? `<span class="aud">${icon('speak', 13)}</span>` : ''}<button class="x" title="Close tab">${icon('x', 12)}</button>`;
       tabsEl.appendChild(el);
     }
   }
@@ -98,7 +98,7 @@
     $('#back').disabled = !active.canBack; $('#fwd').disabled = !active.canFwd;
     $('#reloadIc').innerHTML = `<use href="#i-${active.loading ? 'x' : 'reload'}"/>`;
     $('#reload').title = active.loading ? 'Stop' : 'Reload';
-    const internal = active.url.startsWith('saarthi://') || active.url === 'about:blank';
+    const internal = active.url.startsWith('cairn://') || active.url === 'about:blank';
     if (!editing) url.value = internal ? '' : active.url;
     const secure = active.url.startsWith('https://');
     $('#lockIc').innerHTML = `<use href="#i-${internal ? 'search' : secure ? 'lock' : 'info'}"/>`;
@@ -117,7 +117,7 @@
   async function toggleBookmark() { const on = await S.invoke('bookmarks:toggle'); $('#star').classList.toggle('on', on); toast(on ? 'Bookmarked' : 'Bookmark removed'); }
   S.on('bookmark:toggle', toggleBookmark);
   S.on('shield', ({ blocked }) => { $('#shieldCount').textContent = blocked; $('#shieldCount').classList.remove('hidden'); });
-  $('#shieldBtn').onclick = () => toast(`Saarthi Shield blocked ${active?.blocked || 0} ads & trackers on this page`);
+  $('#shieldBtn').onclick = () => toast(`Cairn Shield blocked ${active?.blocked || 0} ads & trackers on this page`);
 
   // Omnibox suggestions
   const pop = $('#omniPop');
@@ -131,7 +131,7 @@
     if (!q) { closePop(); return; }
     const hist = await S.invoke('suggest', q);
     const task = looksLikeTask(q);
-    const ask = { type: 'ask', title: `Ask Saarthi: ${q}`, q };
+    const ask = { type: 'ask', title: `Ask Cairn: ${q}`, q };
     const search = { type: 'search', title: q, q };
     sugItems = task ? [ask, search, ...hist] : [search, ask, ...hist];
     sel = 0; renderPop(); openPop();
@@ -219,7 +219,7 @@
     }
     el.appendChild(h('div', 'sep'));
     const all = h('div', 'opt', `<span class="oi">${icon('folder')}</span><span class="ot">Show all downloads</span>`);
-    all.onclick = () => { closePopover(); S.invoke('tabs:new', 'saarthi://downloads'); };
+    all.onclick = () => { closePopover(); S.invoke('tabs:new', 'cairn://downloads'); };
     el.appendChild(all);
   }
   const fmtBytes = (b) => !b ? '' : b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
@@ -237,11 +237,11 @@
 
   $('#menuBtn').onclick = () => S.invoke('app:menu');
   $('#logoBtn').onclick = () => S.invoke('app:menu');
-  $('#avatar').onclick = () => S.invoke('tabs:new', 'saarthi://account');
+  $('#avatar').onclick = () => S.invoke('tabs:new', 'cairn://account');
   function renderSession(s) {
     const a = $('#avatar');
     if (s?.signedIn) { a.textContent = (s.user?.name || s.user?.email || '?').trim()[0].toUpperCase(); a.classList.add('in'); a.title = `Signed in as ${s.user?.email}`; }
-    else { a.innerHTML = icon('key', 13); a.classList.remove('in'); a.title = 'Sign in to Saarthi'; }
+    else { a.innerHTML = icon('key', 13); a.classList.remove('in'); a.title = 'Sign in to Cairn'; }
   }
   S.invoke('cloud:session').then(renderSession); S.on('cloud:session', renderSession);
 
@@ -281,7 +281,7 @@
   $('#pwBar').addEventListener('click', (e) => {
     const a = e.target.closest('[data-pw]')?.dataset.pw; if (!a || !pwPrompt) return;
     S.invoke('pw:decide', pwPrompt.id, a); $('#pwBar').classList.remove('show');
-    if (a === 'save') toast('Password saved to Saarthi');
+    if (a === 'save') toast('Password saved to Cairn');
     pwPrompt = null;
   });
 
@@ -301,7 +301,7 @@
   }
   S.on('toast', (t) => toast(t.text, t));
   async function sendToPhone(file) {
-    try { const r = await S.invoke('file:toPhone', file, 'Saarthi'); toast(r.deliveredLive ? 'Sent to your phone' : 'Queued — your phone will receive it when online'); }
+    try { const r = await S.invoke('file:toPhone', file, 'Cairn'); toast(r.deliveredLive ? 'Sent to your phone' : 'Queued — your phone will receive it when online'); }
     catch (e) { toast(cleanErr(e), { error: true }); }
   }
   const cleanErr = (e) => String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
@@ -360,7 +360,7 @@
   let cur = null; // current bot turn { root, steps, stepsList, body }
   function runAgent(text) {
     togglePanel(true);
-    if (agentBusy) { toast('Saarthi is still working — press stop first'); return; }
+    if (agentBusy) { toast('Cairn is still working — press stop first'); return; }
     if (thread.querySelector('.empty')) thread.innerHTML = '';
     const u = h('div', 'msg user'); u.appendChild(h('div', 'bubble')).textContent = text; thread.appendChild(u);
     cur = null; ensureTurn();
@@ -468,7 +468,7 @@
       <div style="font-weight:700">${esc(ev.title)}</div>
       ${d.amount ? `<div class="amt">${esc(d.amount)}</div>` : ''}
       <div style="color:var(--muted);font-size:12.5px">${esc([d.item, d.merchant].filter(Boolean).join(' · '))}</div>
-      ${ev.phone ? `<div class="phone"><span class="pring">${icon('phone')}</span><div><b>Check your phone</b><br><span style="color:var(--muted)">Approve with fingerprint, face or PIN in the Saarthi app.</span></div></div>`
+      ${ev.phone ? `<div class="phone"><span class="pring">${icon('phone')}</span><div><b>Check your phone</b><br><span style="color:var(--muted)">Approve with fingerprint, face or PIN in the Cairn app.</span></div></div>`
         : `<div style="font-size:12px;color:var(--muted);margin-top:8px">No phone paired — confirm here. Pair your phone in Settings → Phone for biometric approvals.</div>
            <div class="acts"><button class="btn danger" data-a="deny">Deny</button><button class="btn primary" data-a="ok">${icon('check', 12)} Approve</button></div>`}`;
     c.onclick = (e) => {
@@ -483,7 +483,7 @@
   function askCard(ev) {
     const t = ensureTurn();
     const c = h('div', 'card ask');
-    c.innerHTML = `<div class="ch">${icon('info')} Saarthi needs your input</div><div class="md">${md(ev.question)}</div><input placeholder="Type your answer… (or 'done' after finishing in the page)"><div class="acts"><button class="btn primary">Reply</button></div>`;
+    c.innerHTML = `<div class="ch">${icon('info')} Cairn needs your input</div><div class="md">${md(ev.question)}</div><input placeholder="Type your answer… (or 'done' after finishing in the page)"><div class="acts"><button class="btn primary">Reply</button></div>`;
     const inp = c.querySelector('input');
     const go = () => { const v = inp.value.trim(); if (!v) return; S.invoke('agent:answer', ev.id, v); c.querySelector('.acts').remove(); inp.disabled = true; };
     c.querySelector('button').onclick = go;
@@ -513,7 +513,7 @@
       case 'step': addStep(ev); break;
       case 'sources': {
         const t = ensureTurn(); const w = h('div', 'sources');
-        for (const s of ev.items) { const a = h('button', 'src', `<img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(host(s.url))}&sz=32" width="14" height="14" alt=""><span>${esc(host(s.url))}</span>`); a.title = s.title; a.onclick = () => S.invoke('tabs:new', s.url); w.appendChild(a); }
+        for (const s of ev.items) { const a = h('button', 'src', `<img src="https://icons.duckduckgo.com/ip3/${encodeURIComponent(host(s.url))}.ico" width="14" height="14" alt=""><span>${esc(host(s.url))}</span>`); a.title = s.title; a.onclick = () => S.invoke('tabs:new', s.url); w.appendChild(a); }
         t.root.appendChild(w); break;
       }
       case 'products': productCards(ev); break;
@@ -531,7 +531,7 @@
         const b = h('div', 'md', md(ev.text));
         if (ev.error) b.classList.add('errtxt');
         t.root.appendChild(b);
-        if (ev.setup) { const bt = h('button', 'btn primary setup-btn', `${icon('key', 13)} Add API key`); bt.onclick = () => S.invoke('tabs:new', 'saarthi://settings#ai'); t.root.appendChild(bt); }
+        if (ev.setup) { const bt = h('button', 'btn primary setup-btn', `${icon('key', 13)} Add API key`); bt.onclick = () => S.invoke('tabs:new', 'cairn://settings#ai'); t.root.appendChild(bt); }
         if (ev.provider) t.root.appendChild(h('div', 'prov', `via ${ev.provider === 'groq' ? 'Groq' : 'NVIDIA NIM'}`));
         scrollDown(); break;
       }
@@ -543,8 +543,8 @@
   async function refreshModelTag() {
     const st = await S.invoke('agent:status');
     const tag = $('#modelTag');
-    if (!st.ready) { tag.textContent = 'Setup needed'; tag.style.color = 'var(--warn)'; tag.onclick = () => S.invoke('tabs:new', 'saarthi://settings#ai'); tag.style.cursor = 'pointer'; }
-    else { tag.textContent = st.mode === 'cloud' ? 'Saarthi Cloud' : st.providers.map(p => p === 'groq' ? 'Groq' : 'NVIDIA').join(' + '); tag.style.color = ''; tag.onclick = null; }
+    if (!st.ready) { tag.textContent = 'Setup needed'; tag.style.color = 'var(--warn)'; tag.onclick = () => S.invoke('tabs:new', 'cairn://settings#ai'); tag.style.cursor = 'pointer'; }
+    else { tag.textContent = st.mode === 'cloud' ? 'Cairn Cloud' : st.providers.map(p => p === 'groq' ? 'Groq' : 'NVIDIA').join(' + '); tag.style.color = ''; tag.onclick = null; }
   }
   refreshModelTag();
 
@@ -632,7 +632,7 @@
           input.value = text; input.dispatchEvent(new Event('input'));
           if (text.trim()) submit();
         } catch (e) { toast(cleanErr(e), { error: true }); }
-        input.placeholder = 'Ask anything or give Saarthi a task…';
+        input.placeholder = 'Ask anything or give Cairn a task…';
       };
       rec.start(); $('#mic').classList.add('rec');
       setTimeout(() => rec?.state === 'recording' && rec.stop(), 60000);

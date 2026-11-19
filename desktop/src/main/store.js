@@ -45,11 +45,11 @@ class EncryptedStore {
 
 const DEFAULT_SETTINGS = {
   theme: 'dark',                 // dark | light | system
-  searchEngine: 'google',        // google | duckduckgo | bing | brave
+  searchEngine: 'duckduckgo',    // duckduckgo | brave | bing | ecosia
   startup: 'newtab',             // newtab | restore
-  homepage: 'saarthi://newtab',
+  homepage: 'cairn://newtab',
   language: 'auto',              // assistant reply language: auto | en | hi | hinglish | ...
-  aiMode: 'byok',                // cloud (Saarthi account) | byok (own keys)
+  aiMode: 'byok',                // cloud (Cairn account) | byok (own keys)
   groqKey: '',
   nvidiaKey: '',
   preferredProvider: 'groq',
@@ -70,7 +70,7 @@ const DEFAULT_SETTINGS = {
   askWhereToSave: false,
   voiceName: '',
   speechRate: 1,
-  serverUrl: process.env.SAARTHI_SERVER || (app.isPackaged ? 'https://api.saarthi.app' : 'http://localhost:8787'),
+  serverUrl: process.env.CAIRN_SERVER || (app.isPackaged ? 'https://api.cairn.app' : 'http://localhost:8787'),
   panelWidth: 420,
   restoreTabs: [],
 };

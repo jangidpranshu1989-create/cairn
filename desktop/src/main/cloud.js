@@ -1,4 +1,4 @@
-// Saarthi cloud client: account session, realtime socket, phone approvals and file transfers.
+// Cairn cloud client: account session, realtime socket, phone approvals and file transfers.
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -25,7 +25,7 @@ async function refresh() {
 
 async function api(p, { method = 'GET', body, form, signal, retried } = {}) {
   const s = session();
-  if (!s) throw new Error('Sign in to your Saarthi account first (Settings → Account).');
+  if (!s) throw new Error('Sign in to your Cairn account first (Settings → Account).');
   const headers = { Authorization: 'Bearer ' + s.accessToken };
   if (body) headers['Content-Type'] = 'application/json';
   const r = await fetch(base() + '/api' + p, { method, headers, body: form || (body ? JSON.stringify(body) : undefined), signal });
@@ -97,7 +97,7 @@ async function sendToPhone(filePath, folder) {
   const buf = fs.readFileSync(filePath);
   fd.append('file', new Blob([buf]), path.basename(filePath));
   fd.append('filename', path.basename(filePath));
-  fd.append('folder', folder || 'Saarthi');
+  fd.append('folder', folder || 'Cairn');
   return api('/transfers', { method: 'POST', form: fd });
 }
 

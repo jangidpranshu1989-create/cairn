@@ -2,7 +2,7 @@
 // They share the user's session partition, so logged-in sites and cookies behave normally.
 const { WebContentsView } = require('electron');
 
-const PARTITION = 'persist:saarthi';
+const PARTITION = 'persist:cairn';
 let active = 0; const queue = [];
 const MAX_PARALLEL = 4;
 

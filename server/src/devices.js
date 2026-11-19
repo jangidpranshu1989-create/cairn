@@ -22,7 +22,7 @@ devicesRouter.post('/pair/start', requireAuth, async (req, res) => {
   do { code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0'); }
   while (db.prepare('SELECT 1 FROM pair_codes WHERE code=?').get(code));
   db.prepare('INSERT INTO pair_codes (code, user_id, expires_at) VALUES (?,?,?)').run(code, req.user.id, now() + 5 * 60_000);
-  const payload = `saarthi://pair?code=${code}&server=${encodeURIComponent(config.publicUrl)}`;
+  const payload = `cairn://pair?code=${code}&server=${encodeURIComponent(config.publicUrl)}`;
   res.json({ code, payload, qr: await QRCode.toDataURL(payload, { margin: 1, width: 280 }), expiresIn: 300 });
 });
 
@@ -30,7 +30,7 @@ const pairLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20 });
 // Phone redeems the code (no auth yet) and receives its own device session
 devicesRouter.post('/pair/complete', pairLimiter, (req, res) => {
   const p = z.object({ code: z.string().regex(/^\d{6}$/), name: z.string().max(80).default('Android phone'), pushToken: z.string().max(4096).optional() }).safeParse(req.body);
-  if (!p.success) return res.status(400).json({ error: 'Enter the 6-digit code shown in Saarthi' });
+  if (!p.success) return res.status(400).json({ error: 'Enter the 6-digit code shown in Cairn' });
   const row = db.prepare('SELECT * FROM pair_codes WHERE code=?').get(p.data.code);
   if (!row || row.expires_at < now()) return res.status(400).json({ error: 'Code expired. Generate a new one on your computer.' });
   db.prepare('DELETE FROM pair_codes WHERE code=?').run(p.data.code);

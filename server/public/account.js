@@ -6,9 +6,9 @@
   let captchaToken = null;
 
   const store = {
-    get: () => JSON.parse(localStorage.getItem('saarthi.auth') || 'null'),
-    set: (v) => localStorage.setItem('saarthi.auth', JSON.stringify(v)),
-    clear: () => localStorage.removeItem('saarthi.auth'),
+    get: () => JSON.parse(localStorage.getItem('cairn.auth') || 'null'),
+    set: (v) => localStorage.setItem('cairn.auth', JSON.stringify(v)),
+    clear: () => localStorage.removeItem('cairn.auth'),
   };
 
   async function api(path, opts = {}) {
@@ -40,7 +40,7 @@
     $('nameWrap').classList.toggle('hidden', !s);
     $('submit').textContent = s ? 'Create account' : 'Sign in';
     $('password').autocomplete = s ? 'new-password' : 'current-password';
-    $('switchText').textContent = s ? 'Already have an account?' : 'New to Saarthi?';
+    $('switchText').textContent = s ? 'Already have an account?' : 'New to Cairn?';
     $('switchLink').textContent = s ? 'Sign in' : 'Create an account';
     if (s) loadCaptcha(); else $('captcha').classList.remove('show');
   }
@@ -49,7 +49,7 @@
     store.set({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user });
     if (handoff) {
       const h = new URLSearchParams({ access: data.accessToken, refresh: data.refreshToken, user: JSON.stringify(data.user) });
-      location.href = 'saarthi://auth-callback#' + h.toString();
+      location.href = 'cairn://auth-callback#' + h.toString();
       return;
     }
     showProfile();

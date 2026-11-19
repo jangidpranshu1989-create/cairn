@@ -16,7 +16,7 @@ function snapshotFn(maxText) {
   };
   const clean = (t, n = 80) => (t || '').replace(/\s+/g, ' ').trim().slice(0, n);
   const sel = 'a[href],button,input:not([type=hidden]),textarea,select,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=radio],[role=option],[role=combobox],[role=searchbox],[contenteditable=true],[onclick],[tabindex]:not([tabindex="-1"])';
-  document.querySelectorAll('[data-saarthi-id]').forEach(e => e.removeAttribute('data-saarthi-id'));
+  document.querySelectorAll('[data-cairn-id]').forEach(e => e.removeAttribute('data-cairn-id'));
   const vh = innerHeight;
   const all = [...document.querySelectorAll(sel)].filter(vis);
   // Prioritise elements in / near the viewport
@@ -29,7 +29,7 @@ function snapshotFn(maxText) {
   const lines = [];
   picked.forEach((el, i) => {
     const id = i + 1;
-    el.setAttribute('data-saarthi-id', String(id));
+    el.setAttribute('data-cairn-id', String(id));
     const tag = el.tagName.toLowerCase();
     const role = el.getAttribute('role');
     const label = clean(el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('title') || el.getAttribute('alt') || el.querySelector?.('img')?.alt || '');
@@ -62,7 +62,7 @@ function snapshotFn(maxText) {
 
 // ---------- Element helpers ----------
 function locateFn(id) {
-  const el = document.querySelector(`[data-saarthi-id="${id}"]`);
+  const el = document.querySelector(`[data-cairn-id="${id}"]`);
   if (!el) return null;
   el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
   const r = el.getBoundingClientRect();
@@ -82,7 +82,7 @@ function findByTextFn(text) {
   return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), text: cands[0].s.slice(0, 120) };
 }
 function focusFn(id, clear) {
-  const el = document.querySelector(`[data-saarthi-id="${id}"]`);
+  const el = document.querySelector(`[data-cairn-id="${id}"]`);
   if (!el) return false;
   el.scrollIntoView({ block: 'center', behavior: 'instant' });
   el.focus();
@@ -93,7 +93,7 @@ function focusFn(id, clear) {
   return true;
 }
 function selectFn(id, value) {
-  const el = document.querySelector(`[data-saarthi-id="${id}"]`);
+  const el = document.querySelector(`[data-cairn-id="${id}"]`);
   if (!el || el.tagName !== 'SELECT') return 'not a select';
   const v = String(value).toLowerCase();
   const opt = [...el.options].find(o => o.text.toLowerCase().includes(v) || o.value.toLowerCase() === v);
@@ -140,10 +140,10 @@ function articleFn() {
 
 // ---------- Visual agent overlay (cursor + glow) ----------
 function overlayFn(cmd, x, y, label) {
-  let root = document.getElementById('__saarthi_overlay');
+  let root = document.getElementById('__cairn_overlay');
   if (!root) {
     root = document.createElement('div');
-    root.id = '__saarthi_overlay';
+    root.id = '__cairn_overlay';
     root.attachShadow({ mode: 'open' }).innerHTML = `<style>
       :host{all:initial}
       .glow{position:fixed;inset:0;pointer-events:none;z-index:2147483646;border-radius:0;box-shadow:inset 0 0 0 2px rgba(130,169,217,.7),inset 0 0 36px 2px rgba(130,169,217,.22);animation:breathe 2.6s ease-in-out infinite}

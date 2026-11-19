@@ -16,6 +16,6 @@
     $$('[data-rm]').forEach(b => b.onclick = async () => { await api('history:remove', Number(b.dataset.rm)); load(); });
   }
   let t; q.oninput = () => { clearTimeout(t); t = setTimeout(load, 150); };
-  $('#clear').onclick = () => location.href = 'saarthi://settings#privacy';
+  $('#clear').onclick = () => location.href = 'cairn://settings#privacy';
   load();
 })();

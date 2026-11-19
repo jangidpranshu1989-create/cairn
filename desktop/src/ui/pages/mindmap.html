@@ -1,5 +1,5 @@
 <!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Mind map</title>
-<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="saarthi://mindmap/pages/internal.css">
+<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="cairn://mindmap/pages/internal.css">
 <style>
 body{overflow:hidden;background:var(--bg-2)}
 .bar{position:fixed;top:0;left:0;right:0;height:56px;display:flex;align-items:center;gap:10px;padding:0 18px;background:color-mix(in srgb,var(--bg-2) 85%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:2}
@@ -7,8 +7,8 @@ body{overflow:hidden;background:var(--bg-2)}
 #stage{position:fixed;inset:56px 0 0 0;cursor:grab}#stage:active{cursor:grabbing}
 svg#map{width:100%;height:100%}
 .node rect{rx:12px;stroke-width:1.5}
-.node text{font:600 13px 'Satoshi',sans-serif;fill:var(--text)}
-.node.root text{font:800 17px 'Cabinet Grotesk',sans-serif;fill:var(--accent-ink)}
+.node text{font:600 13px 'Inter',sans-serif;fill:var(--text)}
+.node.root text{font:800 17px 'Inter',sans-serif;fill:var(--accent-ink)}
 .node{cursor:pointer;transition:opacity .2s}
 .link{fill:none;stroke-width:2;opacity:.55}
 .hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--faint)}
@@ -16,4 +16,4 @@ svg#map{width:100%;height:100%}
 <body><div class="bar"><h1 id="title">Mind map</h1><a class="btn sm" id="src" target="_blank">Source</a><button class="btn sm" id="fit">Fit</button><button class="btn sm" id="expand">Expand all</button><button class="btn sm primary" id="png">Save PNG</button></div>
 <div id="stage"><svg id="map" xmlns="http://www.w3.org/2000/svg"><g id="vp"></g></svg></div>
 <div class="hint">Click a branch to collapse · drag to pan · scroll to zoom</div>
-<script src="saarthi://mindmap/pages/internal.js"></script><script src="saarthi://mindmap/pages/mindmap.js"></script></body></html>
+<script src="cairn://mindmap/pages/internal.js"></script><script src="cairn://mindmap/pages/mindmap.js"></script></body></html>

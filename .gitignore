@@ -12,3 +12,5 @@ android/local.properties
 android/keystore.properties
 *.jks
 *.keystore
+android/keys.properties
+desktop/src/main/builtin.json

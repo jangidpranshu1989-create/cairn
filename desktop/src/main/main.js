@@ -37,14 +37,20 @@ function registerProtocol() {
     if (u.host === 'auth-callback') return new Response('Signing in…', { headers: { 'content-type': 'text/plain' } });
     if (u.host === 'file') { // serve generated files (e.g. long screenshots) for preview
       const p = u.searchParams.get('p');
-      if (p && p.startsWith(pageTools.outDir())) return net.fetch(pathToFileURL(p).toString());
+      if (p && within(p, pageTools.outDir())) return net.fetch(pathToFileURL(path.resolve(p)).toString());
       return new Response('Forbidden', { status: 403 });
     }
     let rel = u.pathname === '/' || !u.pathname ? `pages/${u.host}.html` : (u.pathname.startsWith('/') ? u.pathname.slice(1) : u.pathname);
     if (u.pathname === '/' && !PAGES.has(u.host)) rel = 'pages/error.html';
     const file = path.normalize(path.join(UI_DIR, rel));
-    if (!file.startsWith(UI_DIR)) return new Response('Forbidden', { status: 403 });
-    return net.fetch(pathToFileURL(file).toString());
+    if (!within(file, UI_DIR)) return new Response('Forbidden', { status: 403 });
+    return net.fetch(pathToFileURL(file).toString()).then((r) => {
+      if (!/\.html$/.test(file)) return r;
+      // Internal pages get a strict CSP: no remote scripts, no framing, no plugin content.
+      const h = new Headers(r.headers);
+      h.set('Content-Security-Policy', "default-src 'self' cairn:; script-src 'self' cairn: 'unsafe-inline'; style-src 'self' cairn: 'unsafe-inline'; img-src * data: blob:; media-src * data: blob:; connect-src *; font-src 'self' cairn: data:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'");
+      return new Response(r.body, { status: r.status, headers: h });
+    });
   };
   protocol.handle('cairn', handler);
   session.fromPartition('persist:cairn').protocol.handle('cairn', handler);
@@ -432,7 +438,9 @@ function registerIpc() {
   }, { internal: true });
 }
 
-function safeFile(f) { if (!f) return false; const p = path.resolve(f); return p.startsWith(pageTools.outDir()) || p.startsWith(app.getPath('downloads')) || p.startsWith(store.get().settings.data.downloadDir || '\0'); }
+// True only when `p` resolves to a path inside `dir` (blocks ../ traversal and sibling-prefix tricks like /out-evil).
+function within(p, dir) { if (!p || !dir) return false; const r = path.resolve(String(p)); const d = path.resolve(String(dir)); return r === d || r.startsWith(d + path.sep); }
+function safeFile(f) { if (!f) return false; const dl = store.get().settings.data.downloadDir; return within(f, pageTools.outDir()) || within(f, app.getPath('downloads')) || (!!dl && within(f, dl)); }
 
 function suggest(q) {
   const ql = String(q).toLowerCase().trim();

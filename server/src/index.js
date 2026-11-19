@@ -14,23 +14,28 @@ import { approvalsRouter } from './approvals.js';
 import { transfersRouter } from './transfers.js';
 import { aiRouter } from './ai.js';
 import { attachHub } from './hub.js';
+import { syncRouter } from './sync.js';
+import { readFileSync } from 'node:fs';
 
+const VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version; } catch { return '0.0.0'; } })();
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: {
   directives: { defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:'], styleSrc: ["'self'", "'unsafe-inline'", 'https://api.fontshare.com'],
     fontSrc: ["'self'", 'https://cdn.fontshare.com'], scriptSrc: ["'self'"], connectSrc: ["'self'"] } } }));
-app.use(cors({ origin: config.corsOrigins.includes('*') ? true : config.corsOrigins, credentials: false }));
+// Bearer-token API (no cookies), so CORS only needs to allow the public site and Cairn's own internal pages.
+app.use(cors({ credentials: false, origin: (o, cb) => cb(null, !o || config.corsOrigins.includes('*') || config.corsOrigins.includes(o) || /^cairn:\/\//.test(o)) }));
 app.use(express.json({ limit: '4mb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, time: now(), version: '1.0.0' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, time: now(), version: VERSION }));
 app.use('/api/auth', authRouter);
 app.use('/api/passkeys', passkeyRouter);
 app.use('/api/devices', devicesRouter);
 app.use('/api/approvals', approvalsRouter);
 app.use('/api/transfers', transfersRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/sync/v2', syncRouter);
 
 // Public website: contact form + Pro waitlist (rate-limited, validated, stored for the team)
 const contactLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });

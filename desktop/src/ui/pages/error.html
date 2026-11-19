@@ -16,7 +16,7 @@
   $('#t').textContent = offline ? "You're offline" : dns ? "This site can't be found" : "This page can't be reached";
   $('#d').textContent = url ? (dns ? `${host(url)}'s server address couldn't be found.` : `${host(url)} took too long to respond or refused to connect.`) : 'Unknown page.';
   $('#c').textContent = desc ? `${desc} (${code})` : '';
-  $('#retry').onclick = () => url ? location.replace(url) : history.back();
+  $('#retry').onclick = () => /^https?:\/\//i.test(url) ? location.replace(url) : history.back(); // never navigate to javascript:/file: from a query param
   $('#ask').onclick = () => api('ui:ask', `Find and open the right page for: ${url}`);
 })();
 </script></body></html>

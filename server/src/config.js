@@ -22,7 +22,8 @@ export const config = {
   rpId: process.env.RP_ID || 'localhost',
   rpName: process.env.RP_NAME || 'Cairn',
   rpOrigins: (process.env.RP_ORIGINS || 'http://localhost:8787').split(',').map(s => s.trim()),
-  corsOrigins: (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim()),
+  // Production defaults to the public site only (desktop pages use cairn:// and native clients send no Origin).
+  corsOrigins: (process.env.CORS_ORIGINS || (isProd ? (process.env.PUBLIC_URL || '') : '*')).split(',').map(s => s.trim()).filter(Boolean),
   // AI providers
   groqKey: process.env.GROQ_API_KEY || '',
   nvidiaKey: process.env.NVIDIA_API_KEY || '',
@@ -39,4 +40,5 @@ export const config = {
   transferTtlHours: Number(process.env.TRANSFER_TTL_HOURS || 24),
   approvalTtlSec: Number(process.env.APPROVAL_TTL_SEC || 180),
   dailyAiRequestsFree: Number(process.env.DAILY_AI_FREE || 300),
+  dailyAiRequestsAnon: Number(process.env.DAILY_AI_ANON || 60),
 };

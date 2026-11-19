@@ -2,6 +2,8 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import svgCaptcha from 'svg-captcha';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
@@ -16,8 +18,8 @@ const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 export function issueTokens(userId, { deviceId = null, userAgent = '', ip = '' } = {}) {
   const sid = id('s_');
   const refresh = crypto.randomBytes(32).toString('base64url');
-  db.prepare(`INSERT INTO sessions (id, user_id, device_id, refresh_hash, user_agent, ip, created_at, last_used_at)
-              VALUES (?,?,?,?,?,?,?,?)`).run(sid, userId, deviceId, sha256(refresh), userAgent.slice(0, 200), ip, now(), now());
+  db.prepare(`INSERT INTO sessions (id, user_id, device_id, refresh_hash, user_agent, ip, created_at, last_used_at, auth_at)
+              VALUES (?,?,?,?,?,?,?,?,?)`).run(sid, userId, deviceId, sha256(refresh), String(userAgent || '').slice(0, 200), ip, now(), now(), now());
   return {
     accessToken: signAccess(userId, sid, deviceId),
     refreshToken: `${sid}.${refresh}`,
@@ -129,11 +131,17 @@ authRouter.post('/login', authLimiter, async (req, res) => {
 authRouter.post('/refresh', (req, res) => {
   const [sid, secret] = String(req.body?.refreshToken || '').split('.');
   const s = sid && db.prepare('SELECT * FROM sessions WHERE id=?').get(sid);
+  // Refresh-token reuse detection: presenting an already-rotated token means it was copied. Kill the whole session.
+  if (s && !s.revoked && secret && s.prev_hash && s.prev_hash === sha256(secret) && s.refresh_hash !== sha256(secret)) {
+    db.prepare('UPDATE sessions SET revoked=1 WHERE id=?').run(sid);
+    audit(s.user_id, 'refresh_reuse_detected', { sid, ip: req.ip });
+    return res.status(401).json({ error: 'Session expired, please sign in again' });
+  }
   if (!s || s.revoked || !secret || s.refresh_hash !== sha256(secret) || s.created_at + config.refreshTtlSec * 1000 < now())
     return res.status(401).json({ error: 'Session expired, please sign in again' });
   // Rotate refresh token on every use
   const next = crypto.randomBytes(32).toString('base64url');
-  db.prepare('UPDATE sessions SET refresh_hash=?, last_used_at=? WHERE id=?').run(sha256(next), now(), sid);
+  db.prepare('UPDATE sessions SET prev_hash=refresh_hash, refresh_hash=?, last_used_at=? WHERE id=?').run(sha256(next), now(), sid);
   res.json({ accessToken: signAccess(s.user_id, sid, s.device_id), refreshToken: `${sid}.${next}`, expiresIn: config.accessTtlSec });
 });
 
@@ -201,7 +209,31 @@ authRouter.delete('/sessions/:sid', requireAuth, (req, res) => {
 authRouter.delete('/account', requireAuth, async (req, res) => {
   const u = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
   if (u.password_hash && !(await bcrypt.compare(String(req.body?.password || ''), u.password_hash))) return res.status(401).json({ error: 'Password is incorrect' });
+  // Passkey-only accounts: require a sign-in from the last 10 minutes instead of a password.
+  if (!u.password_hash) {
+    const s = db.prepare('SELECT auth_at FROM sessions WHERE id=?').get(req.user.sid);
+    if (!s?.auth_at || s.auth_at < now() - 10 * 60_000) return res.status(401).json({ error: 'Please sign in again with your passkey, then delete your account', reauth: true });
+  }
+  // Remove stored transfer files before the rows cascade away.
+  const tdir = path.join(config.dataDir, 'transfers');
+  for (const t of db.prepare('SELECT id FROM transfers WHERE user_id=?').all(u.id)) fs.rm(path.join(tdir, path.basename(t.id)), { force: true }, () => {});
   db.prepare('DELETE FROM users WHERE id=?').run(u.id);
   audit(u.id, 'account_deleted');
   res.json({ ok: true });
 });
+
+// ---------- One-time WebSocket tickets (keeps long-lived access tokens out of URLs and proxy logs) ----------
+const tickets = new Map(); // ticket -> { sub, sid, did, exp }
+authRouter.post('/ws-ticket', requireAuth, (req, res) => {
+  const t = crypto.randomBytes(24).toString('base64url');
+  tickets.set(t, { sub: req.user.id, sid: req.user.sid, did: req.user.deviceId || undefined, exp: now() + 60_000 });
+  if (tickets.size > 10_000) for (const [k, v] of tickets) if (v.exp < now()) tickets.delete(k);
+  res.json({ ticket: t, expiresIn: 60 });
+});
+export function redeemTicket(t) {
+  const v = t && tickets.get(t); if (!v) return null;
+  tickets.delete(t);
+  if (v.exp < now()) return null;
+  const s = db.prepare('SELECT revoked FROM sessions WHERE id=?').get(v.sid);
+  return s && !s.revoked ? v : null;
+}

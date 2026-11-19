@@ -39,6 +39,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -187,12 +188,27 @@ fun AssistantSheet() {
 private fun EmptyAssistant(modifier: Modifier) {
     val t = Browser.current
     val onPage = t != null && !t.isNtp
-    Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.Bottom) {
+    Column(modifier.fillMaxWidth().clipToBounds().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.Bottom) {
         Spacer(Modifier.height(8.dp))
-        Text(if (onPage) "How can I help with this page?" else "What can I do for you?", color = C.text, fontSize = 24.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 30.sp)
-        Spacer(Modifier.height(6.dp))
-        Text("Ask in any language. Cairn browses, compares, reads aloud and acts for you — and always stops before you pay.", color = C.muted, fontSize = 14.sp, lineHeight = 20.sp)
-        Spacer(Modifier.height(18.dp))
+        val att = Ui.attachments.isNotEmpty()
+        Text(if (att) "Ask about ${if (Ui.attachments.size == 1) "your attachment" else "your attachments"}" else if (onPage) "How can I help with this page?" else "What can I do for you?", color = C.text, fontSize = if (att) 20.sp else 24.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 30.sp)
+        Spacer(Modifier.height(if (att) 12.dp else 6.dp))
+        if (!att) { Text("Ask in any language. Cairn browses, compares, reads aloud and acts for you — and always stops before you pay.", color = C.muted, fontSize = 14.sp, lineHeight = 20.sp); Spacer(Modifier.height(18.dp)) }
+        if (Ui.attachments.isNotEmpty()) {
+            // Attachments added: the generic suggestions don't apply — offer attachment actions instead.
+            val img = Ui.attachments.all { it.isImage }
+            val s = if (img) listOf(Ic.Sparkle to "Describe ${if (Ui.attachments.size == 1) "this image" else "these images"}", Ic.FileText to "Extract the text", Ic.ShoppingBag to "Find this product at the best price")
+                else listOf(Ic.Summarize to "Summarize ${if (Ui.attachments.size == 1) "this file" else "these files"}", Ic.FileText to "List the key points and dates", Ic.Translate to "Translate into English")
+            s.forEach { (ic, q) ->
+                Row(Modifier.padding(vertical = 3.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.surface).clickable {
+                    Haptics.tick(); Agent.run(q, Ui.mentions.toList(), Ui.attachments.toList()); Ui.mentions.clear(); Ui.attachments.clear()
+                }.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic, null, Modifier.size(17.dp), tint = C.agent); Spacer(Modifier.width(14.dp)); Text(q, color = C.text, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Icon(Ic.NorthEast, null, Modifier.size(13.dp), tint = C.faint)
+                }
+            }
+            Spacer(Modifier.height(12.dp)); return@Column
+        }
         val s = if (onPage) listOf(Ic.Summarize to "Summarize this page", Ic.Headphones to "Read this page aloud", Ic.AccountTree to "Make a mind map of this page", Ic.BadgePercent to "Find coupons and bank offers here", Ic.Lasso to "Circle something on the page")
         else listOf(Ic.ShoppingBag to "Find the cheapest iPhone 16 from a trusted store", Ic.Swarm to "Plan a weekend in Jaipur: best flight, hotel and cab",
             Ic.Headphones to "Read the Wikipedia article on black holes aloud", Ic.Brain to "What was that article I read about solar panels?")

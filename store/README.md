@@ -1,4 +1,4 @@
-# Cairn store submission kit (v3.0.0)
+# Cairn store submission kit (v3.0.1)
 
 Everything needed to list Cairn on PhonePe Appstore (formerly Indus Appstore), IzzyOnDroid and Obtainium.
 
@@ -10,7 +10,7 @@ Everything needed to list Cairn on PhonePe Appstore (formerly Indus Appstore), I
 | Promo videos | Release assets `Cairn-Demo-Home.mp4`, `Cairn-Demo-Shopping.mp4` | 1080 × 1920, 30 s |
 | Signed APK | https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk | ~10 MB |
 
-App facts: package `app.cairn.browser` · versionCode 11 · versionName 3.0.0 · minSdk 26 (Android 8.0) · targetSdk 35 · signing cert SHA-256 `03a19f7b65680b8e23d3894b71ebca9ee91cea27fb483505cd14121602376d5b`.
+App facts: package `app.cairn.browser` · versionCode 12 · versionName 3.0.1 · minSdk 26 (Android 8.0) · targetSdk 35 · signing cert SHA-256 `03a19f7b65680b8e23d3894b71ebca9ee91cea27fb483505cd14121602376d5b`.
 
 Links: Website https://jangidpranshu1989-create.github.io/cairn · Privacy https://jangidpranshu1989-create.github.io/cairn/privacy.html · Terms https://jangidpranshu1989-create.github.io/cairn/terms.html · Source https://github.com/jangidpranshu1989-create/cairn
 
@@ -51,7 +51,7 @@ Cairn 3.0 mein naya kya hai:
 
 Saath mein: Shield (ads aur trackers block), private tabs, read-aloud, mind maps, PDF save, price-drop alerts, fingerprint approvals, aur Windows/macOS/Linux ke saath sync. Passwords aur PINs AI se hamesha masked rehte hain.
 
-Cairn free aur open source hai.
+Cairn free hai, aur iska source code GitHub par public hai.
 
 ### What's new (≤ 500)
 See `fastlane/metadata/android/en-US/changelogs/11.txt`.

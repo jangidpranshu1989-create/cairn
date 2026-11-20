@@ -75,7 +75,9 @@ function extractListingsFn(linkPattern, storeId) {
         sponsored: !!card.querySelector('.puis-sponsored-label-text, [aria-label="View Sponsored information or leave ad feedback"]'),
         ...(() => { const u = imgUrls(card.querySelector('img.s-image')); return { image: u[0] || '', images: u }; })() });
     });
-    return out.slice(0, 16);
+    // Amazon serves several layouts (mobile, desktop, A/B tests). Only stop here if the card layout matched; otherwise
+    // fall through to the generic link scan below so a new layout doesn't mean "0 listings".
+    if (out.length) return out.slice(0, 16);
   }
 
   const re = new RegExp(linkPattern);

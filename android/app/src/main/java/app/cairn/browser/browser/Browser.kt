@@ -255,7 +255,13 @@ object Browser {
     private val chromeVersion by lazy {
         Regex("Chrome/([\\d.]+)").find(WebSettings.getDefaultUserAgent(activity))?.groupValues?.get(1) ?: "131.0.0.0"
     }
-    fun mobileUa(): String = WebSettings.getDefaultUserAgent(activity).replace("; wv)", ")").replace(Regex("Version/\\d+\\.\\d+ "), "")
+    /**
+     * The exact reduced user agent Chrome for Android sends ("Android 10; K", frozen minor version), so sites see a
+     * normal Chrome phone instead of an embedded WebView (Amazon and others challenge "; wv" and "Build/..." agents).
+     */
+    fun mobileUa(): String = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion.substringBefore('.')}.0.0.0 Mobile Safari/537.36"
+    /** Request headers a real Chrome sends for a store page (language first, so Indian stores serve INR prices). */
+    fun storeHeaders(): Map<String, String> = headers() + mapOf("Accept-Language" to "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,hi;q=0.6")
     fun desktopUa(): String = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion.substringBefore('.')}.0.0.0 Safari/537.36"
     private fun applyUa(w: WebView, desktop: Boolean) { w.settings.userAgentString = if (desktop) desktopUa() else mobileUa() }
 
@@ -275,13 +281,16 @@ object Browser {
             mediaPlaybackRequiresUserGesture = true
             setSupportMultipleWindows(true)
             javaScriptCanOpenWindowsAutomatically = Prefs.popups
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW // like Chrome: no http:// scripts/images inside https pages
             allowFileAccess = false; allowContentAccess = true
-            safeBrowsingEnabled = false // Cairn uses no Google services; Shield + Guard cover tracking and phishing heuristics
+            safeBrowsingEnabled = Prefs.safeBrowsing // WebView's on-device Safe Browsing list (hash prefixes, URLs never leave the phone) on top of Cairn Guard
             cacheMode = if (incognito && !profilesSupported) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
             setGeolocationEnabled(true)
         }
         applyUa(w, desktop)
+        // Chrome doesn't send X-Requested-With: app.cairn.browser; WebView does by default, and anti-bot systems use it.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST))
+            runCatching { WebSettingsCompat.setRequestedWithHeaderOriginAllowList(w.settings, emptySet()) }
         // Chrome-style resilience: the visible tab's renderer is kept at "important" so Android doesn't kill it under
         // memory pressure; background tabs drop to normal priority automatically (waived when not visible).
         runCatching { w.setRendererPriorityPolicy(android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT, true) }

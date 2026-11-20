@@ -36,7 +36,11 @@ const DEFS = [
   fn('show_products', 'Display product comparison cards to the user. Pass indices from the last compare_prices results in the order to show (best first).', { indices: { type: 'array', items: { type: 'number' } }, headline: S('one-line headline') }, ['indices']),
 ];
 
-const FINAL_ACTION = /place (your )?order|pay(ment)?\s*(now|securely|₹|rs\.?|\$|£|€|\d)|confirm (order|purchase|payment)|complete (purchase|order|payment)|proceed to pay|make payment|submit order|pay with|authorize payment/i;
+// Labels that place an order or move money, in English and Hindi ("Place order", "Pay ₹84,490", "ऑर्डर करें", "भुगतान करें").
+const FINAL_ACTION = /place (your )?order|pay(ment)?\s*(now|securely|₹|rs\.?|inr|\$|£|€|\d)|confirm (and pay|order|purchase|payment|booking)|complete (purchase|order|payment|booking)|proceed to pay|make payment|submit order|pay with|pay using|authori[sz]e payment|ऑर्डर (करें|दें|प्लेस)|भुगतान|पेमेंट/i;
+// On a checkout / payment page even a generic or icon-only button ("Continue", "Next", "→", "") can be the paying click.
+const CONTINUE_ACTION = /^\s*$|continue|proceed|confirm|submit|next|done|ok\b|verify|pay|buy|order|use this|आगे|जारी|पुष्टि|→|›|>/i;
+const PAY_URL = /\/(checkout|payment|payments|pay|buy|order-?summary|place-?order|billing)(\b|\/|\?|$)|[?&](step|stage)=(pay|payment)|razorpay|paytm|payu|cashfree|billdesk|ccavenue|stripe\.com\/pay|checkout\.stripe|phonepe|juspay/i;
 
 async function settle(wc, ms = 3500) {
   const start = Date.now();
@@ -55,10 +59,18 @@ async function mouseClick(ctx, wc, x, y, label) {
   await settle(wc);
 }
 
-async function guardFinal(ctx, label) {
-  if (!FINAL_ACTION.test(label || '')) return null;
+async function onPaymentPage(w) {
+  if (!w) return false;
+  if (PAY_URL.test(w.getURL() || '')) return true;
+  const st = await dom.pageState(w).catch(() => ({}));
+  return !!(st.payment || st.paymentForm);
+}
+
+async function guardFinal(ctx, label, w) {
+  const finalLabel = FINAL_ACTION.test(label || '');
+  if (!finalLabel && !(CONTINUE_ACTION.test(label || '') && await onPaymentPage(w))) return null;
   if (ctx.approved) { ctx.approved = false; return null; } // one approval == one final click
-  return `BLOCKED: "${label}" looks like placing an order or paying. Call request_approval first (with amount, merchant, item), then retry this click only if approved.`;
+  return `BLOCKED: "${(label || 'this button').slice(0, 60)}" ${finalLabel ? 'looks like placing an order or paying' : 'is on a checkout/payment page and may place the order'}. Call request_approval first (with the exact amount shown on the page, merchant, item), then retry this click only if approved.`;
 }
 
 async function webSearch(query) { return require('../search').results(query); }
@@ -113,7 +125,7 @@ async function execute(name, args, ctx) {
       const w = wc();
       const loc = await dom.locate(w, args.id);
       if (!loc) return `Element ${args.id} not found — call read_page again.`;
-      const blocked = await guardFinal(ctx, loc.text);
+      const blocked = await guardFinal(ctx, loc.text, w);
       if (blocked) return blocked;
       ctx.step('click', `Clicking "${loc.text.slice(0, 50) || loc.tag}"`);
       await mouseClick(ctx, w, loc.x, loc.y, loc.text.slice(0, 30));
@@ -123,7 +135,7 @@ async function execute(name, args, ctx) {
       const w = wc();
       const loc = await dom.findByText(w, args.text);
       if (!loc) return `No visible element with text "${args.text}". Use read_page.`;
-      const blocked = await guardFinal(ctx, loc.text);
+      const blocked = await guardFinal(ctx, loc.text, w);
       if (blocked) return blocked;
       ctx.step('click', `Clicking "${loc.text.slice(0, 50)}"`);
       await mouseClick(ctx, w, loc.x, loc.y, loc.text.slice(0, 30));
@@ -226,4 +238,5 @@ async function pressKey(wc, key) {
 }
 const safeHost = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 
-module.exports = { DEFS, execute, webSearch };
+module.exports = {
+  _test: { FINAL_ACTION, CONTINUE_ACTION, PAY_URL }, DEFS, execute, webSearch };

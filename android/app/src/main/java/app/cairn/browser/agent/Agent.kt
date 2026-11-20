@@ -81,7 +81,7 @@ object Agent {
     private var aiDown: String? = null
     private val PAY_INTENT = Regex("(?i)(pay|payment|upi|checkout|order (kar|kr|place)|place (the |an )?order|khareed|kharid|buy)")
     private val FACTUAL = Regex("(?i)(\\?|\\b(what|who|when|where|which|why|how|latest|news|price|best|vs|compare|review|specs?|launch|kya|kaun|kab|kahan|kaise|kitna|konsa|batao|bata)\\b)")
-    private val BUY_INTENT = Regex("(?i)(add (it |this |that )?to (the |my )?cart|cart (me|mein|mai|m) (add|daal|dal)|add (kar|kr)|cart tak|checkout|check out|buy (it|now|this|that|the)|order (kar|kr|it|this|place)|place (the |an )?order|khareed|kharid|purchase|le (aao|ao|jao|ja)|pay (kar|kr|for|it)|payment (kar|kr))")
+    private val BUY_INTENT = Intents.BUY
     /** Sources used in the current turn. Every tool result labels them [n]; the reply cites them and shows them as links. */
     private val cites = mutableListOf<Cite>()
     private fun cite(title: String, url: String, snippet: String = ""): Int {
@@ -405,8 +405,13 @@ HOW TO WORK
             catch (e: NoAiException) {
                 val why = (e as? AiUnavailableException)?.summary
                 // Never a blank "Not found": if the stores were already compared, answer from those results on-device.
+                val cartDone = runCatching { offlineCart() }.getOrElse { if (it is CancellationException) throw it; null }
                 val local = if (productsThisTurn && lastProducts.isNotEmpty()) localShoppingSummary(why) else null
-                items.add(local?.let { AiMsg(it, prompt = lastPrompt) } ?: AiMsg("Cairn's AI couldn't be reached on any provider. ${if (why != null) "Details: $why. " else ""}Check your connection and tap Retry. You can also add your own free AI key in Settings → AI.", error = true, setup = true))
+                when {
+                    cartDone != null -> items.add(AiMsg(cartDone + (local?.let { "\n\n$it" } ?: ""), prompt = lastPrompt))
+                    local != null -> items.add(AiMsg(local, prompt = lastPrompt))
+                    else -> items.add(AiMsg("Cairn's AI is busy right now${if (why != null) " ($why)" else ""}. Tap Retry in a few seconds — or add your own free AI key in Settings → AI so it never waits.", error = true, setup = true))
+                }
             }
             catch (e: ApiException) { items.add(AiMsg(apiError(e), error = true, setup = e.status == 401)) }
             catch (e: Exception) { items.add(AiMsg(friendly(e), error = true)) }
@@ -430,6 +435,39 @@ HOW TO WORK
             429 -> (m ?: "Too many requests right now") + " (HTTP 429)"
             else -> (m ?: "Something went wrong") + " (HTTP ${e.status})"
         }
+    }
+
+    /** Best index to buy: the cheapest trusted listing from a store the user named ("from Vijay Sales"), else the best pick. */
+    private fun pickIndex(list: List<Product>): Int {
+        val u = userText.lowercase().replace(" ", "")
+        val named = list.indexOfFirst { p -> p.store.lowercase().replace(" ", "").let { s -> s.length > 3 && u.contains(s.removeSuffix(".in").removeSuffix(".com")) } }
+        if (named >= 0) return named
+        return list.indexOfFirst { it.best }.takeIf { it >= 0 } ?: 0
+    }
+
+    /**
+     * Every AI provider is down but the user asked to put something in the cart: do it on-device anyway (compared
+     * listing or the product URL they pasted), then open checkout. Payment still always needs their approval.
+     */
+    private suspend fun offlineCart(): String? {
+        if (!buyIntent) return null
+        val url = Regex("https?://\\S+").find(userText)?.value?.trimEnd('.', ',', ')')
+        val args = when {
+            !cartTried && lastProducts.isNotEmpty() -> JSONObject().put("index", pickIndex(lastProducts))
+            !cartTried && url != null -> JSONObject().put("url", url)
+            else -> null
+        }
+        val sb = StringBuilder()
+        if (args != null) {
+            val r = runCatching { exec("add_to_cart", args) }.getOrElse { e -> if (e is CancellationException) throw e; "ERROR: ${e.message}" }
+            if (!r.startsWith("ADDED") && !r.contains("already in the cart")) return null
+            sb.append(if (Lang.detect(userText) == "Hinglish") "**Cart mein add ho gaya.** " else "**Added to your cart.** ")
+        }
+        if (!checkoutTried && Regex("(?i)check ?out|order|pay|buy|kh(a)?r(ee|i)d").containsMatchIn(userText)) {
+            runCatching { exec("go_to_checkout", JSONObject()) }.onFailure { if (it is CancellationException) throw it }
+            sb.append("Checkout is open — review the address and pay when you're ready (payments always need your approval). ")
+        }
+        return sb.toString().takeIf { it.isNotBlank() }
     }
 
     /** Rule-based recommendation from the compared listings, used when every AI provider is down. */
@@ -741,9 +779,18 @@ HOW TO WORK
                     step("think", "Lowest trusted price: ${Shopping.money(best.price)} on ${best.store}" + if (buyIntent) " → opening product page to add to cart" else "")
                 }
                 if (res.results.isEmpty()) { items.remove(card); return "No listings found. Store status: ${res.stores.joinToString { "${it.name}=${it.error ?: it.count}" }}. Try a simpler query or web_search." }
-                return "Store status: ${res.stores.joinToString { "${it.name}=${if (it.error != null) "error" else it.count}" }}\nResults sorted by price (index|store|title|variant|price|mrp|rating|reviews|trust|flags|url):\n" +
+                val cmp = "Store status: ${res.stores.joinToString { "${it.name}=${if (it.error != null) "error" else it.count}" }}\nResults sorted by price (index|store|title|variant|price|mrp|rating|reviews|trust|flags|url):\n" +
                     res.results.mapIndexed { i, r -> "$i|${r.store}|${r.title.take(110)}|${r.variant}|${r.price}|${r.mrp ?: ""}|${r.rating ?: ""}|${r.reviews ?: ""}|${r.trust}|${r.flags.joinToString("; ")}|${r.url}" }.joinToString("\n") +
                     "\nProduct cards are already shown to the user. " + if (buyIntent) "The user wants you to BUY / add to cart: write one line naming the best trustworthy pick, then immediately call add_to_cart with its index (do not ask)." else "Now give a short recommendation: best trustworthy pick with price + store + link, and 1-2 alternatives."
+                // One shot: when the user asked to buy / add to cart, don't wait for another AI round-trip (or depend on the
+                // model remembering to): add the best pick to the cart right now, then let the model continue to checkout.
+                if (buyIntent && !cartTried) {
+                    val idx = pickIndex(res.results)
+                    step("think", "Adding ${res.results[idx].store} · ${Shopping.money(res.results[idx].price)} to your cart")
+                    val cart = runCatching { exec("add_to_cart", JSONObject().put("index", idx)) }.getOrElse { e -> if (e is CancellationException || e is NoAiException) throw e; "ERROR: ${e.message}" }
+                    return "$cmp\n\nALREADY DONE for the user: add_to_cart(index=$idx) →\n$cart"
+                }
+                return cmp
             }
             "add_to_cart" -> {
                 cartTried = true
@@ -997,19 +1044,25 @@ HOW TO WORK
             }
             "request_approval" -> {
                 val t = tab()
-                // UPI autopay: within the user's per-payment and daily limits the agent may approve itself.
-                val amt = rupees(a.optString("amount")) ?: t.web?.let { w -> PageJs.call(w, "orderTotal()")?.toDoubleOrNull() }
-                if (Prefs.autopay && Prefs.upiId.isNotBlank() && amt != null && amt > 0 && a.optString("kind", "payment") == "payment" &&
-                    amt <= Prefs.payLimit && spentToday() + amt <= Prefs.payDailyLimit) {
+                // UPI autopay: within the user's per-payment and daily limits the agent may approve itself — but only for the
+                // total read from the page itself, and only when it matches what the AI claims (see PayGate).
+                val pageAmt = t.web?.let { w -> PageJs.call(w, "orderTotal()")?.toDoubleOrNull() }
+                val aiAmt = rupees(a.optString("amount"))
+                val verdict = PayGate.decide(pageAmt, aiAmt, Prefs.autopay, Prefs.upiId.isNotBlank(), a.optString("kind", "payment"),
+                    Prefs.payLimit, spentToday(), Prefs.payDailyLimit)
+                if (verdict is PayGate.Verdict.Auto) {
+                    val amt = verdict.amount
                     val day = today(); if (Prefs.paySpentDay != day) { Prefs.paySpentDay = day; Prefs.paySpent = 0 }
                     Prefs.paySpent = Prefs.paySpent + kotlin.math.ceil(amt).toInt()
-                    approvedOnce = true
-                    step("ok", "Auto-approved ₹${"%,.0f".format(amt)} — within your ₹${Prefs.payLimit} autopay limit")
-                    items.add(NoticeItem("lock", "Auto-approved ₹${"%,.0f".format(amt)} at ${a.optString("merchant").ifBlank { t.host }} (limit ₹${Prefs.payLimit}/payment, ₹${spentLeft()} left today). Change this in Settings → Agent payments."))
-                    return "APPROVED automatically (within the user's UPI autopay limit). Now call pay_upi."
+                    approvedOnce = true; lastTotal = "₹${PayGate.fmt(amt)}"
+                    step("ok", "Auto-approved ₹${PayGate.fmt(amt)} (read from the page) — within your ₹${Prefs.payLimit} autopay limit")
+                    items.add(NoticeItem("lock", "Auto-approved ₹${PayGate.fmt(amt)} at ${a.optString("merchant").ifBlank { t.host }} (limit ₹${Prefs.payLimit}/payment, ₹${spentLeft()} left today). Change this in Settings → Agent payments."))
+                    return "APPROVED automatically for ₹${PayGate.fmt(amt)} (the total shown on the page, within the user's UPI autopay limit). Now call pay_upi."
                 }
-                if (Prefs.autopay && amt != null && amt > Prefs.payLimit) step("lock", "₹${"%,.0f".format(amt)} is above your ₹${Prefs.payLimit} autopay limit → asking you")
-                val ap = ApprovalItem(a.optString("kind", "payment"), a.optString("title"), a.optString("amount"), a.optString("merchant"), a.optString("item"), t.host)
+                val why = (verdict as PayGate.Verdict.Ask)
+                if (Prefs.autopay && Prefs.upiId.isNotBlank()) step("lock", "Autopay skipped: ${why.reason} → asking you")
+                val shownAmt = why.amount?.let { "₹${PayGate.fmt(it)}" } ?: a.optString("amount")
+                val ap = ApprovalItem(a.optString("kind", "payment"), a.optString("title"), shownAmt, a.optString("merchant"), a.optString("item"), t.host)
                 step("lock", "Waiting for your approval: ${ap.title}")
                 items.add(ap); openRequests++
                 val ok = ap.result.await()

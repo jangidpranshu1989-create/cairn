@@ -1,6 +1,7 @@
 package app.cairn.browser.agent
 
 import android.net.Uri
+import app.cairn.browser.browser.Browser
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -55,14 +56,26 @@ object Shopping {
     private val VARIANTS = listOf("pro", "max", "plus", "mini", "ultra", "lite", "fe", "air", "neo", "prime", "edge", "fold", "flip")
     private val STOP = setOf("the", "and", "for", "with", "buy", "cheapest", "best", "price", "under", "sabse", "sasta", "chahiye", "gb", "tb", "ram", "rom", "storage", "variant", "colour", "color", "new", "latest", "online", "india", "dhundo", "dhoond", "find", "cart", "add", "daal", "order", "kar", "karke", "mein", "aur", "tak", "mujhe", "ek", "wala", "wali", "ka", "ki", "ke", "se", "me", "ko", "hai", "do", "de", "please", "pls", "rs", "inr", "of", "in", "to", "a", "an")
 
+    /** Mobile 4G/5G pages on Flipkart / Croma / Reliance often need well over 8 s; each store gets up to 18 s to load. */
+    const val STORE_LOAD_MS = 18_000L
+    /** …and another up to 18 s for its product grid to render (lazy hydration on slow networks). */
+    const val STORE_RENDER_MS = 18_000L
+
     private suspend fun searchStore(s: Store, query: String): Pair<List<Product>, String?> {
         var lastErr: String? = null
+        // Amazon's anti-bot checks flag desktop-Linux WebViews; its mobile site with a standard Android Chrome
+        // user agent (no "; wv", no X-Requested-With) is served normally and uses the same result cards.
+        val desktop = s.id != "amazon"
         repeat(2) { attempt ->
             try {
-                val items = PageTools.withPage(s.url(query), desktop = true, timeoutMs = 32_000, settleMs = 1500, scrolls = 2, label = s.name) { w ->
-                    for (i in 0 until 12) {
+                val items = PageTools.withPage(s.url(query), desktop = desktop, timeoutMs = STORE_LOAD_MS + STORE_RENDER_MS + 8_000, loadTimeoutMs = STORE_LOAD_MS,
+                    settleMs = 1200, scrolls = 2, label = s.name, headers = Browser.storeHeaders()) { w ->
+                    val until = System.currentTimeMillis() + STORE_RENDER_MS
+                    while (System.currentTimeMillis() < until) {
                         val n = PageJs.call(w, "countLinks(${PageJs.q(s.link)})")?.toIntOrNull() ?: 0
-                        if (n >= 4) break; delay(750)
+                        if (n >= 4) break
+                        if (PageJs.call(w, "blocked()") == "true") break
+                        delay(750)
                     }
                     val blocked = PageJs.call(w, "blocked()") == "true"
                     val raw = PageJs.call(w, "listings(${PageJs.q(s.link)}, ${PageJs.q(s.id)})")
@@ -133,7 +146,7 @@ object Shopping {
     suspend fun compare(query: String, country: String, onStore: (Store, List<Product>, String?) -> Unit = { _, _, _ -> }, onStart: (Store) -> Unit = {}, onProgress: (String) -> Unit): CompareResult = coroutineScope {
         val stores = storesFor(country)
         onProgress("Searching ${stores.size} stores: ${stores.joinToString { it.name }}")
-        val gate = Semaphore(3) // keep memory in check on phones
+        val gate = Semaphore(4) // keep memory in check on phones
         val settled = stores.map { s -> async { gate.withPermit { onStart(s); searchStore(s, query) }.also { (items, err) ->
             onStore(s, heuristicFilter(query, items).sortedBy { it.price }, err)
             onProgress(if (err != null && items.isEmpty()) "${s.name}: couldn't load ($err)" else "${s.name}: ${items.size} listings") } } }.map { it.await() }

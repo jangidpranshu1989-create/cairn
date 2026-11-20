@@ -41,6 +41,8 @@ app.use('/api/devices', devicesRouter);
 app.use('/api/approvals', approvalsRouter);
 app.use('/api/transfers', transfersRouter);
 app.use('/api/ai', aiRouter);
+// Aliases so any OpenAI-style client path reaches the same AI proxy instead of a 404.
+app.use(['/api/v1/ai', '/api/chat', '/v1', '/api/v1'], (req, _res, next) => { if (req.method === 'POST' && /^\/(chat(\/completions)?|completions)?\/?$/.test(req.path)) req.url = '/chat'; next(); }, aiRouter);
 app.use('/api/sync/v2', syncRouter);
 app.use('/api/oauth', oauthApi);
 app.use('/api/safety', safetyRouter);

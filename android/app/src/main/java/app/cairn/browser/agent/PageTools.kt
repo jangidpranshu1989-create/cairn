@@ -95,7 +95,7 @@ object PageTools {
         (w.parent as? ViewGroup)?.removeView(w); w.stopLoading(); w.destroy()
     }
     /** Loads [url] in a background WebView and suspends until it finishes loading. */
-    suspend fun loadAndWait(w: WebView, url: String, timeoutMs: Long = 25_000) {
+    suspend fun loadAndWait(w: WebView, url: String, timeoutMs: Long = 25_000, headers: Map<String, String> = Browser.headers()) {
         val loaded = CompletableDeferred<Unit>()
         withContext(Dispatchers.Main) {
             live.firstOrNull { it.web == w }?.url = url
@@ -105,17 +105,19 @@ object PageTools {
                     if (!req.isForMainFrame && app.cairn.browser.browser.Shield.isBlocked(req.url.host)) app.cairn.browser.browser.Shield.empty() else null
                 override fun shouldOverrideUrlLoading(view: WebView, req: android.webkit.WebResourceRequest) = !(req.url.scheme ?: "").startsWith("http")
             }
-            w.loadUrl(url, Browser.headers())
+            w.loadUrl(url, headers)
         }
         withTimeoutOrNull(timeoutMs) { loaded.await() }
     }
 
-    suspend fun <T> withPage(url: String, desktop: Boolean = false, timeoutMs: Long = 30_000, settleMs: Long = 1200, scrolls: Int = 0, label: String? = null, block: suspend (WebView) -> T): T {
+    suspend fun <T> withPage(url: String, desktop: Boolean = false, timeoutMs: Long = 30_000, settleMs: Long = 1200, scrolls: Int = 0, label: String? = null,
+                             loadTimeoutMs: Long = timeoutMs, headers: Map<String, String> = Browser.headers(), block: suspend (WebView) -> T): T {
         val w = backgroundWebView(desktop)
         withContext(Dispatchers.Main) { live.add(LivePage(label ?: app.cairn.browser.data.hostOf(url), w).also { it.url = url }) }
         try {
             return withTimeout(timeoutMs) {
-                loadAndWait(w, url, timeoutMs)
+                // A page that is still loading after loadTimeoutMs is used as-is: product grids often render first.
+                loadAndWait(w, url, loadTimeoutMs, headers)
                 delay(settleMs)
                 repeat(scrolls) { PageJs.call(w, "scroll('down')"); delay(500) }
                 block(w)

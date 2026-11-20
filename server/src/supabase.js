@@ -1,7 +1,7 @@
 // Permanent storage on Supabase (free tier) for hosts whose disk is wiped on every restart / redeploy (Koyeb, Render,
 // pplx.app previews). The server keeps working on its fast local SQLite file; this module
 //   1) restores the latest copy from a private Supabase Storage bucket on boot,
-//   2) uploads a compressed snapshot whenever the data changed (every SNAPSHOT_SECONDS, default 15 s),
+//   2) uploads a compressed snapshot whenever the data changed (at most every SNAPSHOT_SECONDS, default 5 s),
 //   3) flushes one last snapshot on shutdown (SIGTERM / SIGINT), and
 //   4) keeps one dated backup per day under backups/.
 // Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (server-side secret, never ship it in an app). Bucket: SUPABASE_BUCKET.
@@ -93,7 +93,13 @@ export function startSnapshots(db) {
   };
   setTimeout(() => saveFiles().catch(e => console.error('[supabase] saving DATA_DIR files failed:', e.message)), 2500).unref();
   setTimeout(() => snap('boot'), 3000).unref();
-  setInterval(() => snap('tick'), Math.max(5, config.snapshotSeconds) * 1000).unref();
+  // Change-driven: look for writes every second and save at most once per SNAPSHOT_SECONDS (default 5 s), so a
+  // redeploy or crash on Render's ephemeral disk loses at most a few seconds of data.
+  let lastSnap = 0;
+  setInterval(() => {
+    if (busy || changes.get().c === saved || Date.now() - lastSnap < Math.max(2, config.snapshotSeconds) * 1000) return;
+    lastSnap = Date.now(); snap('tick');
+  }, 1000).unref();
   let exiting = false;
   const flush = async (sig) => {
     if (exiting) return; exiting = true;

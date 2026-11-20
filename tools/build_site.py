@@ -2,11 +2,11 @@
 """Builds the static Cairn website (cairn/website/*.html) from shared layout + page bodies.
 Run:  python3 tools/build_site.py
 """
-import pathlib, datetime
+import pathlib, datetime, json
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / 'website'
 PAGES = pathlib.Path(__file__).resolve().parent / 'site_pages'
-VERSION = '3.0.0'
+VERSION = '3.0.1'
 # Our own site (GitHub Pages). cairn.app belongs to someone else, so nothing may point there.
 SITE = 'https://jangidpranshu1989-create.github.io/cairn'
 RELEASES = 'https://github.com/jangidpranshu1989-create/cairn/releases/latest/download'
@@ -107,8 +107,11 @@ def page(fname, title, desc, body, active=None):
 <meta name="twitter:image" content="{SITE}/assets/og.png?v={VERSION}">
 <meta name="twitter:image:alt" content="Cairn {VERSION}: the AI browser that finds, compares and checks out for you">
 <link rel="canonical" href="{SITE}/{"" if fname == "index.html" else fname}">
-<link rel="apple-touch-icon" href="assets/icon-512.png">
-{LDJSON if fname == "index.html" else ""}<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+{LDJSON if fname == "index.html" else ""}<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="assets/favicon.svg?v={VERSION}" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png?v={VERSION}" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v={VERSION}" sizes="180x180">
+<link rel="manifest" href="site.webmanifest">
 <link rel="preload" href="fonts/InterDisplay-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/site.css">
@@ -144,4 +147,23 @@ if __name__ == '__main__':
                    for f in sorted(PAGES.glob('*.html')) if f.name != '404.html')
     (ROOT / 'sitemap.xml').write_text(f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}</urlset>\n')
     (ROOT / 'robots.txt').write_text(f'User-agent: *\nAllow: /\nDisallow: /404.html\n\nSitemap: {SITE}/sitemap.xml\n')
-    (ROOT / 'assets' / 'favicon.svg').write_text(LOGO.replace('currentColor', '#EDEDEB').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))
+    # Favicon: the stones on Cairn's dark tile, so it stays visible on light and dark tab strips. Plain hex colours:
+    # CSS variables (var(--agent)) don't exist inside a standalone SVG file and rendered black.
+    icon = LOGO.replace('currentColor', '#EDEDEB').replace('var(--agent)', '#D9C3A0').replace(' aria-hidden="true"', '')
+    icon = icon.replace('<svg viewBox="0 0 24 24">', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5.5" fill="#1C1C1E"/>')
+    (ROOT / 'assets' / 'favicon.svg').write_text(icon)
+    (ROOT / 'site.webmanifest').write_text(json.dumps({
+        'name': 'Cairn: AI browser', 'short_name': 'Cairn', 'start_url': './', 'scope': './', 'display': 'standalone',
+        'background_color': '#0F0F0F', 'theme_color': '#0F0F0F', 'description': 'The AI browser that finds, compares and checks out for you.',
+        'icons': [{'src': 'assets/icon-192.png', 'sizes': '192x192', 'type': 'image/png'},
+                  {'src': 'assets/icon-512.png', 'sizes': '512x512', 'type': 'image/png'},
+                  {'src': 'assets/icon-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'}]}, indent=2) + '\n')
+    # Raster icons from the 512 px master (favicon.ico for old browsers / Google results, Apple touch icon, PWA 192).
+    try:
+        from PIL import Image
+        src = Image.open(ROOT / 'assets' / 'icon-512.png').convert('RGBA')
+        for name, size in (('favicon-32.png', 32), ('apple-touch-icon.png', 180), ('icon-192.png', 192)):
+            src.resize((size, size), Image.LANCZOS).save(ROOT / 'assets' / name, optimize=True)
+        src.save(ROOT / 'favicon.ico', sizes=[(16, 16), (32, 32), (48, 48)])
+    except ImportError:
+        print('Pillow not installed: raster icons left unchanged')

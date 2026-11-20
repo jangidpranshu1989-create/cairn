@@ -33,7 +33,6 @@ class AiUnavailableException(val attempts: List<String>) : NoAiException("AI una
 object Llm {
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).callTimeout(150, TimeUnit.SECONDS).build()
     private val JSON_T = "application/json".toMediaType()
-    private const val FREE_URL = "https://text.pollinations.ai/openai"
 
     var lastProvider = ""; private set
     /** Always true: Cairn's AI is built in. Kept for callers that check before showing AI features. */
@@ -66,8 +65,7 @@ object Llm {
     private val coolUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /**
-     * Direct fallbacks, best first. The old text.pollinations.ai host is retired (404 "legacy API", 1 reply / 45 s), so it
-     * is only the very last resort; LLM7's keyless gateway supports tool calls; a personal key (Settings → AI) beats both.
+     * Direct fallbacks, best first: a personal key (Settings → AI), then LLM7's keyless gateway (supports tool calls).
      */
     private fun directs(): List<Direct> = buildList {
         // Legacy single key (2.6.0) counts for its provider if the new per-provider field is empty.
@@ -78,10 +76,10 @@ object Llm {
         if (gem.isNotEmpty()) add(Direct("Gemini (your key)", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", gem, "gemini-flash-latest", "gemini-flash-lite-latest", true, small = "gemini-flash-lite-latest"))
         if (orKey.isNotEmpty()) add(Direct("OpenRouter (your key)", "https://openrouter.ai/api/v1/chat/completions", orKey, "openrouter/free", "openrouter/free", false))
         add(Direct("LLM7", "https://api.llm7.io/v1/chat/completions", null, "default", "default", false))
-        add(Direct("Pollinations", "https://text.pollinations.ai/openai", null, "openai", "openai", false))
+        // text.pollinations.ai is retired (402 Payment Required / 404); it is no longer called.
     }.let { all -> val now = System.currentTimeMillis(); all.filter { (coolUntil[it.name] ?: 0L) < now }.ifEmpty { all } }
 
-    /** Skip a server that just failed (offline, 404, 5xx) for a minute, so every step doesn't wait on it again. */
+    /** Skip the server only when the phone can't reach it at all (offline / DNS), and only briefly. */
     @Volatile private var cloudDownUntil = 0L
 
     private fun reason(e: Throwable): String = when (e) {
@@ -94,6 +92,8 @@ object Llm {
     }
     /** A real cancellation (the user pressed Stop) must propagate; a timeout must fall through to the next provider. */
     private fun cancelled(e: Throwable) = e is java.io.InterruptedIOException && e !is java.net.SocketTimeoutException && e.message != "timeout"
+    /** Worth one more try on the server: busy (503), gateway (502/504), cold start (timeout) or a proxy 404 during a redeploy. */
+    private fun transient(e: Throwable) = (e as? ApiException)?.status?.let { it == 404 || it == 408 || it >= 500 } ?: (e is java.net.SocketTimeoutException || e is java.io.IOException)
 
     private fun directChat(d: Direct, messages: JSONArray, tools: JSONArray?, tier: String, json: Boolean, maxTokens: Int, temperature: Double): JSONObject {
         val b = JSONObject().put("model", if (tier == "fast") d.fast else d.smart).put("messages", messages).put("temperature", temperature).put("max_tokens", maxTokens)
@@ -128,37 +128,44 @@ object Llm {
         throw last ?: ApiException(0, "failed")
     }
 
+    /** One Cairn Cloud chat call, retried once after a short pause when the server is busy, cold or redeploying. */
+    private fun cloudChat(payload: String): JSONObject {
+        var last: Exception? = null
+        repeat(2) { attempt ->
+            try {
+                val j = JSONObject(okText(cloudCall("/ai/chat") { post(payload.toRequestBody(JSON_T)) }))
+                lastProvider = j.optString("_provider", "cloud"); cloudDownUntil = 0
+                val m = j.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+                m.optJSONArray("tool_calls")?.let { if (it.length() == 0) m.remove("tool_calls") }
+                return m
+            } catch (e: Exception) {
+                if (cancelled(e)) throw e
+                last = e
+                if (attempt == 0 && transient(e) && e !is java.net.UnknownHostException) Thread.sleep(1500) else throw e
+            }
+        }
+        throw last ?: ApiException(0, "failed")
+    }
+
     /**
-     * Provider chain: Cairn Cloud → your own key → LLM7 → Pollinations. A 401/402/404/429/5xx, timeout or network error on
-     * one provider silently moves to the next; only if every route fails is an [AiUnavailableException] thrown, carrying
-     * each provider's exact status.
+     * Provider chain: Cairn Cloud (retried once) → your own key → LLM7 → Cairn Cloud again. Any error on one provider
+     * moves on to the next; only if every route fails is an [AiUnavailableException] thrown with each provider's status.
      */
     private fun route(messages: JSONArray, tools: JSONArray?, tier: String, json: Boolean, maxTokens: Int, temperature: Double): JSONObject {
         val fails = mutableListOf<String>()
+        val payload = body(messages, tools, tier, json, maxTokens, temperature, false).toString()
         val tryCloud = System.currentTimeMillis() > cloudDownUntil
-        if (tryCloud) try {
-            val payload = body(messages, tools, tier, json, maxTokens, temperature, false).toString()
-            val j = JSONObject(okText(cloudCall("/ai/chat") { post(payload.toRequestBody(JSON_T)) }))
-            lastProvider = j.optString("_provider", "cloud")
-            val m = j.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-            m.optJSONArray("tool_calls")?.let { if (it.length() == 0) m.remove("tool_calls") }
-            return m
-        } catch (e: Exception) {
+        if (tryCloud) try { return cloudChat(payload) } catch (e: Exception) {
             if (cancelled(e)) throw e
             fails += "Cairn Cloud ${reason(e)}"
-            val st = (e as? ApiException)?.status ?: 0
-            if (st == 404 || st >= 500 || st == 0 || e !is ApiException) cloudDownUntil = System.currentTimeMillis() + 60_000
+            if (e is java.net.UnknownHostException || e is java.net.ConnectException) cloudDownUntil = System.currentTimeMillis() + 20_000
         }
         for (d in directs()) {
             try { return directChat(d, messages, tools, tier, json, maxTokens, temperature) }
             catch (e: Exception) { if (cancelled(e)) throw e; fails += "${d.name} ${reason(e)}" }
         }
-        if (!tryCloud) try {
-            val payload = body(messages, tools, tier, json, maxTokens, temperature, false).toString()
-            val j = JSONObject(okText(cloudCall("/ai/chat") { post(payload.toRequestBody(JSON_T)) }))
-            lastProvider = j.optString("_provider", "cloud"); cloudDownUntil = 0
-            return j.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-        } catch (e: Exception) { if (cancelled(e)) throw e; fails += "Cairn Cloud ${reason(e)}" }
+        // Everything else failed: give the server one last chance (it may have just woken up or freed capacity).
+        try { Thread.sleep(if (tryCloud) 2000 else 0); return cloudChat(payload) } catch (e: Exception) { if (cancelled(e)) throw e; if (!tryCloud) fails += "Cairn Cloud ${reason(e)}" }
         throw AiUnavailableException(fails)
     }
 

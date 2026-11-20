@@ -175,7 +175,8 @@ function pageStateFn() {
     hasPassword: !!document.querySelector('input[type=password]'),
     captcha: !!document.querySelector('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="turnstile"], #captchacharacters, [class*="captcha" i]') || /enter the characters you see|verify you are human|i'm not a robot/.test(t),
     otp: /\botp\b|one[- ]time password|verification code/.test(t) && !!document.querySelector('input[autocomplete="one-time-code"], input[maxlength="6"], input[name*="otp" i]'),
-    payment: /payment method|pay ₹|pay now|upi id|card number|cvv|net banking|place (your )?order/.test(t),
+    payment: /payment method|pay ₹|pay now|upi id|card number|cvv|net banking|place (your )?order|enter upi|vpa|expiry|name on card|order summary|amount payable|total payable|भुगतान/.test(t),
+    paymentForm: !!document.querySelector('input[autocomplete^="cc-"], input[name*="card" i], input[name*="cvv" i], input[name*="cvc" i], input[name*="vpa" i], input[name*="upi" i], input[placeholder*="upi" i], input[placeholder*="card number" i], iframe[src*="razorpay"], iframe[src*="stripe"], iframe[src*="paytm"], iframe[src*="payu"], iframe[src*="cashfree"]'),
   };
 }
 

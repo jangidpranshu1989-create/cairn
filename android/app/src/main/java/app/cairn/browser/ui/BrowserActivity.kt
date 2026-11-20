@@ -94,8 +94,9 @@ class BrowserActivity : FragmentActivity() {
     private var permCont: ((Map<String, Boolean>) -> Unit)? = null
     private var roleCont: (() -> Unit)? = null
 
+    private var cameraUri: Uri? = null
     private val fileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(r.resultCode, r.data)); fileCallback = null
+        fileCallback?.onReceiveValue(FileChooser.result(this, r.resultCode, r.data, cameraUri)); fileCallback = null; cameraUri = null
     }
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r -> permCont?.invoke(r); permCont = null }
     private val roleLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { roleCont?.invoke(); roleCont = null }
@@ -219,9 +220,17 @@ class BrowserActivity : FragmentActivity() {
 
     // ---------------- File chooser ----------------
     fun chooseFile(cb: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams): Boolean {
-        fileCallback?.onReceiveValue(null); fileCallback = cb
-        return try { fileLauncher.launch(params.createIntent().apply { if (params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true) }); true }
-        catch (_: Exception) { fileCallback = null; toast("Can't open the file picker"); false }
+        // A page that opens a second chooser before the first returned must not leave the first callback hanging
+        // (WebView would then ignore every later upload on that page).
+        fileCallback?.onReceiveValue(null); fileCallback = cb; cameraUri = null
+        return try {
+            val (intent, cam) = FileChooser.intent(this, params)
+            cameraUri = cam
+            fileLauncher.launch(intent); true
+        } catch (_: Exception) {
+            // Last resort: the platform's own intent (no camera, plain types).
+            runCatching { fileLauncher.launch(params.createIntent()); true }.getOrElse { fileCallback?.onReceiveValue(null); fileCallback = null; toast("Can't open the file picker"); false }
+        }
     }
 
     private fun runtime(perms: Array<String>, then: (Boolean) -> Unit) {

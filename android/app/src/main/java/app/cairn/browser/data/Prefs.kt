@@ -98,7 +98,8 @@ object Prefs {
     var shoppingCountry by str("shoppingCountry", "IN")
     var agentMaxSteps by int("agentMaxStepsV2", 45)
     var agentUseProfile by bool("agentUseProfile", true)
-    var savePasswords by bool("savePasswords", true)      // offer to save passwords and fill them back in
+    var savePasswords by bool("savePasswords", true)
+    var autofillForms by bool("autofillForms", true)      // offer saved cards and addresses on web forms      // offer to save passwords and fill them back in
     var cairnPasskeys by bool("cairnPasskeys", true)      // create/use synced Cairn passkeys (falls back to the system)
     var syncOn by bool("syncOn", true)                    // sync bookmarks, history, tabs, passwords, passkeys, settings
     var syncLast by long("syncLast", 0)

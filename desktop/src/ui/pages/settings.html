@@ -10,6 +10,7 @@
   <a href="#phone" data-s="phone">Phone &amp; sync</a>
   <a href="#downloads" data-s="downloads">Downloads</a>
   <a href="cairn://passwords">Passwords</a>
+  <a href="cairn://autofill">Payments &amp; addresses</a>
   <a href="cairn://account">Account</a>
   <span class="sp"></span>
   <a href="#about" data-s="about">About Cairn</a>
@@ -53,6 +54,7 @@
     <div class="opt"><div class="l"><b>Send Do Not Track &amp; Global Privacy Control</b></div><label class="sw"><input type="checkbox" data-k="doNotTrack"><span></span></label></div>
     <div class="opt"><div class="l"><b>Offer to save passwords</b></div><label class="sw"><input type="checkbox" data-k="offerSavePasswords"><span></span></label></div>
     <div class="opt"><div class="l"><b>Autofill saved passwords</b></div><label class="sw"><input type="checkbox" data-k="autofillPasswords"><span></span></label></div>
+    <div class="opt"><div class="l"><b>Payment methods &amp; addresses</b><small>Save and fill cards and addresses on checkout forms. CVC is never saved.</small></div><a class="btn" href="cairn://autofill">Manage</a><label class="sw"><input type="checkbox" data-k="autofillForms"><span></span></label></div>
   </div>
   <div class="group"><h3>Secure DNS</h3>
     <div class="opt"><div class="l"><b>Use secure DNS</b><small>Encrypts site-name lookups (DNS-over-HTTPS) so your network can't see or change them.</small></div>
@@ -67,6 +69,7 @@
     <div class="opt"><div class="l"><b>Cookies &amp; site data</b><small>Signs you out of most sites.</small></div><label class="sw"><input type="checkbox" id="clrCookies"><span></span></label></div>
     <div class="opt"><div class="l"><b>Cached images and files</b></div><label class="sw"><input type="checkbox" id="clrCache" checked><span></span></label></div>
     <div class="opt"><div class="l"><b>Saved passwords</b><small>Also removed from your other signed-in devices.</small></div><label class="sw"><input type="checkbox" id="clrPw"><span></span></label></div>
+    <div class="opt"><div class="l"><b>Autofill form data</b><small>Saved cards and addresses, on every synced device.</small></div><label class="sw"><input type="checkbox" id="clrAf"><span></span></label></div>
     <div class="opt"><div class="l"><small>History is always cleared for the chosen range.</small></div><button class="btn danger" id="clrGo">Clear data</button></div>
   </div>
   <div class="group"><h3>Policies</h3>

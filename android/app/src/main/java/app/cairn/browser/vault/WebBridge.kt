@@ -17,6 +17,8 @@ import org.json.JSONObject
 
 data class SavePrompt(val tab: Tab, val origin: String, val username: String, val password: String, val update: Boolean)
 data class FillOffer(val tab: Tab, val origin: String, val logins: List<Login>)
+data class AutofillOffer(val tab: Tab, val origin: String, val kind: String, val items: List<JSONObject>)
+data class AutofillSave(val tab: Tab, val origin: String, val kind: String, val data: JSONObject, val updateId: String?)
 
 /**
  * Page <-> browser bridge for the password manager and passkeys. Uses WebViewCompat.addWebMessageListener, so the
@@ -26,6 +28,8 @@ data class FillOffer(val tab: Tab, val origin: String, val logins: List<Login>)
 object WebBridge {
     val savePrompt = mutableStateOf<SavePrompt?>(null)
     val fillOffer = mutableStateOf<FillOffer?>(null)
+    val afOffer = mutableStateOf<AutofillOffer?>(null)
+    val afSave = mutableStateOf<AutofillSave?>(null)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     val supported get() = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
@@ -56,6 +60,26 @@ object WebBridge {
                 val l = Vault.loginsFor(origin)
                 if (l.isNotEmpty() && fillOffer.value?.tab != t) fillOffer.value = FillOffer(t, origin, l)
             }
+            "af-focus" -> if (!t.incognito && Prefs.autofillForms) {
+                val kind = m.optString("kind"); if (kind != "cards" && kind != "addresses") return
+                val items = Vault.autofill(kind)
+                if (items.isNotEmpty() && (afOffer.value?.tab != t || afOffer.value?.kind != kind)) afOffer.value = AutofillOffer(t, origin, kind, items)
+            }
+            "af-save" -> if (isMain && !t.incognito && Prefs.autofillForms && origin.startsWith("https")) {
+                val kind = m.optString("kind"); val d = m.optJSONObject("data") ?: return
+                if (kind == "cards") {
+                    val num = d.optString("number").filter(Char::isDigit); if (!Autofill.luhn(num)) return
+                    d.put("number", num)
+                    val same = Vault.autofill("cards").firstOrNull { it.optString("number") == num }
+                    if (same != null && same.optString("expMonth") == d.optString("expMonth") && same.optString("expYear") == d.optString("expYear")) return
+                    afSave.value = AutofillSave(t, origin, kind, d, same?.optString("id"))
+                } else if (kind == "addresses") {
+                    if (d.optString("line1").isBlank()) return
+                    val same = Vault.autofill("addresses").firstOrNull { it.optString("line1").equals(d.optString("line1"), true) && it.optString("zip") == d.optString("zip") }
+                    if (same != null) return
+                    afSave.value = AutofillSave(t, origin, kind, d, null)
+                }
+            }
             "notif-state" -> send(JSONObject().put("state", when (app.cairn.browser.data.BrowserDb.perm(origin, "notifications")) { true -> "granted"; false -> "denied"; else -> "default" }))
             "notif-request" -> if (isMain && origin.startsWith("http")) app.cairn.browser.browser.Browser.activity.onNotifyPermission(t, origin) { st -> send(JSONObject().put("state", st)) } else send(JSONObject().put("state", "denied"))
             "notif-show" -> if (origin.startsWith("http") && app.cairn.browser.data.BrowserDb.perm(origin, "notifications") == true)
@@ -77,6 +101,11 @@ object WebBridge {
     fun fill(w: WebView, l: Login) {
         val js = "window.__cairnFill && window.__cairnFill(${JSONObject.quote(l.username)}, ${JSONObject.quote(l.password)})"
         w.evaluateJavascript(js, null)
+    }
+
+    /** Fills a saved card or address into the focused form (after the caller has verified the user for cards). */
+    fun fillAutofill(w: WebView, kind: String, j: JSONObject) {
+        w.evaluateJavascript("window.__cairnAf && window.__cairnAf(${JSONObject.quote(kind)}, ${j})", null)
     }
 
     private val SHIM = """
@@ -130,6 +159,98 @@ object WebBridge {
     var uf = pw ? userFor(pw) : document.querySelector('input[autocomplete=username],input[type=email],input[name*=user i],input[name*=email i]');
     if (uf && u) setVal(uf, u); if (pw) { setVal(pw, p); pw.focus(); } lastSent = (u || '') + '\u0000' + p; return !!(pw || uf);
   };
+
+  // ---- Payment cards and addresses (autofill) ----
+  (function(){
+    function sig(el){ return [el.getAttribute('autocomplete'), el.name, el.id, el.getAttribute('placeholder'), el.getAttribute('aria-label'), el.getAttribute('data-testid')].join(' ').toLowerCase(); }
+    var AC = {'cc-number':'cc-number','cc-name':'cc-name','cc-exp':'cc-exp','cc-exp-month':'cc-exp-month','cc-exp-year':'cc-exp-year','name':'name','given-name':'given-name','family-name':'family-name',
+      'email':'email','tel':'tel','tel-national':'tel','street-address':'line1','address-line1':'line1','address-line2':'line2','address-level2':'city','address-level1':'state','postal-code':'zip','country':'country','country-name':'country'};
+    function field(el){
+      if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'SELECT')) return null;
+      var t = (el.type || 'text').toLowerCase(); if (/^(hidden|submit|button|checkbox|radio|password|file|image|reset|search)$/.test(t)) return null;
+      var a = (el.getAttribute('autocomplete') || '').toLowerCase().replace(/^section-\S+\s*/, '').replace(/^(shipping|billing)\s+/, '');
+      if (AC[a]) return AC[a];
+      var s = sig(el);
+      if (/cvc|cvv|csc|security.?code|otp|captcha|coupon|promo/.test(s)) return null;
+      if (/card.?num|cc.?num|ccnum|cardnumber|acct.?num|credit.?card|debit.?card/.test(s)) return 'cc-number';
+      if (/(card|cc).?(holder|name)|name.?on.?card/.test(s)) return 'cc-name';
+      if (/exp\w*.?(month|mm\b)|cc.?month|card.?month/.test(s)) return 'cc-exp-month';
+      if (/exp\w*.?(year|yy)|cc.?year|card.?year/.test(s)) return 'cc-exp-year';
+      if (/expir|exp.?date|mm.?\/.?yy|valid.?thru/.test(s)) return 'cc-exp';
+      if (/e.?mail/.test(s) || t === 'email') return 'email';
+      if (/phone|mobile|\btel\b/.test(s) || t === 'tel') return 'tel';
+      if (/zip|postal|pin.?code|pincode/.test(s)) return 'zip';
+      if (/address.?(line)?.?2|apartment|\bapt\b|suite|landmark|locality/.test(s)) return 'line2';
+      if (/address|street|house|flat|line.?1/.test(s)) return 'line1';
+      if (/city|town|district/.test(s)) return 'city';
+      if (/\bstate\b|province|region/.test(s)) return 'state';
+      if (/country/.test(s)) return 'country';
+      if (/first.?name|given/.test(s)) return 'given-name';
+      if (/last.?name|surname|family/.test(s)) return 'family-name';
+      if (/full.?name|your.?name|\bname\b/.test(s)) return 'name';
+      return null;
+    }
+    function list(root){ var out = []; Array.prototype.forEach.call((root || document).querySelectorAll('input,select'), function(el){ var f = field(el); if (f && vis(el)) out.push([el, f]); }); return out; }
+    function has(fs, re){ return fs.some(function(x){ return re.test(x[1]); }); }
+    function kindFor(el){
+      var f = field(el); if (!f) return null; var fs = list(el.form || document);
+      if (f.indexOf('cc-') === 0) return has(fs, /^cc-number$/) ? 'cards' : null;
+      return has(fs, /^(line1|zip|city)$/) ? 'addresses' : null;
+    }
+    var offered = '';
+    document.addEventListener('focusin', function(e){ var k = kindFor(e.target); if (k && offered !== k) { offered = k; post('af-focus', { kind: k }); } }, true);
+    function pickOption(sel, vals){
+      for (var i = 0; i < sel.options.length; i++) { var o = sel.options[i]; var a = (o.value + '|' + o.text).toLowerCase();
+        for (var j = 0; j < vals.length; j++) { var v = String(vals[j]).toLowerCase(); if (v && (o.value.toLowerCase() === v || o.text.trim().toLowerCase() === v)) return o.value; } }
+      for (var i2 = 0; i2 < sel.options.length; i2++) { var o2 = sel.options[i2]; if (vals[0] && o2.text.toLowerCase().indexOf(String(vals[0]).toLowerCase()) === 0) return o2.value; }
+      return null;
+    }
+    function put(el, v, alts){
+      if (v === undefined || v === null || v === '') return;
+      if (el.tagName === 'SELECT') { var o = pickOption(el, [v].concat(alts || [])); if (o === null) return; el.value = o; el.dispatchEvent(new Event('change', { bubbles: true })); return; }
+      setVal(el, String(v));
+    }
+    window.__cairnAf = function(kind, d){
+      var act = document.activeElement; var root = (act && act.form) || document; var fs = list(root); var n = 0;
+      fs.forEach(function(x){ var el = x[0], f = x[1];
+        if (kind === 'cards') {
+          var mm = ('0' + (d.expMonth || '')).slice(-2), yyyy = String(d.expYear || ''), yy = yyyy.slice(-2);
+          if (f === 'cc-number') { put(el, d.number); n++; }
+          else if (f === 'cc-name') { put(el, d.name); n++; }
+          else if (f === 'cc-exp') { put(el, (el.maxLength > 0 && el.maxLength <= 5) || /yy(?!yy)/i.test(el.placeholder || '') ? mm + '/' + yy : mm + '/' + yy); n++; }
+          else if (f === 'cc-exp-month') { put(el, mm, [String(Number(mm))]); n++; }
+          else if (f === 'cc-exp-year') { put(el, el.tagName === 'SELECT' ? yyyy : ((el.maxLength > 0 && el.maxLength <= 2) ? yy : yyyy), [yy]); n++; }
+        } else {
+          var parts = String(d.name || '').trim().split(/\s+/); var map = { name: d.name, 'given-name': parts[0], 'family-name': parts.slice(1).join(' '), email: d.email, tel: d.phone,
+            line1: d.line1, line2: d.line2, city: d.city, state: d.state, zip: d.zip, country: d.country };
+          if (f.indexOf('cc-') !== 0 && map[f]) { put(el, map[f], f === 'country' ? [d.countryCode || ''] : (f === 'state' ? [d.stateCode || ''] : [])); n++; }
+        }
+      });
+      offered = ''; return n;
+    };
+    function luhn(s){ if (!/^\d{12,19}$/.test(s)) return false; var sum = 0, alt = false; for (var i = s.length - 1; i >= 0; i--) { var d = +s[i]; if (alt) { d *= 2; if (d > 9) d -= 9; } sum += d; alt = !alt; } return sum % 10 === 0; }
+    var lastAf = '';
+    function grab(){
+      var fs = list(document); var v = {}; fs.forEach(function(x){ var val = x[0].value; if (val && !v[x[1]]) v[x[1]] = String(val).trim(); });
+      var num = (v['cc-number'] || '').replace(/\D/g, '');
+      if (luhn(num)) {
+        var m = v['cc-exp-month'] || '', y = v['cc-exp-year'] || '';
+        if (v['cc-exp']) { var p = v['cc-exp'].split(/[^0-9]+/).filter(Boolean); m = p[0] || m; y = p[1] || y; }
+        if (y.length === 2) y = '20' + y;
+        var card = { number: num, name: v['cc-name'] || '', expMonth: m ? ('0' + Number(m)).slice(-2) : '', expYear: y };
+        var k = 'c' + num + card.expMonth + card.expYear; if (k !== lastAf) { lastAf = k; post('af-save', { kind: 'cards', data: card }); }
+        return;
+      }
+      if (v.line1 && (v.zip || v.city)) {
+        var name = v.name || [v['given-name'], v['family-name']].filter(Boolean).join(' ');
+        var a = { name: name, phone: v.tel || '', email: v.email || '', line1: v.line1, line2: v.line2 || '', city: v.city || '', state: v.state || '', zip: v.zip || '', country: v.country || '' };
+        var k2 = 'a' + a.line1 + a.zip; if (k2 !== lastAf) { lastAf = k2; post('af-save', { kind: 'addresses', data: a }); }
+      }
+    }
+    document.addEventListener('submit', grab, true);
+    document.addEventListener('click', function(e){ var b = e.target && e.target.closest && e.target.closest('button,input[type=submit],[role=button]'); if (b) setTimeout(grab, 0); }, true);
+    window.addEventListener('pagehide', grab);
+  })();
 
   // ---- Passkeys (WebAuthn) ----
   var C = navigator.credentials; if (!C || !window.PublicKeyCredential) return;

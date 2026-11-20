@@ -174,6 +174,7 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
         Column(Modifier.fillMaxWidth().background(C.chrome).then(if (imeVisible) Modifier else Modifier.navigationBarsPadding())
             .animateContentSize(spring(dampingRatio = .86f, stiffness = 520f)), horizontalAlignment = Alignment.CenterHorizontally) {
             VaultBar(tab)
+            AutofillBar(tab)
             AnimatedVisibility(Ui.find && tab != null, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { tab?.let { Floating { FindBar(it) } } }
             AnimatedVisibility(ReadAloud.active && !Ui.find, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { Floating { ReadAloudBar() } }
             if (!imeVisible && !Ui.find) {
@@ -759,6 +760,7 @@ fun MainMenu() {
             MenuRow(Ic.VisibilityOff, "New private tab") { close(); Browser.newTab(NTP, incognito = true) }
             MenuRow(Ic.History, "History") { Ui.go("history") }
             MenuRow(Ic.Download, "Downloads") { Ui.go("downloads") }
+            MenuRow(Ic.CloudOff, "Offline pages") { Ui.go("offline") }
             MenuRow(Ic.BookmarkBorder, "Bookmarks") { Ui.go("bookmarks") }
             if (page) {
                 MenuRow(Ic.ReadMore, "Reader view") { Ui.go("reader") }
@@ -769,6 +771,10 @@ fun MainMenu() {
                 }
                 MenuRow(Ic.AddToHomeScreen, "Add to Home screen") { close(); addToHome(ctx, tab) }
                 MenuRow(Ic.FileDownload, "Download page") { close(); Agent.quick("pdf") }
+                MenuRow(Ic.CloudOff, "Save for offline") {
+                    close(); val w = tab.web
+                    if (w != null) app.cairn.browser.browser.Offline.save(ctx, w, tab.title, tab.url) { ok -> act.toast(if (ok) "Saved for offline reading" else "Couldn't save this page") }
+                }
             }
             MenuRow(Ic.Settings, "Settings") { Ui.go("settings") }
             if (page && Prefs.shield) Text(if (tab!!.blocked > 0) "Shield blocked ${tab.blocked} trackers on this page" else "Shield is on. No trackers found on this page.",

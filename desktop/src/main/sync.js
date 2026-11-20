@@ -78,6 +78,7 @@ function local() {
   for (const h of hist.values()) put('history', h.url, h);
   for (const p of v().data.passwords || []) put('passwords', p.origin + '\n' + p.username, { origin: p.origin, username: p.username, password: p.password, at: p.updated || 0 });
   for (const pk of v().data.passkeys || []) put('passkeys', pk.credId, { ...pk, updated: 0 });
+  for (const kind of ['cards', 'addresses']) for (const x of v().data[kind] || []) put(kind, x.id, { ...x });
   const sd = s.settings.data;
   for (const [k, local] of Object.entries(SETTINGS)) put('settings', k, { k, v: sd[local] });
   if (v().data.profileJson) put('profile', 'me', { json: v().data.profileJson });
@@ -114,6 +115,7 @@ function apply(kind, j) {
       const list = v().data.passkeys ||= []; const { updated, ...pk } = j; const i = list.findIndex(p => p.credId === pk.credId);
       if (i >= 0) list[i] = pk; else list.push(pk); v().flush(); return pk.credId;
     }
+    case 'cards': case 'addresses': return require('./autofill').applyRemote(kind, j);
     case 'settings': { const lk = SETTINGS[j.k]; if (lk && j.v !== undefined && j.v !== null) { s.settings.data[lk] = j.v; s.settings.save(); events.emit('settings'); } return j.k; }
     case 'profile': v().data.profileJson = j.json || ''; v().flush(); return 'me';
     case 'tabs': {
@@ -131,6 +133,7 @@ function remove(kind, k) {
   else if (kind === 'history') { s.history.data = s.history.data.filter(h => h.url !== k); s.history.save(); }
   else if (kind === 'passwords') { const [o, u] = k.split('\n'); v().data.passwords = (v().data.passwords || []).filter(p => !(p.origin === o && p.username === u)); v().flush(); }
   else if (kind === 'passkeys') { v().data.passkeys = (v().data.passkeys || []).filter(p => p.credId !== k); v().flush(); }
+  else if (kind === 'cards' || kind === 'addresses') require('./autofill').remove(kind, k);
 }
 
 async function pull() {

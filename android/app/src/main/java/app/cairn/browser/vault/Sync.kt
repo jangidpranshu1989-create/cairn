@@ -117,6 +117,8 @@ object Sync {
         if (Prefs.saveHistory) BrowserDb.history(limit = 500).forEach { put("history", it.url, JSONObject().put("url", it.url).put("title", it.title).put("at", it.at).put("visits", it.visits)) }
         Vault.logins().forEach { put("passwords", it.origin + "\n" + it.username, JSONObject().put("origin", it.origin).put("username", it.username).put("password", it.password).put("at", it.updated)) }
         Vault.passkeys().forEach { put("passkeys", it.credId, Vault.passkeyJson(it).put("updated", 0)) }
+        Vault.autofill("cards").forEach { put("cards", it.getString("id"), it) }
+        Vault.autofill("addresses").forEach { put("addresses", it.getString("id"), it) }
         SETTINGS.forEach { (k, g) -> put("settings", k, JSONObject().put("k", k).put("v", g.first())) }
         Prefs.profileJson.takeIf { it.isNotBlank() }?.let { put("profile", "me", JSONObject().put("json", it)) }
         val tabs = runCatching { Browser.tabs.filter { !it.incognito && it.url.startsWith("http") }.take(60).map { JSONObject().put("url", it.url).put("title", it.title) } }.getOrDefault(emptyList())
@@ -176,6 +178,7 @@ object Sync {
         "passkeys" -> Vault.passkeyFrom(j).also { Vault.savePasskey(it) }.credId
         "settings" -> j.getString("k").also { k -> SETTINGS[k]?.second?.let { set -> runCatching { set(j.get("v")) } } }
         "profile" -> "me".also { Prefs.profileJson = j.optString("json") }
+        "cards", "addresses" -> j.optString("id").takeIf { it.isNotBlank() }?.also { Vault.saveAutofill(kind, JSONObject(j.toString()), j.optLong("updated", System.currentTimeMillis())) }
         "tabs" -> if (j.optString("install") == installId) null else parseTabs(j)?.let { t -> remoteTabs.removeAll { it.device == t.device }; if (t.tabs.isNotEmpty()) remoteTabs.add(0, t); null }
         else -> null
     }
@@ -185,6 +188,7 @@ object Sync {
             "history" -> BrowserDb.deleteHistoryUrl(key)
             "passwords" -> Vault.deleteLogin(key.substringBefore('\n'), key.substringAfter('\n'))
             "passkeys" -> Vault.deletePasskey(key)
+            "cards", "addresses" -> Vault.deleteAutofill(key)
         }
     }
     private fun parseTabs(j: JSONObject): RemoteTabs? {

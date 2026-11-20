@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -67,12 +69,16 @@ fun Screens(route: String) {
             "bookmarks" -> BookmarksScreen()
             "downloads" -> DownloadsScreen()
             "reader" -> ReaderScreen()
+            "offline" -> OfflineScreen()
+            "offline/view" -> OfflineViewer()
             "settings" -> SettingsHome()
             "settings/general" -> GeneralSettings()
             "settings/privacy" -> PrivacySettings()
             "settings/sites" -> SiteSettings()
             "settings/site" -> SiteDetail()
             "settings/dns" -> SecureDnsScreen()
+            "settings/payments" -> AutofillScreen("cards")
+            "settings/addresses" -> AutofillScreen("addresses")
             "settings/clear" -> ClearData()
             "settings/passwords" -> PasswordSettings()
             "settings/ai" -> AiSettings()
@@ -186,50 +192,128 @@ fun DownloadsScreen() {
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1000); tick++ } }
     val list = remember(v) { runCatching { BrowserDb.downloads() }.getOrDefault(emptyList()) }
     val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+    val jobs = app.cairn.browser.service.Downloader.jobs
+    var cat by rememberSaveable { mutableStateOf("all") }
+    val cats = listOf("all" to "All", "images" to "Images", "videos" to "Videos", "audio" to "Audio", "docs" to "Docs", "apks" to "APKs", "other" to "Other")
+    val shown = list.filter { cat == "all" || app.cairn.browser.service.Downloader.categoryOf(it.name, it.mime) == cat }
     ScreenHeader("Downloads", { Ui.back() }) {
-        if (list.isNotEmpty()) TextButton(onClick = { BrowserDb.clearDownloads() }) { Text("Clear list", color = C.muted) }
+        if (list.isNotEmpty()) TextButton(onClick = { list.filter { jobs[it.id] == null }.forEach { BrowserDb.deleteDownload(it.id) } }) { Text("Clear list", color = C.muted) }
     }
-    if (list.isEmpty()) EmptyState(Ic.Download, "No downloads", "Files you download, PDFs and screenshots Cairn saves appear here.", Modifier.fillMaxSize())
+    if (list.isEmpty()) { EmptyState(Ic.Download, "No downloads", "Files you download, PDFs and screenshots Cairn saves appear here.", Modifier.fillMaxSize()); return }
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        cats.forEach { (k, label) ->
+            val n = if (k == "all") list.size else list.count { app.cairn.browser.service.Downloader.categoryOf(it.name, it.mime) == k }
+            if (k == "all" || n > 0) Box(Modifier.clip(CircleShape).background(if (cat == k) C.text else C.surface).clickable { cat = k }.padding(horizontal = 14.dp, vertical = 7.dp)) {
+                Text("$label${if (k != "all") " · $n" else ""}", color = if (cat == k) C.bg else C.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+    if (shown.isEmpty()) EmptyState(Ic.Download, "Nothing here", "No downloads in this category yet.", Modifier.fillMaxSize())
     else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
-        items(list, key = { it.id }) { d ->
+        items(shown, key = { it.id }) { d ->
+            val job = jobs[d.id]
+            // Legacy rows from the system DownloadManager (before Cairn 2.3)
             val st = remember(tick, d.dmId) {
                 if (d.dmId <= 0) null else runCatching { dm.query(DownloadManager.Query().setFilterById(d.dmId)).use { c ->
                     if (!c.moveToFirst()) null else Triple(c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
                         c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)), c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)))
                 } }.getOrNull()
             }
-            val running = st != null && (st.first == DownloadManager.STATUS_RUNNING || st.first == DownloadManager.STATUS_PENDING || st.first == DownloadManager.STATUS_PAUSED)
-            val failed = st?.first == DownloadManager.STATUS_FAILED
+            val legacyRunning = st != null && (st.first == DownloadManager.STATUS_RUNNING || st.first == DownloadManager.STATUS_PENDING || st.first == DownloadManager.STATUS_PAUSED)
+            val running = job != null && (job.state == app.cairn.browser.service.Downloader.State.RUNNING || job.state == app.cairn.browser.service.Downloader.State.QUEUED)
+            val paused = job?.state == app.cairn.browser.service.Downloader.State.PAUSED
+            val failed = job?.state == app.cairn.browser.service.Downloader.State.FAILED || st?.first == DownloadManager.STATUS_FAILED || (d.dmId == app.cairn.browser.service.Downloader.ENGINE && d.uri.isEmpty() && job == null)
+            val busy = running || paused || legacyRunning
             val uri = if (d.uri.isNotEmpty()) Uri.parse(d.uri) else if (d.dmId > 0) dm.getUriForDownloadedFile(d.dmId) else null
-            Row(Modifier.fillMaxWidth().clickable(enabled = !running && uri != null) {
+            Row(Modifier.fillMaxWidth().clickable(enabled = !busy && uri != null) {
                 runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, d.mime.ifBlank { "*/*" }).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }.onFailure { act.toast("No app can open this file") }
             }.padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(C.surface), contentAlignment = Alignment.Center) {
-                    Icon(when { d.mime.startsWith("image") -> Ic.Image; d.mime.contains("pdf") -> Ic.PictureAsPdf; d.mime.startsWith("video") -> Ic.Movie
-                        d.mime.startsWith("audio") -> Ic.MusicNote; d.mime.contains("zip") -> Ic.FolderZip; else -> Ic.InsertDriveFile }, null, Modifier.size(20.dp), tint = C.muted)
+                    Icon(when (app.cairn.browser.service.Downloader.categoryOf(d.name, d.mime)) { "images" -> Ic.Image; "videos" -> Ic.Movie; "audio" -> Ic.MusicNote; "apks" -> Ic.PhoneAndroid
+                        else -> if (d.mime.contains("pdf")) Ic.PictureAsPdf else if (d.mime.contains("zip")) Ic.FolderZip else Ic.InsertDriveFile }, null, Modifier.size(20.dp), tint = C.muted)
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(d.name, color = C.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     when {
-                        running -> {
+                        job != null && (running || paused) -> {
+                            Spacer(Modifier.height(6.dp))
+                            if (job.total > 0) LinearProgressIndicator({ (job.received / job.total.toFloat()).coerceIn(0f, 1f) }, Modifier.fillMaxWidth().height(3.dp).clip(CircleShape), color = if (paused) C.faint else C.text, trackColor = C.surface3)
+                            else if (running) LinearProgressIndicator(Modifier.fillMaxWidth().height(3.dp).clip(CircleShape), color = C.text, trackColor = C.surface3)
+                            val size = Formatter.formatShortFileSize(ctx, job.received) + if (job.total > 0) " of " + Formatter.formatShortFileSize(ctx, job.total) else ""
+                            val info = if (paused) "Paused · $size" else listOf(size, if (job.speed > 0) Formatter.formatShortFileSize(ctx, job.speed) + "/s" else "", app.cairn.browser.service.Downloader.eta(job.etaSec)).filter { it.isNotEmpty() }.joinToString(" · ")
+                            Text(info, color = C.faint, fontSize = 11.5.sp, modifier = Modifier.padding(top = 4.dp), maxLines = 1)
+                        }
+                        legacyRunning -> {
                             Spacer(Modifier.height(6.dp))
                             if (st!!.third > 0) LinearProgressIndicator({ st.second / st.third.toFloat() }, Modifier.fillMaxWidth().height(3.dp).clip(CircleShape), color = C.text, trackColor = C.surface3)
                             else LinearProgressIndicator(Modifier.fillMaxWidth().height(3.dp).clip(CircleShape), color = C.text, trackColor = C.surface3)
-                            Text("${Formatter.formatShortFileSize(ctx, st.second)}${if (st.third > 0) " of " + Formatter.formatShortFileSize(ctx, st.third) else ""}", color = C.faint, fontSize = 11.5.sp, modifier = Modifier.padding(top = 4.dp))
                         }
-                        failed -> Text("Failed · ${hostOf(d.url)}", color = C.err, fontSize = 12.sp)
+                        failed -> Text("Failed${job?.error?.let { " · $it" } ?: ""} · ${hostOf(d.url)}", color = C.err, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         else -> Text("${Formatter.formatShortFileSize(ctx, if (d.size > 0) d.size else st?.third ?: 0)} · ${hostOf(d.url).ifBlank { "Cairn" }} · ${dayLabel(d.at)}", color = C.faint, fontSize = 12.sp, maxLines = 1)
                     }
                 }
-                if (running) IconBtn(Ic.Close, "Cancel", tint = C.faint) { dm.remove(d.dmId); BrowserDb.deleteDownload(d.id) }
-                else if (failed) IconBtn(Ic.Refresh, "Retry", tint = C.muted) { BrowserDb.deleteDownload(d.id); app.cairn.browser.browser.Downloads.enqueue(ctx, d.url, null, null, d.mime, null, false, d.name) }
-                else IconBtn(Ic.Share, "Share", tint = C.faint, enabled = uri != null) {
-                    runCatching { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(d.mime.ifBlank { "*/*" }).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), null)) }
+                when {
+                    running -> { IconBtn(Ic.Pause, "Pause", tint = C.muted) { app.cairn.browser.service.Downloader.pause(d.id) }; IconBtn(Ic.Close, "Cancel", tint = C.faint) { app.cairn.browser.service.Downloader.cancel(d.id) } }
+                    paused -> { IconBtn(Ic.PlayArrow, "Resume", tint = C.text) { app.cairn.browser.service.Downloader.resume(d.id) }; IconBtn(Ic.Close, "Cancel", tint = C.faint) { app.cairn.browser.service.Downloader.cancel(d.id) } }
+                    legacyRunning -> IconBtn(Ic.Close, "Cancel", tint = C.faint) { dm.remove(d.dmId); BrowserDb.deleteDownload(d.id) }
+                    failed -> IconBtn(Ic.Refresh, "Retry", tint = C.muted) {
+                        if (job != null) app.cairn.browser.service.Downloader.resume(d.id)
+                        else { BrowserDb.deleteDownload(d.id); app.cairn.browser.browser.Downloads.enqueue(ctx, d.url, null, null, d.mime, null, false, d.name) }
+                    }
+                    else -> IconBtn(Ic.Share, "Share", tint = C.faint, enabled = uri != null) {
+                        runCatching { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(d.mime.ifBlank { "*/*" }).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), null)) }
+                    }
                 }
             }
         }
     }
+}
+
+// ---------------------------------------------------------------- Offline pages
+private var offlineOpen: app.cairn.browser.browser.Offline.Page? = null
+
+@Composable
+fun OfflineScreen() {
+    val ctx = LocalContext.current
+    val v = app.cairn.browser.browser.Offline.version.intValue
+    val list = remember(v) { app.cairn.browser.browser.Offline.list(ctx) }
+    ScreenHeader("Offline pages", { Ui.back() })
+    if (list.isEmpty()) EmptyState(Ic.CloudOff, "No offline pages", "Open the menu on any page and tap Save for offline to read it later without internet.", Modifier.fillMaxSize())
+    else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+        items(list, key = { it.id }) { p ->
+            Row(Modifier.fillMaxWidth().clickable { offlineOpen = p; Ui.go("offline/view") }.padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(C.surface), contentAlignment = Alignment.Center) { Icon(Ic.CloudOff, null, Modifier.size(20.dp), tint = C.muted) }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(p.title, color = C.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${hostOf(p.url)} · ${Formatter.formatShortFileSize(ctx, p.size)} · ${dayLabel(p.at)}", color = C.faint, fontSize = 12.sp, maxLines = 1)
+                }
+                IconBtn(Ic.OpenInNew, "Open live page", tint = C.faint) { Ui.back(); Browser.newTab(p.url) }
+                IconBtn(Ic.Delete, "Delete", tint = C.faint) { app.cairn.browser.browser.Offline.delete(ctx, p.id) }
+            }
+        }
+    }
+}
+
+/** Shows a saved archive in an isolated WebView: scripts off, no network, file access limited to this one view. */
+@Composable
+fun OfflineViewer() {
+    val p = offlineOpen ?: run { Ui.back(); return }
+    ScreenHeader(p.title, { Ui.back() }) { IconBtn(Ic.OpenInNew, "Open live page") { Ui.back(); Ui.back(); Browser.newTab(p.url) } }
+    androidx.compose.ui.viewinterop.AndroidView({ c ->
+        android.webkit.WebView(c).apply {
+            settings.javaScriptEnabled = false; settings.allowFileAccess = true; settings.blockNetworkLoads = true
+            settings.allowContentAccess = false; settings.builtInZoomControls = true; settings.displayZoomControls = false
+            webViewClient = object : android.webkit.WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: android.webkit.WebView, r: android.webkit.WebResourceRequest): Boolean {
+                    if (r.url.scheme == "http" || r.url.scheme == "https") { Ui.back(); Ui.back(); Browser.newTab(r.url.toString()) }
+                    return true
+                }
+            }
+            loadUrl(android.net.Uri.fromFile(p.file).toString())
+        }
+    }, Modifier.fillMaxSize())
 }
 
 // ---------------------------------------------------------------- Reader view
@@ -274,7 +358,7 @@ fun SettingsHome() {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(if (Prefs.hasAccount) Prefs.userName else "Create your Cairn account", color = C.text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Text(if (Prefs.hasAccount) Prefs.userEmail else "Takes a second — saved securely on this phone", color = C.muted, fontSize = 12.5.sp, maxLines = 2)
+                    Text(if (Prefs.hasAccount) Prefs.userEmail else "One account for every phone and computer", color = C.muted, fontSize = 12.5.sp, maxLines = 2)
                 }
                 Icon(Ic.ChevronRight, null, tint = C.faint)
             }
@@ -288,6 +372,8 @@ fun SettingsHome() {
             Row2(Ic.Tune, "General", "Search engine, theme, tabs, text size", onClick = { Ui.go("settings/general") }); Divider()
             Row2(Ic.Shield, "Privacy and security", if (Prefs.shield) "Shield on · ${"%,d".format(Prefs.shieldTotal)} blocked" else "Shield off", onClick = { Ui.go("settings/privacy") }); Divider()
             Row2(Ic.Key, "Passwords and passkeys", "Saved with your device's password manager", onClick = { Ui.go("settings/passwords") }); Divider()
+            Row2(Ic.CreditCard, "Payment methods", "Saved cards, filled on checkout forms", onClick = { Ui.go("settings/payments") }); Divider()
+            Row2(Ic.Home, "Addresses and more", "Shipping and billing addresses", onClick = { Ui.go("settings/addresses") }); Divider()
             Row2(Ic.Download, "Downloads", null, onClick = { Ui.go("downloads") })
         }
         SectionLabel("Cairn")
@@ -522,6 +608,7 @@ fun ClearData() {
     var range by remember { mutableStateOf("all") }
     var history by remember { mutableStateOf(true) }; var cookies by remember { mutableStateOf(true) }; var cache by remember { mutableStateOf(true) }
     var tabs by remember { mutableStateOf(false) }; var perms by remember { mutableStateOf(false) }; var passwords by remember { mutableStateOf(false) }
+    var autofill by remember { mutableStateOf(false) }
     var confirmPw by remember { mutableStateOf(false) }
     ScreenHeader("Clear browsing data", { Ui.back() })
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
@@ -533,6 +620,7 @@ fun ClearData() {
             Toggle(Ic.Cookie, "Cookies and site data", "Signs you out of most sites", cookies) { cookies = it }; Divider()
             Toggle(Ic.Image, "Cached images and files", null, cache) { cache = it }; Divider()
             Toggle(Ic.Key, "Saved passwords", "Also removed from your other signed-in devices", passwords) { passwords = it }; Divider()
+            Toggle(Ic.CreditCard, "Autofill form data", "Saved cards and addresses", autofill) { autofill = it }; Divider()
             Toggle(Ic.ManageAccounts, "Site permissions", null, perms) { perms = it }; Divider()
             Toggle(Ic.Tab, "Close all tabs", null, tabs) { tabs = it }
         }
@@ -544,15 +632,17 @@ fun ClearData() {
             if (cache) { WebView(ctx).apply { clearCache(true); destroy() }; Browser.tabs.forEach { it.web?.clearCache(true) } }
             if (perms) BrowserDb.clearPerms()
             if (passwords) runCatching { app.cairn.browser.vault.Vault.clearSince(since) }
+            if (autofill) runCatching { app.cairn.browser.vault.Vault.clearAutofillSince(since) }
+            if (passwords || autofill) app.cairn.browser.vault.Sync.soon()
             if (tabs) { Browser.closeAll(false); Browser.closeAll(true) }
             act.toast("Browsing data cleared"); Ui.back()
         }
-        PrimaryButton("Clear data", Modifier.padding(horizontal = 16.dp).fillMaxWidth(), enabled = history || cookies || cache || tabs || perms || passwords) {
-            if (passwords) confirmPw = true else run()
+        PrimaryButton("Clear data", Modifier.padding(horizontal = 16.dp).fillMaxWidth(), enabled = history || cookies || cache || tabs || perms || passwords || autofill) {
+            if (passwords || autofill) confirmPw = true else run()
         }
         if (confirmPw) AlertDialog(onDismissRequest = { confirmPw = false }, containerColor = C.surface2,
-            title = { Text("Delete saved passwords?", color = C.text) },
-            text = { Text("Passwords saved or changed ${when (range) { "hour" -> "in the last hour"; "day" -> "in the last 24 hours"; "week" -> "in the last 7 days"; else -> "at any time" }} are deleted from this phone and every device synced with your Cairn Account. This can't be undone.", color = C.muted) },
+            title = { Text("Delete saved data?", color = C.text) },
+            text = { Text("${listOfNotNull("Passwords".takeIf { passwords }, "cards and addresses".takeIf { autofill }).joinToString(" and ")} saved or changed ${when (range) { "hour" -> "in the last hour"; "day" -> "in the last 24 hours"; "week" -> "in the last 7 days"; else -> "at any time" }} are deleted from this phone and every device synced with your Cairn Account. This can't be undone.", color = C.muted) },
             confirmButton = { TextButton(onClick = { confirmPw = false; run() }) { Text("Delete", color = C.err) } },
             dismissButton = { TextButton(onClick = { confirmPw = false }) { Text("Cancel", color = C.muted) } })
         Text("Clearing cookies affects all time ranges because Android WebView can't remove cookies by date.", color = C.faint, fontSize = 12.sp, modifier = Modifier.padding(20.dp))

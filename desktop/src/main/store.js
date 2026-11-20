@@ -59,6 +59,7 @@ const DEFAULT_SETTINGS = {
   blockThirdPartyCookies: false,
   offerSavePasswords: true,
   autofillPasswords: true,
+  autofillForms: true,
   downloadDir: '',
   askWhereToSave: false,
   voiceName: '',

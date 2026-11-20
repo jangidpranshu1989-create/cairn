@@ -125,6 +125,7 @@ object BrowserDb {
     fun downloads(): List<DownloadItem> = db.rawQuery("SELECT id,dm_id,name,url,mime,uri,size,at FROM downloads ORDER BY at DESC LIMIT 500", null).use { c ->
         buildList { while (c.moveToNext()) add(DownloadItem(c.getLong(0), c.getLong(1), c.getString(2) ?: "", c.getString(3) ?: "", c.getString(4) ?: "", c.getString(5) ?: "", c.getLong(6), c.getLong(7))) }
     }
+    fun finishDownload(id: Long, uri: String, size: Long, mime: String) { db.update("downloads", ContentValues().apply { put("uri", uri); put("size", size); put("mime", mime) }, "id=?", arrayOf(id.toString())); changed() }
     fun deleteDownload(id: Long) { db.delete("downloads", "id=?", arrayOf(id.toString())); changed() }
     fun clearDownloads() { db.delete("downloads", null, null); changed() }
 

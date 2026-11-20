@@ -16,7 +16,7 @@ import { notify } from './hub.js';
  * - After a push, other online devices get a `sync_changed` WebSocket message and pull immediately.
  */
 export const syncRouter = express.Router();
-const KINDS = ['bookmarks', 'history', 'tabs', 'settings', 'profile', 'passwords', 'passkeys', 'trackers', 'readlater'];
+const KINDS = ['bookmarks', 'history', 'tabs', 'settings', 'profile', 'passwords', 'passkeys', 'trackers', 'readlater', 'cards', 'addresses'];
 const MAX_ITEMS = { history: 5000, tabs: 400 };
 
 const meta = (uid) => db.prepare('SELECT * FROM sync_meta WHERE user_id=?').get(uid)

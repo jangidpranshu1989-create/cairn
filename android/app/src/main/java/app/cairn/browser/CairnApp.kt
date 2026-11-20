@@ -14,6 +14,7 @@ class CairnApp : Application() {
         Prefs.init(this)
         app.cairn.browser.data.BrowserDb.init(this)
         app.cairn.browser.vault.Vault.init(this)
+        app.cairn.browser.service.Downloader.init(this)
         app.cairn.browser.vault.Sync.init(this)
         app.cairn.browser.browser.Shield.init(this)
         runCatching { app.cairn.browser.browser.SecureDns.apply() }
@@ -48,6 +49,9 @@ class CairnApp : Application() {
         nm.createNotificationChannel(NotificationChannel(CH_SITES, "Website notifications", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Notifications from websites you allowed in Site settings"
         })
+        nm.createNotificationChannel(NotificationChannel(CH_DOWNLOADS, "Downloads", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Download progress, speed and time left"; setShowBadge(false)
+        })
         app.cairn.browser.data.Recall.init(this)
         app.cairn.browser.browser.Favicons.init(this)
         app.cairn.browser.data.CairnSearch.init(this)
@@ -66,5 +70,6 @@ class CairnApp : Application() {
         const val CH_AGENT = "agent"
         const val CH_AGENT_DONE = "agent_done"
         const val CH_SITES = "sites"
+        const val CH_DOWNLOADS = "downloads"
     }
 }

@@ -40,9 +40,9 @@
 
   // clear data
   $('#clrGo').onclick = async () => {
-    const r = Number($('#clrRange').value); const pw = $('#clrPw').checked;
-    if (pw && !confirm('Delete saved passwords for this time range from this computer and every synced device? This can\'t be undone.')) return;
-    await api('history:clear', { since: r ? Date.now() - r : 0, cookies: $('#clrCookies').checked, cache: $('#clrCache').checked, passwords: pw });
+    const r = Number($('#clrRange').value); const pw = $('#clrPw').checked, af = $('#clrAf').checked;
+    if ((pw || af) && !confirm('Delete saved ' + [pw && 'passwords', af && 'cards and addresses'].filter(Boolean).join(' and ') + ' for this time range from this computer and every synced device? This can\'t be undone.')) return;
+    await api('history:clear', { since: r ? Date.now() - r : 0, cookies: $('#clrCookies').checked, cache: $('#clrCache').checked, passwords: pw, autofill: af });
     toast('Browsing data cleared');
   };
 

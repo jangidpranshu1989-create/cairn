@@ -47,13 +47,17 @@ object Vault {
     private val rnd = SecureRandom()
 
     fun init(ctx: Context) {
-        h = object : SQLiteOpenHelper(ctx, "vault.db", null, 1) {
+        h = object : SQLiteOpenHelper(ctx, "vault.db", null, 2) {
             override fun onCreate(d: SQLiteDatabase) {
                 d.execSQL("CREATE TABLE logins(id INTEGER PRIMARY KEY AUTOINCREMENT, origin TEXT NOT NULL, username TEXT NOT NULL, secret TEXT NOT NULL, updated INTEGER NOT NULL, UNIQUE(origin, username))")
                 d.execSQL("CREATE TABLE passkeys(cred_id TEXT PRIMARY KEY, rp_id TEXT NOT NULL, user_handle TEXT, user_name TEXT, display_name TEXT, secret TEXT NOT NULL, created INTEGER, updated INTEGER)")
                 d.execSQL("CREATE TABLE never(origin TEXT PRIMARY KEY)")
+                onUpgrade(d, 1, 2)
             }
-            override fun onUpgrade(d: SQLiteDatabase, o: Int, n: Int) {}
+            override fun onUpgrade(d: SQLiteDatabase, o: Int, n: Int) {
+                // v2: payment cards and addresses for autofill (whole record encrypted with the Android Keystore)
+                if (o < 2) { d.execSQL("CREATE TABLE IF NOT EXISTS autofill(id TEXT PRIMARY KEY, kind TEXT NOT NULL, secret TEXT NOT NULL, updated INTEGER NOT NULL)") }
+            }
         }
         val p = ctx.getSharedPreferences("vault", Context.MODE_PRIVATE)
         SecureStore.decrypt(p.getString("k", null))?.let { key = unb64u(it); ready.value = true }
@@ -89,6 +93,20 @@ object Vault {
         val m = Mac.getInstance("HmacSHA256"); m.init(SecretKeySpec(key ?: error("vault locked"), "HmacSHA256"))
         return b64u(m.doFinal("$kind|$natural".toByteArray())).take(32)
     }
+
+    // ---------- Payment cards and addresses (autofill) ----------
+    /** kind = "cards" | "addresses". Each record is a JSONObject with an "id". Cards never store the security code. */
+    fun autofill(kind: String): List<JSONObject> = db.rawQuery("SELECT secret FROM autofill WHERE kind=? ORDER BY updated DESC", arrayOf(kind)).use { c ->
+        buildList { while (c.moveToNext()) SecureStore.decrypt(c.getString(0))?.let { s -> runCatching { add(JSONObject(s)) } } }
+    }
+    fun saveAutofill(kind: String, j: JSONObject, at: Long = System.currentTimeMillis()) {
+        if (!j.has("id") || j.optString("id").isBlank()) j.put("id", java.util.UUID.randomUUID().toString())
+        j.put("updated", at); j.remove("cvc"); j.remove("cvv")
+        db.insertWithOnConflict("autofill", null, ContentValues().apply { put("id", j.getString("id")); put("kind", kind); put("secret", SecureStore.encrypt(j.toString())); put("updated", at) }, SQLiteDatabase.CONFLICT_REPLACE)
+        changed()
+    }
+    fun deleteAutofill(id: String) { db.delete("autofill", "id=?", arrayOf(id)); changed() }
+    fun clearAutofillSince(sinceMs: Long) { db.delete("autofill", "updated>=?", arrayOf(sinceMs.toString())); changed() }
 
     // ---------- Passwords ----------
     fun origin(url: String): String = runCatching { android.net.Uri.parse(url).let { "${it.scheme}://${it.host}${if (it.port > 0) ":" + it.port else ""}" } }.getOrDefault("")

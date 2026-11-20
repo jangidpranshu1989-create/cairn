@@ -275,13 +275,14 @@
   let pwPrompt = null;
   S.on('pw:prompt', (p) => {
     pwPrompt = p;
-    $('#pwText').innerHTML = `${p.update ? 'Update' : 'Save'} password for <b>${esc(p.username || 'this account')}</b> on ${esc(host(p.origin))}?`;
+    $('#pwText').innerHTML = p.text ? p.text : `${p.update ? 'Update' : 'Save'} password for <b>${esc(p.username || 'this account')}</b> on ${esc(host(p.origin))}?`;
+    $('#pwBar [data-pw=never]').style.display = p.text ? 'none' : '';
     $('#pwBar').classList.add('show');
   });
   $('#pwBar').addEventListener('click', (e) => {
     const a = e.target.closest('[data-pw]')?.dataset.pw; if (!a || !pwPrompt) return;
     S.invoke('pw:decide', pwPrompt.id, a); $('#pwBar').classList.remove('show');
-    if (a === 'save') toast('Password saved to Cairn');
+    if (a === 'save') toast(pwPrompt.kind === 'cards' ? 'Card saved to Cairn' : pwPrompt.kind === 'addresses' ? 'Address saved to Cairn' : 'Password saved to Cairn');
     pwPrompt = null;
   });
 

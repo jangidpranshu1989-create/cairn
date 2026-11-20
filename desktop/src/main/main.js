@@ -1,5 +1,5 @@
 // Cairn Browser — main process
-const { app, BrowserWindow, ipcMain, protocol, net, session, Menu, dialog, shell, nativeTheme, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, Menu, dialog, shell, nativeTheme, clipboard, systemPreferences } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -14,11 +14,11 @@ const search = require('./search');
 let tabsMod, cloud, llm, passwords, pageTools, AgentCls;
 
 const UI_DIR = path.join(__dirname, '..', 'ui');
-const PAGES = new Set(['search', 'newtab', 'settings', 'history', 'bookmarks', 'downloads', 'passwords', 'account', 'mindmap', 'error', 'about', 'reader', 'unsafe']);
+const PAGES = new Set(['search', 'newtab', 'settings', 'history', 'bookmarks', 'downloads', 'passwords', 'autofill', 'account', 'mindmap', 'error', 'about', 'reader', 'unsafe']);
 const isMac = process.platform === 'darwin';
 
 let win, tabs, agent, agentTabId = null;
-const pending = { asks: new Map(), confirms: new Map(), approvals: new Map(), pw: new Map(), perms: new Map() };
+const pending = { asks: new Map(), confirms: new Map(), approvals: new Map(), pw: new Map(), perms: new Map(), af: new Map() };
 let downloads = new Map();
 
 function chromeUA() {
@@ -96,7 +96,13 @@ async function setupSession() {
     const rec = { id, filename: item.getFilename(), url: item.getURL(), total: item.getTotalBytes(), received: 0, state: 'progressing', path: item.getSavePath(), at: Date.now() };
     downloads.set(id, { rec, item });
     send('downloads:update', [...downloads.values()].map(d => d.rec));
-    item.on('updated', (_ev, state) => { rec.received = item.getReceivedBytes(); rec.total = item.getTotalBytes(); rec.state = state; rec.path = item.getSavePath(); send('downloads:update', [...downloads.values()].map(d => d.rec)); });
+    let lastT = Date.now(), lastB = 0;
+    item.on('updated', (_ev, state) => {
+      const now = Date.now(), got = item.getReceivedBytes();
+      if (now - lastT >= 500) { const inst = (got - lastB) * 1000 / (now - lastT); rec.speed = rec.speed ? Math.round(rec.speed * 0.7 + inst * 0.3) : Math.round(inst); lastT = now; lastB = got; }
+      rec.paused = item.isPaused(); if (rec.paused) rec.speed = 0;
+      rec.mime = item.getMimeType();
+      rec.received = got; rec.total = item.getTotalBytes(); rec.state = state; rec.path = item.getSavePath(); send('downloads:update', [...downloads.values()].map(d => d.rec)); });
     item.once('done', (_ev, state) => {
       rec.state = state; rec.path = item.getSavePath(); rec.received = item.getReceivedBytes();
       const d = store.get().downloads; d.data.unshift({ ...rec }); d.data.splice(500); d.save();
@@ -258,6 +264,13 @@ async function runPageTool(kind) {
     if (kind === 'summary') { const s = await pageTools.summarize(wc, {}); send('agent:event', { type: 'summary', ...s, standalone: true }); }
     else if (kind === 'mindmap') { openMindmap(await pageTools.mindmap(wc, {})); }
     else if (kind === 'pdf') { const f = await pageTools.savePdf(wc); send('toast', { text: 'Saved PDF', file: f }); }
+    else if (kind === 'offline') {
+      const dir = path.join(store.get().settings.data.downloadDir || app.getPath('downloads'), 'Cairn Offline'); fs.mkdirSync(dir, { recursive: true });
+      const f = uniquePath(path.join(dir, `${String(wc.getTitle() || 'page').replace(/[^\p{L}\p{N} _-]+/gu, ' ').trim().slice(0, 60) || 'page'}.mhtml`));
+      await wc.savePage(f, 'MHTML');
+      const d = store.get().downloads; d.data.unshift({ id: Date.now().toString(36), filename: path.basename(f), url: t.url, total: fs.statSync(f).size, received: fs.statSync(f).size, state: 'completed', path: f, at: Date.now(), offline: true }); d.save();
+      send('toast', { text: 'Saved for offline reading', file: f });
+    }
     else if (kind === 'readerpdf') { const a = await pageTools.getArticle(wc); const f = await pageTools.htmlToPdf(pageTools.documentHtml(a.title, a.url, a.text), a.title); send('toast', { text: 'Saved clean article PDF', file: f }); }
     else if (kind === 'longshot') { const r = await pageTools.longScreenshot(wc); send('toast', { text: `Long screenshot saved (${r.width}×${r.height})`, file: r.file, image: true }); }
     else if (kind === 'shot') { const f = await pageTools.visibleScreenshot(wc); send('toast', { text: 'Screenshot saved', file: f, image: true }); }
@@ -329,6 +342,8 @@ function registerIpc() {
     if (opts.cookies) await ses.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] });
     if (opts.cache) await ses.clearCache();
     if (opts.passwords) passwords.clearSince(since);
+    if (opts.autofill) require('./autofill').clearSince(since);
+    if (opts.passwords || opts.autofill) require('./sync').soon?.();
     return true;
   }, { internal: true });
 
@@ -339,7 +354,7 @@ function registerIpc() {
     return [...live, ...store.get().downloads.data.filter(x => !ids.has(x.id))];
   });
   handle('downloads:cancel', (_e, id) => downloads.get(id)?.item.cancel());
-  handle('downloads:pause', (_e, id) => { const d = downloads.get(id); if (!d) return; d.item.isPaused() ? d.item.resume() : d.item.pause(); });
+  handle('downloads:pause', (_e, id) => { const d = downloads.get(id); if (!d) return; if (d.item.isPaused()) { if (d.item.canResume()) d.item.resume(); } else d.item.pause(); d.rec.paused = d.item.isPaused(); d.rec.speed = 0; });
   handle('downloads:clear', () => { store.get().downloads.data = []; store.get().downloads.save(); downloads = new Map([...downloads].filter(([, d]) => d.rec.state === 'progressing')); });
   handle('file:open', (_e, f) => { if (safeFile(f)) shell.openPath(f); });
   handle('file:reveal', (_e, f) => { if (safeFile(f)) shell.showItemInFolder(f); });
@@ -435,7 +450,39 @@ function registerIpc() {
     clearTimeout(p.timer); p.cb(!!allow);
     if (remember && p.site) { const st = store.get().settings; st.data.sitePermissions = { ...(st.data.sitePermissions || {}) }; st.data.sitePermissions[p.site] = { ...(st.data.sitePermissions[p.site] || {}), [p.key]: !!allow }; st.save(); }
   });
+  // payment cards & addresses — page side
+  const autofill = require('./autofill');
+  const afOn = () => store.get().settings.data.autofillForms !== false;
+  handle('af:query', (e, kind) => (afOn() && /^https:/.test(frameOrigin(e)) && autofill.KINDS.includes(kind)) ? autofill.query(kind) : []);
+  handle('af:fill', async (e, kind, id) => {
+    const origin = frameOrigin(e); if (!afOn() || !/^https:/.test(origin)) return null;
+    const j = autofill.get(kind, id); if (!j) return null;
+    if (kind === 'cards') {
+      let ok = false;
+      if (process.platform === 'darwin' && systemPreferences.canPromptTouchID?.()) ok = await systemPreferences.promptTouchID(`fill your card on ${new URL(origin).hostname}`).then(() => true, () => false);
+      else ok = (await dialog.showMessageBox(win, { type: 'question', buttons: ['Fill card', 'Cancel'], defaultId: 0, cancelId: 1, message: `Fill ${autofill.label(kind, j)} on ${new URL(origin).hostname}?`, detail: 'Cairn never saves your card’s security code (CVC). You’ll type it on the site.' })).response === 0;
+      if (!ok) return null;
+    }
+    return j;
+  });
+  handle('af:offer', (e, kind, data) => {
+    const origin = frameOrigin(e);
+    if (!afOn() || !/^https:/.test(origin) || !autofill.KINDS.includes(kind) || !data || typeof data !== 'object') return;
+    try { if (!autofill.isNew(kind, data)) return; const c = autofill.clean(kind, data); if (kind === 'cards' && !autofill.luhn(c.number)) return; if (kind === 'addresses' && !c.line1) return;
+      const id = Math.random().toString(36).slice(2); pending.af.set(id, { kind, data: c });
+      send('pw:prompt', { id, text: kind === 'cards' ? `Save card <b>${autofill.label(kind, c).replace(/[<>&]/g, '')}</b> to Cairn? It's encrypted and the CVC is never saved.` : `Save this address (<b>${String(c.line1).replace(/[<>&"]/g, '').slice(0, 60)}</b>) for faster checkout?`, kind });
+    } catch {}
+  });
+  // payment cards & addresses — management (internal pages only)
+  handle('af:all', (_e, kind) => autofill.all(kind), { internal: true });
+  handle('af:get', async (_e, kind, id) => {
+    if (kind === 'cards') { const { response } = await dialog.showMessageBox(win, { type: 'warning', buttons: ['Show card', 'Cancel'], defaultId: 1, cancelId: 1, message: 'Show this card number?', detail: 'Make sure nobody is looking at your screen.' }); if (response) return null; }
+    return autofill.get(kind, id);
+  }, { internal: true });
+  handle('af:save', (_e, kind, j, id) => { const r = autofill.save(kind, j, { id }); require('./sync').soon?.(); return r; }, { internal: true });
+  handle('af:remove', (_e, kind, id) => { autofill.remove(kind, id); require('./sync').soon?.(); }, { internal: true });
   handle('pw:decide', (_e, id, action) => {
+    const a = pending.af.get(id); if (a) { pending.af.delete(id); if (action === 'save') { autofill.save(a.kind, a.data); require('./sync').soon?.(); } return; }
     const p = pending.pw.get(id); pending.pw.delete(id); if (!p) return;
     if (action === 'save') passwords.save(p.origin, p.username, p.password);
     if (action === 'never') passwords.never(p.origin);
@@ -503,6 +550,7 @@ function appMenu() {
     { label: 'Mind map', click: () => runPageTool('mindmap') },
     { label: 'Reader view', click: () => runPageTool('reader') },
     { label: 'Save as PDF', accelerator: 'CmdOrCtrl+Shift+S', click: () => runPageTool('pdf') },
+    { label: 'Save page for offline', click: () => runPageTool('offline') },
     { label: 'Long screenshot', accelerator: 'CmdOrCtrl+Shift+L', click: () => runPageTool('longshot') },
     { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: () => tabs.active?.view.webContents.print() },
     { type: 'separator' },

@@ -8,9 +8,7 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux",
-    "prepack": "node scripts-embed-keys.js",
-    "embed-keys": "node scripts-embed-keys.js"
+    "dist:linux": "electron-builder --linux"
   },
   "keywords": [],
   "author": {

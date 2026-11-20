@@ -264,7 +264,7 @@ async function runPageTool(kind) {
     else if (kind === 'read') { const a = await pageTools.getArticle(wc); send('agent:event', { type: 'speak', text: `${a.title}.\n${a.text}`, lang: a.lang, title: a.title }); }
     else if (kind === 'reader') { const a = await pageTools.getArticle(wc); global.__reader = a; tabs.create('cairn://reader'); }
   } catch (e) {
-    send('toast', { text: e.message === 'NO_AI_KEY' ? 'Add a Groq or NVIDIA key in Settings → AI to use this.' : e.message, error: true });
+    send('toast', { text: e.message === 'NO_AI' ? "Cairn's AI isn't reachable right now. Check your internet connection." : e.message, error: true });
   } finally { send('tool:busy', { kind, busy: false }); }
 }
 
@@ -358,11 +358,10 @@ function registerIpc() {
   handle('open:file-url', (_e, f) => safeFile(f) ? `cairn://file?p=${encodeURIComponent(f)}` : null);
 
   // settings
-  handle('settings:get', () => { const s = { ...store.get().settings.data }; const v = store.get().vault.data; s.groqKey = v.groqKey ? '••••' + v.groqKey.slice(-4) : ''; s.nvidiaKey = v.nvidiaKey ? '••••' + v.nvidiaKey.slice(-4) : ''; return s; });
+  handle('settings:get', () => ({ ...store.get().settings.data, groqKey: undefined, nvidiaKey: undefined }));
   handle('settings:set', (_e, patch) => {
     const s = store.get().settings; const v = store.get().vault;
     for (const [k, val] of Object.entries(patch || {})) {
-      if (k === 'groqKey' || k === 'nvidiaKey') { if (!String(val).startsWith('••••')) { v.data[k] = String(val).trim(); v.flush(); } continue; }
       if (k in store.DEFAULT_SETTINGS) s.data[k] = val;
     }
     s.save();
@@ -370,11 +369,6 @@ function registerIpc() {
     if ('serverUrl' in patch) cloud.connect();
     send('settings:changed', s.data);
     return true;
-  }, { internal: true });
-  handle('settings:testKey', async (_e, provider, key) => {
-    const v = store.get().vault.data;
-    const k = key && !key.startsWith('••••') ? key : (provider === 'groq' ? v.groqKey : v.nvidiaKey);
-    return k ? llm.testKey(provider, k) : false;
   }, { internal: true });
   handle('settings:pickDir', async () => { const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] }); return r.canceled ? null : r.filePaths[0]; }, { internal: true });
 

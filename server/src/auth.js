@@ -70,7 +70,7 @@ function checkCaptcha(token, answer) {
 // ---------- Validation ----------
 const emailS = z.string().trim().toLowerCase().email().max(200);
 const passwordS = z.string().min(10, 'Password must be at least 10 characters').max(200)
-  .refine(p => /[A-Za-z]/.test(p) && /\d/.test(p), 'Password needs letters and numbers');
+  .refine(p => /\p{L}/u.test(p) && /\p{N}/u.test(p), 'Password needs letters and numbers');
 
 export const publicUser = (u) => u && ({ id: u.id, email: u.email, name: u.name, plan: u.plan, emailVerified: !!u.email_verified, createdAt: u.created_at });
 

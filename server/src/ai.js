@@ -38,8 +38,8 @@ function quota(req, res, next) {
   const row = db.prepare('SELECT ai_requests FROM usage WHERE user_id=? AND day=?').get(req.user.id, day);
   const limit = req.user.anon ? config.dailyAiRequestsAnon : u?.plan === 'pro' ? 5000 : config.dailyAiRequestsFree;
   if ((row?.ai_requests || 0) >= limit) return res.status(429).json({ error: req.user.anon
-    ? `Daily built-in AI limit reached (${limit}). Sign in to Cairn for more, or add your own free key in Settings.`
-    : `Daily AI limit reached (${limit}). Upgrade to Pro or add your own API key in Settings.` });
+    ? `Daily AI limit reached (${limit}). Sign in to your Cairn Account for more.`
+    : `Daily AI limit reached (${limit}). It resets at midnight UTC.` });
   // Only successful requests count against the quota.
   res.on('finish', () => { if (res.statusCode < 400) db.prepare('INSERT INTO usage (user_id, day, ai_requests) VALUES (?,?,1) ON CONFLICT(user_id, day) DO UPDATE SET ai_requests=ai_requests+1').run(req.user.id, day); });
   next();
@@ -67,5 +67,5 @@ aiRouter.post('/stt', aiAuth, quota, upload.single('audio'), async (req, res) =>
   } catch (e) { res.status(e.status || 502).json({ error: e.message }); }
 });
 
-aiRouter.get('/status', (_req, res) => res.json({ groq: !!config.groqKey, nvidia: !!config.nvidiaKey, models: {
+aiRouter.get('/status', (_req, res) => res.json({ ready: !!(config.groqKey || config.nvidiaKey || config.freeFallback), groq: !!config.groqKey, nvidia: !!config.nvidiaKey, free: config.freeFallback, models: {
   smart: config.groqModel, fast: config.groqFastModel, nvidia: config.nvidiaModel } }));

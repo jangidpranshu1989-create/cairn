@@ -35,20 +35,8 @@
   speechSynthesis.onvoiceschanged = fillVoices; fillVoices();
   $('#voices').onchange = (e) => save({ voiceName: e.target.value });
 
-  // API keys
-  for (const k of ['groqKey', 'nvidiaKey']) $('#' + k).value = S[k] || '';
-  $$('[data-save]').forEach(b => b.onclick = async () => {
-    const k = b.dataset.save, v = $('#' + k).value.trim();
-    await api('settings:set', { [k]: v }); toast(v ? 'Key saved securely' : 'Key removed');
-    S = await api('settings:get'); $('#' + k).value = S[k] || '';
-  });
-  $$('[data-test]').forEach(b => b.onclick = async () => {
-    const p = b.dataset.test, st = $('#st-' + p), key = $('#' + p + 'Key').value.trim();
-    st.className = 'status'; st.textContent = 'Testing…'; b.disabled = true;
-    try { const ok = await api('settings:testKey', p, key); st.className = 'status ' + (ok ? 'ok' : 'err'); st.textContent = ok ? 'Working' : 'Key rejected'; }
-    catch (e) { st.className = 'status err'; st.textContent = cleanErr(e); }
-    b.disabled = false;
-  });
+  // Cairn AI is built in: show which plan is serving this device
+  api('cloud:session').then(se => { const el = $('#aiPlan'); if (el) el.textContent = se?.signedIn ? 'Included with your Cairn Account on every device.' : 'Works with no setup. Sign in to your Cairn Account for a higher daily limit.'; }).catch(() => {});
 
   // clear data
   $('#clrGo').onclick = async () => {

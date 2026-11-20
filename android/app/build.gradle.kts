@@ -1,5 +1,4 @@
 import java.util.Properties
-import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -15,19 +14,7 @@ val ksProps = Properties().apply {
     val f = rootProject.file("keystore.properties"); if (f.exists()) f.inputStream().use { load(it) }
 }
 
-// Built-in AI keys, so Cairn works right after install with no setup. Supplied at build time from
-// env vars / Gradle properties GROQ_API_KEY and NVIDIA_API_KEY (CI: repository secrets) or android/keys.properties
-// (never committed). They are XOR-masked in the APK so they don't show up in a plain `strings` dump.
-val keyProps = Properties().apply {
-    val f = rootProject.file("keys.properties"); if (f.exists()) f.inputStream().use { load(it) }
-}
-fun builtInKey(name: String): String {
-    val v = (System.getenv(name) ?: (project.findProperty(name) as String?) ?: keyProps.getProperty(name) ?: "").trim()
-    if (v.isEmpty()) return ""
-    val salt = "cairn-stones-v2".toByteArray()
-    val x = v.toByteArray().mapIndexed { i, b -> (b.toInt() xor salt[i % salt.size].toInt()).toByte() }.toByteArray()
-    return Base64.getEncoder().encodeToString(x)
-}
+// AI provider keys live only on the Cairn server. Nothing secret is compiled into the APK.
 
 android {
     namespace = "app.cairn.browser"
@@ -43,8 +30,6 @@ android {
         // Default Cairn Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
         buildConfigField("String", "DEFAULT_SERVER", "\"https://api.cairn.app\"")
         buildConfigField("String", "SITE", "\"https://cairn.app\"")
-        buildConfigField("String", "K_GROQ", "\"${builtInKey("GROQ_API_KEY")}\"")
-        buildConfigField("String", "K_NVIDIA", "\"${builtInKey("NVIDIA_API_KEY")}\"")
     }
 
     signingConfigs {

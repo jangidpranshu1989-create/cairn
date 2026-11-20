@@ -50,14 +50,6 @@ const DEFAULT_SETTINGS = {
   startup: 'newtab',             // newtab | restore
   homepage: 'cairn://newtab',
   language: 'auto',              // assistant reply language: auto | en | hi | hinglish | ...
-  aiMode: 'byok',                // cloud (Cairn account) | byok (own keys)
-  groqKey: '',
-  nvidiaKey: '',
-  preferredProvider: 'groq',
-  groqModel: 'openai/gpt-oss-120b',
-  groqFastModel: 'openai/gpt-oss-20b',
-  nvidiaModel: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
-  nvidiaFastModel: 'nvidia/nemotron-3.5-bolt-e4b',
   sitePermissions: {},           // { origin: { geolocation: true, camera: false, ... } }
   agentConfirm: 'purchases',     // purchases | every-action
   agentMaxSteps: 40,

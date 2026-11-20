@@ -315,7 +315,7 @@ HOW TO WORK
         job = scope.launch {
             try { block() }
             catch (e: CancellationException) { items.add(AiMsg("Stopped.")) }
-            catch (e: NoAiException) { items.add(AiMsg("Cairn's AI isn't reachable right now. Check Settings → AI, or add your own Groq or NVIDIA NIM key there.", error = true, setup = true)) }
+            catch (e: NoAiException) { items.add(AiMsg("Cairn's AI isn't reachable right now. Check your internet connection and try again.", error = true, setup = true)) }
             catch (e: ApiException) { items.add(AiMsg(e.message ?: "Something went wrong.", error = true, setup = e.status == 401)) }
             catch (e: Exception) { items.add(AiMsg(friendly(e), error = true)) }
             finally {

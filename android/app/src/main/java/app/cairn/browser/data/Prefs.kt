@@ -109,6 +109,7 @@ object Prefs {
 
     // ---- Account / companion ----
     var server by str("server", BuildConfig.DEFAULT_SERVER)
+    var serverAuto by bool("serverAuto", true)          // follow the published Cairn server address (server.json) unless set by hand
     var deviceIdS by str("deviceId", "")
     var userJsonS by str("user", "")
     var accessTokenS by secret("at")

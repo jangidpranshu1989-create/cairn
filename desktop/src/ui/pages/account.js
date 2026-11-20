@@ -50,7 +50,7 @@
     err.textContent = '';
     const email = f.email.value.trim(), password = f.password.value;
     if (!/^\S+@\S+\.\S+$/.test(email)) return err.textContent = 'Enter a valid email address';
-    if (mode === 'signup' && (password.length < 10 || !/[a-z]/i.test(password) || !/\d/.test(password))) return err.textContent = 'Password needs 10+ characters with a letter and a number';
+    if (mode === 'signup' && (password.length < 10 || !/\p{L}/u.test(password) || !/\p{N}/u.test(password))) return err.textContent = 'Password needs 10+ characters with a letter and a number';
     if (mode === 'signup' && !f.name.value.trim()) return err.textContent = 'Enter your name';
     const captcha = cap ? { captchaToken: cap.token, captchaAnswer: f.captcha.value.trim() } : {};
     go.disabled = true; go.textContent = 'Please wait…';

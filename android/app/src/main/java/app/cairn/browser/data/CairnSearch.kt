@@ -198,7 +198,7 @@ $lang"""
                 if (results.isEmpty()) { out.write("\u0000ERR:No results to answer from.".toByteArray()); return@Thread }
                 val pages = readTop(results)
                 Llm.streamBlocking(answerMessages(q, results, pages), tier = "smart", maxTokens = 900) { d -> out.write(d.toByteArray()); out.flush() }
-            } catch (e: NoAiException) { runCatching { out.write("\u0000ERR:Cairn's AI isn't set up on this device.".toByteArray()) } }
+            } catch (e: NoAiException) { runCatching { out.write("\u0000ERR:Cairn's AI isn't reachable right now. Check your connection.".toByteArray()) } }
             catch (e: Exception) { runCatching { out.write("\u0000ERR:${e.message ?: "The answer couldn't be generated."}".toByteArray()) } }
             finally { runCatching { out.close() } }
         }.apply { isDaemon = true }.start()

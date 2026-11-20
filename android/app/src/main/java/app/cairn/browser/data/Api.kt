@@ -68,6 +68,7 @@ object Api {
         throw ApiException(it.code, msg?.ifEmpty { null } ?: "Server error ${it.code}") }; it.body!!.string() }
 
     suspend fun completePairing(server: String, code: String): Unit = withContext(Dispatchers.IO) {
+        if (server != Prefs.server) Prefs.serverAuto = false
         Prefs.server = server
         val body = JSONObject().put("code", code).put("name", "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}".take(80))
         val r = exec(Request.Builder().url(ep("/devices/pair/complete")).post(body.toString().toRequestBody(JSON)).build())

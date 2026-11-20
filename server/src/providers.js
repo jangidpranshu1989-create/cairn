@@ -4,9 +4,14 @@
 export const PROVIDERS = {
   groq: { base: 'https://api.groq.com/openai/v1', label: 'Groq' },
   nvidia: { base: 'https://integrate.api.nvidia.com/v1', label: 'NVIDIA NIM' },
+  // Keyless community endpoint (OpenAI-compatible, supports tools + streaming). Built-in last resort so Cairn's
+  // assistant works out of the box with zero setup. Disable with AI_FREE_FALLBACK=0.
+  free: { base: 'https://text.pollinations.ai', path: '/openai', label: 'Cairn Free AI', keyless: true },
 };
+const keyFor = (p, cfg) => (p === 'groq' ? cfg.groqKey : p === 'nvidia' ? cfg.nvidiaKey : '');
 
 export function modelFor(provider, tier, cfg) {
+  if (provider === 'free') return cfg.freeModel || 'openai';
   if (provider === 'groq') return tier === 'fast' ? cfg.groqFastModel : cfg.groqModel;
   return tier === 'fast' ? cfg.nvidiaFastModel : cfg.nvidiaModel;
 }
@@ -15,7 +20,8 @@ export function modelFor(provider, tier, cfg) {
 export function providerOrder(cfg, tier, preferred) {
   let order = tier === 'vision' ? ['nvidia', 'groq'] : ['groq', 'nvidia'];
   if (preferred && order.includes(preferred)) order = [preferred, ...order.filter(p => p !== preferred)];
-  return order.filter(p => (p === 'groq' ? cfg.groqKey : cfg.nvidiaKey));
+  if (tier !== 'vision' && cfg.freeFallback !== false) order.push('free');
+  return order.filter(p => PROVIDERS[p].keyless || keyFor(p, cfg));
 }
 
 const retriable = (status) => status === 429 || status >= 500 || status === 408;
@@ -26,7 +32,7 @@ const retriable = (status) => status === 429 || status >= 500 || status === 408;
  */
 export async function chat(opts, cfg) {
   const order = providerOrder(cfg, opts.tier || 'smart', opts.preferred);
-  if (!order.length) throw Object.assign(new Error('No AI provider configured. Add a Groq or NVIDIA NIM API key.'), { status: 503 });
+  if (!order.length) throw Object.assign(new Error(opts.tier === 'vision' ? 'Image understanding is not available on this server yet.' : 'AI is not configured on this server.'), { status: 503 });
   let lastErr;
   for (const p of order) {
     const body = {
@@ -41,9 +47,12 @@ export async function chat(opts, cfg) {
     if (p === 'nvidia') body.chat_template_kwargs = { enable_thinking: false };
     if (p === 'groq' && /gpt-oss/.test(body.model)) body.reasoning_effort = opts.reasoning || 'low';
     try {
-      const r = await fetch(`${PROVIDERS[p].base}/chat/completions`, {
+      if (p === 'free') { delete body.chat_template_kwargs; delete body.reasoning_effort; delete body.response_format; }
+      const headers = { 'Content-Type': 'application/json' };
+      if (keyFor(p, cfg)) headers.Authorization = `Bearer ${keyFor(p, cfg)}`;
+      const r = await fetch(`${PROVIDERS[p].base}${PROVIDERS[p].path || '/chat/completions'}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p === 'groq' ? cfg.groqKey : cfg.nvidiaKey}` },
+        headers,
         body: JSON.stringify(body),
         signal: opts.signal || AbortSignal.timeout(90_000),
       });

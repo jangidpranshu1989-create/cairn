@@ -39,6 +39,8 @@ export const config = {
   // AI providers
   groqKey: process.env.GROQ_API_KEY || '',
   nvidiaKey: process.env.NVIDIA_API_KEY || '',
+  freeFallback: process.env.AI_FREE_FALLBACK !== '0',
+  freeModel: process.env.AI_FREE_MODEL || 'openai',
   groqModel: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
   groqFastModel: process.env.GROQ_FAST_MODEL || 'openai/gpt-oss-20b',
   nvidiaModel: process.env.NVIDIA_MODEL || 'nvidia/nemotron-3.5-super-vl-120b-a12b',

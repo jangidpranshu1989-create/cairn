@@ -290,7 +290,7 @@ fun SettingsHome() {
         }
         SectionLabel("Cairn")
         Group {
-            Row2(Ic.AutoAwesome, "AI and assistant", when (Prefs.aiMode) { "byok" -> "Your own keys · ${Prefs.preferredProvider.replace("nvidia", "NVIDIA NIM").replace("groq", "Groq")}"; "cloud" -> "Cairn Cloud"; else -> "Built in · ready to use" }, onClick = { Ui.go("settings/ai") }); Divider()
+            Row2(Ic.AutoAwesome, "AI and assistant", "Built in · ready to use", onClick = { Ui.go("settings/ai") }); Divider()
             Row2(Ic.Wand, "Delivery profile", "Checkout forms filled for you", onClick = { Ui.go("settings/profile") }); Divider()
             Row2(Ic.BadgePercent, "Cards and offers", "Best bank discount and coupon at checkout", onClick = { Ui.go("settings/cards") }); Divider()
             Row2(Ic.BellRing, "Price alerts", "Price drops and back-in-stock", onClick = { Ui.go("settings/prices") }); Divider()
@@ -457,35 +457,17 @@ fun AiSettings() {
     val scope = rememberCoroutineScope()
     ScreenHeader("AI and assistant", { Ui.back() })
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
-        SectionLabel("AI provider")
+        SectionLabel("Cairn AI")
         Group {
-            listOf("builtin" to ("Built in (recommended)" to "Works out of the box. Groq first, NVIDIA NIM as backup — nothing to set up."), "cloud" to ("Cairn Cloud" to "Use the AI included with your Cairn account."), "byok" to ("Your own API keys" to "Requests go straight from this phone to Groq or NVIDIA with your keys.")).forEachIndexed { i, (k, v) ->
-                if (i > 0) Divider()
-                Row(Modifier.fillMaxWidth().clickable { Prefs.aiMode = k }.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(Prefs.aiMode == k, { Prefs.aiMode = k }, colors = RadioButtonDefaults.colors(selectedColor = C.text, unselectedColor = C.muted))
-                    Spacer(Modifier.width(6.dp))
-                    Column(Modifier.weight(1f)) { Text(v.first, color = C.text, fontSize = 15.sp); Text(v.second, color = C.muted, fontSize = 12.5.sp) }
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(C.agentSoft), contentAlignment = Alignment.Center) { Icon(Ic.AutoAwesome, null, Modifier.size(20.dp), tint = C.agent) }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Built in · ready to use", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(if (Prefs.isSignedIn) "Included with your Cairn Account on every device. Nothing to set up." else "Works without any setup. Sign in to your Cairn Account for a higher daily limit.", color = C.muted, fontSize = 12.5.sp, lineHeight = 17.sp)
                 }
             }
-        }
-        if (Prefs.aiMode == "cloud" && !Prefs.isSignedIn) {
-            Spacer(Modifier.height(12.dp))
-            Group { Row2(Ic.Login, "Sign in to use Cairn Cloud", null, onClick = { Ui.go("settings/account") }) }
-        }
-        if (Prefs.aiMode == "builtin" && !Llm.hasBuiltIn) Text("This build has no built-in keys. Add your own below or sign in to Cairn Cloud.", color = C.warn, fontSize = 12.5.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-        if (Prefs.aiMode == "byok" || (Prefs.aiMode == "builtin" && !Llm.hasBuiltIn)) {
-            SectionLabel("API keys")
-            KeyField("Groq API key", "gsk_…", Prefs.groqKey, "groq", "https://console.groq.com/keys") { Prefs.groqKey = it }
-            Spacer(Modifier.height(10.dp))
-            KeyField("NVIDIA NIM API key", "nvapi-…", Prefs.nvidiaKey, "nvidia", "https://build.nvidia.com/settings/api-keys") { Prefs.nvidiaKey = it }
-            Spacer(Modifier.height(12.dp))
-            Group {
-                Choice("Use first", listOf("groq" to "Groq", "nvidia" to "NVIDIA NIM"), Prefs.preferredProvider, { Prefs.preferredProvider = it }, Ic.SwapVert); Divider()
-                Choice("Groq model", listOf("openai/gpt-oss-120b" to "GPT-OSS 120B", "llama-3.3-70b-versatile" to "Llama 3.3 70B", "moonshotai/kimi-k2-instruct" to "Kimi K2", "qwen/qwen3-32b" to "Qwen3 32B"),
-                    Prefs.groqModel, { Prefs.groqModel = it }, Ic.Memory); Divider()
-                Choice("NVIDIA model", listOf("nvidia/nemotron-3.5-super-vl-120b-a12b" to "Nemotron 3.5 Super", "meta/llama-3.3-70b-instruct" to "Llama 3.3 70B", "deepseek-ai/deepseek-v3.1" to "DeepSeek V3.1", "qwen/qwen3-235b-a22b" to "Qwen3 235B"),
-                    Prefs.nvidiaModel, { Prefs.nvidiaModel = it }, Ic.Memory)
-            }
+            if (!Prefs.isSignedIn) { Divider(); Row2(Ic.Login, "Sign in to Cairn", null, onClick = { Ui.go("settings/account") }) }
         }
         SectionLabel("Assistant")
         Group {
@@ -506,47 +488,15 @@ fun AiSettings() {
     }
 }
 
-@Composable
-private fun KeyField(label: String, hint: String, value: String, provider: String, getUrl: String, onSave: (String) -> Unit) {
-    val scope = rememberCoroutineScope()
-    var v by remember { mutableStateOf(value) }
-    var show by remember { mutableStateOf(false) }
-    var state by remember { mutableStateOf<String?>(null) } // testing | ok | bad
-    Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(C.surface).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Text("Get a free key", color = C.muted, fontSize = 13.sp, modifier = Modifier.clickable { openUrl(getUrl) }.padding(4.dp))
-        }
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(v, { v = it.trim(); state = null }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text(hint, color = C.faint) }, colors = fieldColors(), shape = RoundedCornerShape(12.dp),
-            visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = { IconBtn(if (show) Ic.VisibilityOff else Ic.Visibility, if (show) "Hide key" else "Show key", tint = C.faint) { show = !show } },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            when (state) {
-                "testing" -> { CircularProgressIndicator(Modifier.size(14.dp), color = C.muted, strokeWidth = 1.5.dp); Spacer(Modifier.width(8.dp)); Text("Checking…", color = C.muted, fontSize = 13.sp) }
-                "ok" -> Text("Key works · saved", color = C.ok, fontSize = 13.sp)
-                "bad" -> Text("This key didn't work", color = C.err, fontSize = 13.sp)
-                else -> if (value.isNotEmpty()) Text("Saved and encrypted on this device", color = C.faint, fontSize = 12.5.sp)
-            }
-            Spacer(Modifier.weight(1f))
-            if (value.isNotEmpty() && v == value) TextButton(onClick = { v = ""; onSave(""); state = null }) { Text("Remove", color = C.muted) }
-            TextButton(enabled = v.isNotEmpty() && state != "testing", onClick = {
-                state = "testing"
-                scope.launch { val ok = runCatching { Llm.testKey(provider, v) }.getOrDefault(false); state = if (ok) "ok" else "bad"; if (ok) onSave(v) }
-            }) { Text("Test and save", color = C.text) }
-        }
-    }
-}
-
 // ---------------------------------------------------------------- Account
 @Composable
 fun AccountScreen() {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
-    var mode by remember { mutableStateOf(if (LocalAccount.exists) "signin" else "signup") } // signup | signin | forgot
-    var name by remember { mutableStateOf("") }; var email by remember { mutableStateOf(if (LocalAccount.exists) LocalAccount.email else "") }; var pw by remember { mutableStateOf("") }
+    var mode by remember { mutableStateOf(if (LocalAccount.exists) "signup" else "signin") } // signup | signin | forgot
+    var name by remember { mutableStateOf(runCatching { org.json.JSONObject(Prefs.localAccountS).optString("name") }.getOrDefault("")) }
+    var email by remember { mutableStateOf(if (LocalAccount.exists) LocalAccount.email else "") }; var pw by remember { mutableStateOf("") }
+    var captcha by remember { mutableStateOf<Api.Captcha?>(null) }; var captchaAnswer by remember { mutableStateOf("") }
     var showPw by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }; var error by remember { mutableStateOf<String?>(null) }
     var dialog by remember { mutableStateOf<String?>(null) } // signout | delete | rename | password
@@ -572,7 +522,12 @@ fun AccountScreen() {
                 Row2(Ic.Key, "Passwords and passkeys", "Saved sign-ins for websites", onClick = { Ui.go("settings/passwords") }); Divider()
                 Row2(Ic.Devices, "Phone and computer", "Approvals and files", onClick = { Ui.go("settings/pair") }); Divider()
                 if (local) Row2(Ic.Password, "Change password", null, onClick = { pw = ""; name = ""; dialog = "password" })
-                else Row2(Ic.Password, "Change password", "Opens your account on the web", onClick = { openUrl("${BuildConfig.SITE}/download.html#account") })
+                else Row2(Ic.Password, "Security and connected apps", "Password, passkeys, devices, Continue with Cairn", onClick = { openUrl("${Prefs.server}/accounts/") })
+            }
+            if (local) {
+                Spacer(Modifier.height(12.dp))
+                Group { Row2(Ic.Devices, "Use this account on every device", "Move to a Cairn Account: sign in on any phone or computer and sync everything", onClick = {
+                    name = Prefs.userName; email = LocalAccount.email; pw = ""; mode = "signup"; LocalAccount.signOut() }) }
             }
             if (!local) {
                 Spacer(Modifier.height(12.dp))
@@ -624,75 +579,100 @@ fun AccountScreen() {
         }
         return
     }
-    val problem = if (mode == "signup" && pw.isNotEmpty()) LocalAccount.passwordProblem(pw) else null
+    fun cloudProblem(p: String): String? = when {
+        p.length < 10 -> "Use at least 10 characters"
+        !p.any { it.isLetter() } || !p.any { it.isDigit() } -> "Use letters and numbers (any language works)"
+        p.lowercase() in setOf("password12", "1234567890", "qwertyuiop", "cairn12345") -> "That password is too common"
+        else -> null
+    }
+    val problem = if (mode == "signup" && pw.isNotEmpty()) cloudProblem(pw) else null
+    fun loadCaptcha() { scope.launch { captcha = runCatching { Api.captcha() }.getOrNull(); captchaAnswer = captcha?.devAnswer ?: "" } }
+    LaunchedEffect(mode) { if (mode == "signup" && captcha == null) loadCaptcha() }
+    fun netError(e: Exception) = when (e) {
+        is ApiException -> e.message ?: "Something went wrong"
+        is java.net.UnknownHostException, is java.net.ConnectException, is java.net.SocketTimeoutException -> "Can't reach Cairn right now. Check your internet and try again."
+        else -> e.message ?: "Something went wrong"
+    }
     fun submit() {
         error = null
         if (!LocalAccount.validEmail(email)) { error = "Enter a valid email address"; return }
+        if (mode == "forgot") {
+            busy = true
+            scope.launch { try { Api.forgot(email); act.toast("If that email has a Cairn Account, a reset link is on its way"); mode = "signin" } catch (e: Exception) { error = netError(e) } finally { busy = false } }
+            return
+        }
         if (mode == "signup") {
             if (name.isBlank()) { error = "Enter your name"; return }
-            LocalAccount.passwordProblem(pw)?.let { error = it; return }
-            if (LocalAccount.exists && !LocalAccount.email.equals(email.trim(), true)) { error = "This phone already has a Cairn account (${LocalAccount.email}). Sign in, or delete it first."; return }
+            cloudProblem(pw)?.let { error = it; return }
+            if (captcha != null && captchaAnswer.isBlank()) { error = "Type the characters in the picture"; return }
         }
         busy = true
         scope.launch {
             try {
-                if (mode == "signup") {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { LocalAccount.create(name, email, pw) }
-                    Haptics.confirm(); act.toast("Welcome to Cairn, ${name.trim().substringBefore(' ')}"); Ui.back(); return@launch
+                kotlinx.coroutines.withTimeout(20000) { Api.signIn(email, pw, captcha?.token, captchaAnswer.takeIf { captcha != null }, name, create = mode == "signup") }
+                if (LocalAccount.exists && LocalAccount.email.equals(email.trim(), true)) LocalAccount.delete()  // moved to the Cairn Account
+                AppState.paired.value = true; SyncService.start(ctx); Prefs.syncOn = true; app.cairn.browser.vault.Sync.soon(0)
+                Haptics.confirm(); act.toast(if (mode == "signup") "Welcome to Cairn, ${name.trim().substringBefore(' ')}" else "Signed in. Your stuff is syncing."); Ui.back()
+            } catch (e: ApiException) {
+                Haptics.reject()
+                when {
+                    e.status == 428 -> { error = "Type the characters in the picture to continue"; loadCaptcha() }
+                    mode == "signup" -> { error = e.message; loadCaptcha() }
+                    e.status == 401 -> error = "Email or password is incorrect"
+                    else -> error = e.message
                 }
-                val ok = LocalAccount.exists && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { LocalAccount.signIn(email, pw) }
-                if (ok) { Haptics.confirm(); Ui.back(); return@launch }
-                if (LocalAccount.exists && LocalAccount.email.equals(email.trim(), true)) { Haptics.reject(); error = "Wrong password. Try again or reset it."; return@launch }
-                // Not a local account: try Cairn Cloud (accounts created on the computer).
-                try {
-                    kotlinx.coroutines.withTimeout(9000) { Api.signIn(email, pw, null, null, null, create = false) }
-                    AppState.paired.value = true; SyncService.start(ctx); Ui.back()
-                } catch (e: ApiException) { error = if (e.status == 401 || e.status == 404) "Email or password is incorrect" else e.message }
-                catch (e: Exception) { error = "There's no Cairn account for this email on this phone. Create one — it takes a second."; mode = "signup" }
-            } finally { busy = false }
+            } catch (e: Exception) { error = netError(e) }
+            finally { busy = false }
         }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp)) {
         Logo(40.dp); Spacer(Modifier.height(20.dp))
-        Text(when (mode) { "signup" -> "Create your Cairn account"; "forgot" -> "Forgot your password?"; else -> "Welcome back" }, color = C.text, fontSize = 27.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 33.sp)
+        Text(when (mode) { "signup" -> "Create your Cairn Account"; "forgot" -> "Reset your password"; else -> "Sign in to Cairn" }, color = C.text, fontSize = 27.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 33.sp)
         Spacer(Modifier.height(6.dp))
         Text(when (mode) {
-            "forgot" -> "Your account lives on this phone and only its password can unlock it — Cairn never sees it. You can reset the account here; your browsing data stays."
-            "signup" -> "Ready in a second. Your account is created and encrypted on this phone — no waiting, no codes."
-            else -> "Sign in with the email and password you chose for Cairn."
+            "forgot" -> "We'll email you a link to choose a new password."
+            "signup" -> if (LocalAccount.exists) "Turn the account on this phone into a Cairn Account. Then sign in on any phone or computer, anywhere, and your bookmarks, history, passwords and passkeys follow you." else "One account for every phone and computer. Bookmarks, history, passwords and passkeys sync end-to-end encrypted."
+            else -> "Use your Cairn Account on any device. Everything syncs, end-to-end encrypted."
         }, color = C.muted, fontSize = 14.sp, lineHeight = 20.sp)
         Spacer(Modifier.height(24.dp))
-        if (mode == "forgot") {
-            PrimaryButton("Reset the account on this phone", Modifier.fillMaxWidth()) { LocalAccount.delete(); mode = "signup"; email = ""; pw = ""; error = null; act.toast("Account reset. Create a new one.") }
-            Spacer(Modifier.height(10.dp))
-            SecondaryButton("Back to sign in", Modifier.fillMaxWidth()) { mode = "signin"; error = null }
-            return@Column
-        }
         if (mode == "signup") { OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Full name") }, singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next)); Spacer(Modifier.height(12.dp)) }
         OutlinedTextField(email, { email = it.trim() }, Modifier.fillMaxWidth(), label = { Text("Email") }, singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false, imeAction = ImeAction.Next))
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(pw, { pw = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp),
-            visualTransformation = if (showPw) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = { IconBtn(if (showPw) Ic.VisibilityOff else Ic.Visibility, if (showPw) "Hide password" else "Show password", tint = C.faint) { showPw = !showPw } },
-            supportingText = if (mode == "signup") ({ Text(problem ?: if (pw.isEmpty()) "At least 8 characters" else "Strong enough", color = if (problem == null && pw.isNotEmpty()) C.ok else C.faint) }) else null,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { submit() }))
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false, imeAction = if (mode == "forgot") ImeAction.Done else ImeAction.Next), keyboardActions = KeyboardActions(onDone = { submit() }))
+        if (mode != "forgot") {
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(pw, { pw = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp),
+                visualTransformation = if (showPw) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = { IconBtn(if (showPw) Ic.VisibilityOff else Ic.Visibility, if (showPw) "Hide password" else "Show password", tint = C.faint) { showPw = !showPw } },
+                supportingText = if (mode == "signup") ({ Text(problem ?: if (pw.isEmpty()) "At least 10 characters with letters and numbers" else "Strong enough", color = if (problem == null && pw.isNotEmpty()) C.ok else C.faint) }) else null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { submit() }))
+        }
         if (mode == "signup" && pw.isNotEmpty()) {
-            val score = listOf(pw.length >= 8, pw.length >= 12, pw.any(Char::isDigit) && pw.any(Char::isLetter), pw.any { !it.isLetterOrDigit() }, pw.any(Char::isUpperCase) && pw.any(Char::isLowerCase)).count { it }
+            val score = listOf(pw.length >= 10, pw.length >= 14, pw.any(Char::isDigit) && pw.any(Char::isLetter), pw.any { !it.isLetterOrDigit() }, pw.any(Char::isUpperCase) && pw.any(Char::isLowerCase)).count { it }
             Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 repeat(4) { i -> Box(Modifier.weight(1f).height(3.dp).clip(CircleShape).background(if (i < score.coerceAtMost(4)) (if (score >= 3) C.ok else C.warn) else C.line)) }
             }
         }
+        captcha?.takeIf { mode != "forgot" }?.let { c ->
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CaptchaImage(c.svg, Modifier.weight(1f).height(52.dp).clip(RoundedCornerShape(12.dp)))
+                Spacer(Modifier.width(8.dp)); IconBtn(Ic.Refresh, "New picture", tint = C.muted) { loadCaptcha() }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(captchaAnswer, { captchaAnswer = it.trim() }, Modifier.fillMaxWidth(), label = { Text("Characters in the picture") }, singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { submit() }))
+        }
         error?.let { Spacer(Modifier.height(10.dp)); Text(it, color = C.err, fontSize = 13.5.sp, lineHeight = 19.sp) }
         Spacer(Modifier.height(20.dp))
-        PrimaryButton(if (mode == "signup") "Create account" else "Sign in", Modifier.fillMaxWidth(), busy = busy, enabled = email.isNotBlank() && pw.isNotEmpty() && (mode != "signup" || name.isNotBlank())) { submit() }
+        PrimaryButton(when (mode) { "signup" -> "Create account"; "forgot" -> "Send reset link"; else -> "Sign in" }, Modifier.fillMaxWidth(), busy = busy,
+            enabled = email.isNotBlank() && (mode == "forgot" || pw.isNotEmpty()) && (mode != "signup" || name.isNotBlank())) { submit() }
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             if (mode == "signin") {
                 Text("Forgot password?", color = C.muted, fontSize = 14.sp, modifier = Modifier.clickable { mode = "forgot"; error = null }.padding(vertical = 8.dp))
-                if (!LocalAccount.exists) Text("Create account", color = C.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { mode = "signup"; error = null }.padding(vertical = 8.dp))
-            } else Text("I already have an account", color = C.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { mode = "signin"; error = null }.padding(vertical = 8.dp))
+                Text("Create account", color = C.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { mode = "signup"; error = null }.padding(vertical = 8.dp))
+            } else Text(if (mode == "forgot") "Back to sign in" else "I already have an account", color = C.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { mode = "signin"; error = null }.padding(vertical = 8.dp))
         }
         Spacer(Modifier.height(28.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -704,6 +684,17 @@ fun AccountScreen() {
         Text("By continuing you agree to the Terms of Service and Privacy Policy.", color = C.faint, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().clickable { openUrl("${BuildConfig.SITE}/terms.html") })
         Spacer(Modifier.height(28.dp))
     }
+}
+
+/** The server's SVG captcha, drawn in a tiny non-interactive WebView (no JavaScript). */
+@Composable
+fun CaptchaImage(svg: String, modifier: Modifier = Modifier) {
+    androidx.compose.ui.viewinterop.AndroidView({ c -> android.webkit.WebView(c).apply {
+        settings.javaScriptEnabled = false; isVerticalScrollBarEnabled = false; isHorizontalScrollBarEnabled = false; setBackgroundColor(0xFFF4EFE6.toInt())
+        isClickable = false; isFocusable = false
+    } }, modifier.background(Color(0xFFF4EFE6)), update = { w ->
+        w.loadDataWithBaseURL(null, "<html><body style='margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f4efe6'>$svg</body></html>", "text/html", "utf-8", null)
+    })
 }
 
 // ---------------------------------------------------------------- Pairing

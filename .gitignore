@@ -15,3 +15,4 @@ android/keystore.properties
 android/keys.properties
 desktop/src/main/builtin.json
 *.jks
+android/.kotlin/

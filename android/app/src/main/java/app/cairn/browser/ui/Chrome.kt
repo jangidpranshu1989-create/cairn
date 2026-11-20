@@ -328,9 +328,13 @@ fun AgentDots(color: Color = C.agent) {
 
 // ============================================================ Live mini-preview (PiP) of background agent pages
 @Composable
-fun LivePreview(modifier: Modifier = Modifier) {
+fun LivePreview(modifier: Modifier = Modifier, inline: Boolean = false) {
     val pages = PageTools.live
-    val show = pages.isNotEmpty() && Ui.pip && Prefs.agentLivePreview
+    // While the assistant sheet is open the preview is shown inline in the chat (never floating over message bubbles).
+    val show = pages.isNotEmpty() && Prefs.agentLivePreview && (if (inline) true else Ui.pip && !Ui.assistant)
+    val conf = androidx.compose.ui.platform.LocalConfiguration.current
+    val dens = LocalDensity.current
+    val maxX = with(dens) { (conf.screenWidthDp.dp - 160.dp).toPx() }; val maxY = with(dens) { (conf.screenHeightDp.dp - 340.dp).toPx() }
     var idx by remember { mutableIntStateOf(0) }
     var frame by remember { mutableStateOf<ImageBitmap?>(null) }
     var off by remember { mutableStateOf(Offset.Zero) }
@@ -350,17 +354,17 @@ fun LivePreview(modifier: Modifier = Modifier) {
         }
     }
     AnimatedVisibility(show, modifier.offset { IntOffset(off.x.roundToInt(), off.y.roundToInt()) }, enter = fadeIn() + scaleIn(cairnSpring(), initialScale = .7f, transformOrigin = TransformOrigin(1f, 1f)), exit = fadeOut() + scaleOut(targetScale = .7f, transformOrigin = TransformOrigin(1f, 1f))) {
-        Column(Modifier.width(132.dp).clip(RoundedCornerShape(16.dp)).background(C.surface).border(1.dp, C.agent.copy(alpha = .45f), RoundedCornerShape(16.dp))
-            .pointerInput(Unit) { detectDragGestures { c, d -> c.consume(); off += d } }
+        Column((if (inline) Modifier.fillMaxWidth() else Modifier.width(132.dp)).clip(RoundedCornerShape(16.dp)).background(C.surface).border(1.dp, C.agent.copy(alpha = .45f), RoundedCornerShape(16.dp))
+            .then(if (inline) Modifier else Modifier.pointerInput(Unit) { detectDragGestures { c, d -> c.consume(); off = Offset((off.x + d.x).coerceIn(-maxX, 0f), (off.y + d.y).coerceIn(0f, maxY.coerceAtLeast(0f))) } })
             .clickable { if (pages.size > 1) idx = (idx + 1) % pages.size else Ui.assistant = true }) {
             Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 2.dp).height(26.dp), verticalAlignment = Alignment.CenterVertically) {
                 AgentDots(); Spacer(Modifier.width(6.dp))
                 val p = pages.getOrNull(idx % pages.size.coerceAtLeast(1))
                 Text(p?.label ?: "", color = C.text, fontSize = 10.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (pages.size > 1) Text("${idx % pages.size + 1}/${pages.size}", color = C.faint, fontSize = 9.5.sp)
-                Box(Modifier.size(22.dp).clip(CircleShape).clickable { Ui.pip = false }, contentAlignment = Alignment.Center) { Icon(Ic.Close, "Hide preview", Modifier.size(12.dp), tint = C.faint) }
+                if (!inline) Box(Modifier.size(22.dp).clip(CircleShape).clickable { Ui.pip = false }, contentAlignment = Alignment.Center) { Icon(Ic.Close, "Hide preview", Modifier.size(12.dp), tint = C.faint) }
             }
-            Box(Modifier.fillMaxWidth().height(170.dp).background(Color.White)) {
+            Box(Modifier.fillMaxWidth().height(if (inline) 150.dp else 170.dp).background(Color.White)) {
                 frame?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = Alignment.TopCenter) } ?: Box(Modifier.fillMaxSize().shimmer(0.dp))
             }
         }

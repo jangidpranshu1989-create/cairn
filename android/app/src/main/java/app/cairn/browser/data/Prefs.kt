@@ -95,6 +95,16 @@ object Prefs {
     var groqFastModel by str("groqFastModel", "openai/gpt-oss-20b")
     var nvidiaModel by str("nvidiaModel", "nvidia/nemotron-3.5-super-vl-120b-a12b")
     var nvidiaFastModel by str("nvidiaFastModel", "nvidia/nemotron-3.5-bolt-e4b")
+    // Optional personal AI key (Groq / Gemini / OpenRouter free tiers). Used when Cairn Cloud is unavailable.
+    var aiKeyProvider by str("aiKeyProvider", "none")     // none | groq | gemini | openrouter
+    var aiKey by secret("aiKeyV1")
+    // ---- Agent payments (UPI autopay up to a limit) ----
+    var autopay by bool("autopay", false)
+    var upiId by secret("upiId")
+    var payLimit by int("payLimit", 500)                 // per payment, in rupees
+    var payDailyLimit by int("payDailyLimit", 1000)      // all agent payments in a day
+    var paySpentDay by str("paySpentDay", "")
+    var paySpent by int("paySpent", 0)
     var replyLanguage by str("replyLanguage", "auto")
     var shoppingCountry by str("shoppingCountry", "IN")
     var agentMaxSteps by int("agentMaxStepsV2", 45)

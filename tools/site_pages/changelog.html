@@ -12,6 +12,33 @@ desc: What's new in Cairn for desktop and Cairn for Android.
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
     <article class="rv">
+      <div><div class="ver">v2.6.0</div><time datetime="2026-11-20">20 November 2026</time><span class="tag">Agent that finishes the job</span></div>
+      <div class="prose">
+        <p>The assistant no longer stops at product cards. It compares, adds the best deal to your cart, goes to checkout and can pay within a limit you set.</p>
+        <h3>No more "Not found"</h3>
+        <ul>
+          <li>Fixed the bare "Not found" under shopping results. Cairn's old free AI endpoint was retired upstream. AI requests now move automatically to the next working provider on 404, 429, timeouts or outages.</li>
+          <li>If every provider is down, you still get an on-device recommendation from the compared prices, along with the exact error codes.</li>
+          <li>Optional: add your own free Groq, Gemini or OpenRouter key in Settings, AI, as an extra backup.</li>
+        </ul>
+        <h3>Autonomous shopping</h3>
+        <ul>
+          <li>Say "add the cheapest one to cart and take me to checkout". Cairn compares stores, opens the best trustworthy listing, closes popups, enters your delivery PIN, picks the variant, taps Add to Cart, checks that it was added, then opens checkout.</li>
+          <li>Self-healing taps: when a site's button can't be found in the page code, Cairn reads the screen with on-device OCR, then vision, and taps the button directly.</li>
+          <li>Live reasoning feed: see what the agent found and what it will do next, for example "Lowest trusted price: ₹20,999 on Flipkart, adding to cart".</li>
+        </ul>
+        <h3>Agent payments (UPI)</h3>
+        <ul>
+          <li>New in Settings, AI: save your UPI ID, then set a per-payment limit and a daily limit. Turning this on requires your fingerprint.</li>
+          <li>For payments within your limits, the agent approves the payment itself, selects UPI, enters your ID and taps Pay. You finish the payment with your UPI PIN in your UPI app, as NPCI rules require. Anything above your limit still asks you first.</li>
+        </ul>
+        <h3>Fixes</h3>
+        <ul>
+          <li>The live mini-browser no longer covers chat messages. Inside the assistant it now appears in the chat, and outside the assistant you can drag it, but not off screen.</li>
+        </ul>
+      </div>
+    </article>
+    <article class="rv">
       <div><div class="ver">v2.5.0</div><time datetime="2026-11-20">20 November 2026</time><span class="tag">New dock, fewer crashes</span></div>
       <div class="prose">
         <p>A redesigned two-row dock, a calmer home screen and a much sturdier browser, based on testing 2.4.1 on real phones.</p>

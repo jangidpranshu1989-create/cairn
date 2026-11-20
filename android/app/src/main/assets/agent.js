@@ -65,8 +65,9 @@ function findByTextFn(text) {
   const cands = [...document.querySelectorAll('button,a,[role=button],input[type=submit],input[type=button],[role=link],[role=menuitem],[role=tab],label,span,div')]
     .filter(e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; })
     .map(e => ({ e, s: (e.innerText || e.value || e.getAttribute('aria-label') || '').toLowerCase().replace(/\s+/g, ' ').trim() }))
-    .filter(o => o.s && o.s.length < 200 && o.s.includes(t));
-  cands.sort((a, b) => (a.s === t ? -1 : 0) - (b.s === t ? -1 : 0) || a.s.length - b.s.length);
+    .filter(o => o.s && o.s.length < 200 && o.s.includes(t) && visibleEl(o.e));
+  const ctl = e => /^(button|a|input)$/i.test(e.tagName) || e.getAttribute('role') === 'button' ? -1 : 0;
+  cands.sort((a, b) => (a.s === t ? -1 : 0) - (b.s === t ? -1 : 0) || ctl(a.e) - ctl(b.e) || a.s.length - b.s.length);
   const el = cands[0]?.e;
   if (!el) return null;
   el.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -443,10 +444,70 @@ function iconsFn() {
     .map(l => ({ href: l.href, rel: l.rel, sizes: l.getAttribute('sizes') || '' })).filter(x => x.href);
 }
 
+// ---------- Autonomous shopping helpers ----------
+function visibleEl(e) {
+  const r = e.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return false;
+  const cs = getComputedStyle(e); return cs.visibility !== 'hidden' && cs.display !== 'none' && +cs.opacity > 0.05;
+}
+// Close login nags, cookie banners and promo popups that hide the real buttons (Flipkart's login sheet, Amazon's location popover…).
+function dismissFn() {
+  let n = 0;
+  const sel = '[aria-label*="close" i],[aria-label*="dismiss" i],[class*="close" i][role=button],button[class*="close" i],[data-action*="close" i]';
+  [...document.querySelectorAll(sel)].filter(visibleEl).slice(0, 4).forEach(e => { const z = +getComputedStyle(e.closest('[role=dialog],[class*="modal" i],[class*="popup" i]') || e).zIndex || 0; if (z >= 0) { e.click(); n++; } });
+  [...document.querySelectorAll('button,span,a,div[role=button]')].filter(e => visibleEl(e) && /^(✕|×|x|not now|maybe later|no thanks|skip|close|later|dismiss|accept( all)?( cookies)?|got it)$/i.test((e.innerText || '').trim())).slice(0, 3).forEach(e => { e.click(); n++; });
+  return n;
+}
+// Enter the delivery PIN code on product pages that ask for it before "Add to cart".
+function pincodeFn(pin) {
+  const inp = [...document.querySelectorAll('input')].find(i => visibleEl(i) && /pin ?code|pincode|delivery code|zip|postal/i.test([i.placeholder, i.name, i.id, i.getAttribute('aria-label'), labelOf(i)].join(' ')));
+  if (!inp) return { found: false };
+  if ((inp.value || '').replace(/\D/g, '') === String(pin)) return { found: true, already: true };
+  inp.scrollIntoView({ block: 'center', behavior: 'instant' }); inp.focus(); setVal(inp, String(pin));
+  const btn = [...(inp.closest('form,div,section') || document).querySelectorAll('button,span,a,div[role=button]')].find(b => visibleEl(b) && /^(check|apply|change|submit|go)$/i.test((b.innerText || '').trim()));
+  if (btn) btn.click(); else { const o = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }; inp.dispatchEvent(new KeyboardEvent('keydown', o)); inp.dispatchEvent(new KeyboardEvent('keyup', o)); }
+  return { found: true, clicked: !!btn };
+}
+// Pick a colour / storage / size option whose label matches (e.g. "8GB", "128 GB", "Black").
+function variantFn(q) {
+  const words = String(q).toLowerCase().replace(/(\d+)\s*(gb|tb)/g, '$1 $2').split(/[\s,\/]+/).filter(w => w.length > 0);
+  const picked = [];
+  for (const w of words) {
+    const re = new RegExp('^\\s*' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+    const c = [...document.querySelectorAll('a,button,li,div[role=button],span[role=button],[role=radio],label')].filter(e => visibleEl(e) && (e.innerText || '').trim().length < 30 && re.test((e.innerText || '').replace(/(\d+)\s*(gb|tb)/ig, '$1 $2')))[0];
+    if (c) { c.scrollIntoView({ block: 'center', behavior: 'instant' }); c.click(); picked.push((c.innerText || '').trim()); }
+  }
+  return { picked };
+}
+function cartStateFn() {
+  const t = (document.body?.innerText || '').slice(0, 30000).toLowerCase();
+  const go = [...document.querySelectorAll('a,button')].some(e => visibleEl(e) && /^(go to cart|view cart|go to bag|view bag|cart)$/i.test((e.innerText || '').trim()));
+  const added = /added to (your )?(cart|bag|basket)|item added|go to cart/.test(t);
+  const oos = /out of stock|currently unavailable|sold out|notify me/.test(t) && !/add to cart/.test(t);
+  const badge = [...document.querySelectorAll('[class*="cart" i] [class*="count" i],[id*="cart-count" i],#nav-cart-count')].map(e => parseInt(e.innerText, 10)).find(n => n > 0) || 0;
+  return { added: added || go, goToCart: go, outOfStock: oos, count: badge, url: location.href };
+}
+// Choose UPI on a payment page and type the user's UPI ID (VPA). The UPI PIN is never typed — it's entered in the UPI app.
+function fillUpiFn(vpa) {
+  let inp = [...document.querySelectorAll('input')].find(i => visibleEl(i) && /upi|vpa|@ybl|@okaxis|@paytm|virtual payment/i.test([i.placeholder, i.name, i.id, i.getAttribute('aria-label'), labelOf(i)].join(' ')));
+  if (!inp) return { found: false };
+  inp.scrollIntoView({ block: 'center', behavior: 'instant' }); inp.focus(); setVal(inp, vpa);
+  const v = [...document.querySelectorAll('button,span,a,div[role=button]')].find(b => visibleEl(b) && /^verify$/i.test((b.innerText || '').trim()));
+  if (v) v.click();
+  return { found: true, verify: !!v };
+}
+// The order total shown on a checkout / payment page, for the approval card and the autopay limit check.
+function orderTotalFn() {
+  const t = (document.body?.innerText || '');
+  const pats = [/(?:total amount|amount payable|order total|grand total|total payable|you pay|to pay|total)\s*[:\-]?\s*(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d{1,2})?)/i, /pay\s*(?:₹|rs\.?)\s*([\d,]+(?:\.\d{1,2})?)/i];
+  for (const p of pats) { const m = t.match(p); if (m) return parseFloat(m[1].replace(/,/g, '')); }
+  return 0;
+}
+
   const api = { snapshot: snapshotFn, locate: locateFn, findByText: findByTextFn, focus: focusFn, select: selectFn, scroll: scrollFn,
     article: articleFn, overlay: overlayFn, pageState: pageStateFn, listings: extractListingsFn, type: typeFn, key: keyFn,
     countLinks: countLinksFn, blocked: blockedFn, metrics: metricsFn, hideFixed: hideFixedFn,
     clickEl: clickElFn, fillProfile: fillProfileFn, offers: offersFn, applyCoupon: applyCouponFn, guard: guardFn, region: regionFn,
-    product: productFn, textNodes: textNodesFn, setTexts: setTextsFn, icons: iconsFn };
+    product: productFn, textNodes: textNodesFn, setTexts: setTextsFn, icons: iconsFn,
+    dismiss: dismissFn, pincode: pincodeFn, variant: variantFn, cartState: cartStateFn, fillUpi: fillUpiFn, orderTotal: orderTotalFn };
   Object.defineProperty(window, '__cairn', { value: Object.freeze(api), writable: false, configurable: false });
 })();

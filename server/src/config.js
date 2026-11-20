@@ -40,7 +40,9 @@ export const config = {
   groqKey: process.env.GROQ_API_KEY || '',
   nvidiaKey: process.env.NVIDIA_API_KEY || '',
   freeFallback: process.env.AI_FREE_FALLBACK !== '0',
-  freeModel: process.env.AI_FREE_MODEL || 'openai',
+  freeModel: process.env.AI_FREE_MODEL || 'default',
+  openrouterKey: process.env.OPENROUTER_API_KEY || '',
+  openrouterModel: process.env.OPENROUTER_MODEL || 'openrouter/free',
   groqModel: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
   groqFastModel: process.env.GROQ_FAST_MODEL || 'openai/gpt-oss-20b',
   nvidiaModel: process.env.NVIDIA_MODEL || 'nvidia/nemotron-3.5-super-vl-120b-a12b',
@@ -50,7 +52,7 @@ export const config = {
   nvidiaVisionModel: process.env.NVIDIA_VISION_MODEL || 'nvidia/nemotron-3.5-super-vl-120b-a12b',
   // Optional: Google Gemini (free tier key from aistudio.google.com) as another vision + chat provider.
   geminiKey: process.env.GEMINI_API_KEY || '',
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-flash-latest',
   sttModel: process.env.STT_MODEL || 'whisper-large-v3-turbo',
   // Mail (password reset / verification)
   smtpUrl: process.env.SMTP_URL || '',

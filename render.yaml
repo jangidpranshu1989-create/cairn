@@ -24,7 +24,7 @@ services:
       - key: RP_ORIGINS
         sync: false
       - key: CORS_ORIGINS
-        value: "*"
+        value: "https://cairn-cloud.onrender.com,https://jangidpranshu1989-create.github.io"
       - key: GROQ_API_KEY
         sync: false
       - key: GEMINI_API_KEY

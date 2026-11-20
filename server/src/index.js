@@ -3,7 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import helmet from 'helmet';
-import cors from 'cors';
+import { strictCors, securityHeaders } from './security.js';
 import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { db, now } from './db.js';
@@ -23,11 +23,14 @@ import { readFileSync } from 'node:fs';
 const VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version; } catch { return '0.0.0'; } })();
 const app = express();
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: {
   directives: { defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'https:'], styleSrc: ["'self'", "'unsafe-inline'", 'https://api.fontshare.com'],
-    fontSrc: ["'self'", 'https://cdn.fontshare.com'], scriptSrc: ["'self'"], connectSrc: ["'self'"] } } }));
-// Bearer-token API (no cookies), so CORS only needs to allow the public site and Cairn's own internal pages.
-app.use(cors({ credentials: false, origin: (o, cb) => cb(null, !o || config.corsOrigins.includes('*') || config.corsOrigins.includes(o) || /^cairn:\/\//.test(o)) }));
+    fontSrc: ["'self'", 'https://cdn.fontshare.com'], scriptSrc: ["'self'"], connectSrc: ["'self'"], frameAncestors: ["'none'"] } },
+  frameguard: { action: 'deny' }, crossOriginEmbedderPolicy: { policy: 'credentialless' }, crossOriginOpenerPolicy: { policy: 'same-origin' } }));
+app.use(securityHeaders);
+// Bearer-token API (no cookies): strict origin allowlist, public OIDC endpoints get '*' without credentials.
+app.use(strictCors);
 app.use(express.json({ limit: '4mb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
 
@@ -83,7 +86,7 @@ const qs = (req) => { const i = req.originalUrl.indexOf('?'); return i < 0 ? '' 
 app.get(['/account', '/account.html'], (req, res) => res.redirect(302, 'accounts/' + qs(req)));
 app.get('/', (req, res) => res.redirect(302, 'accounts/' + qs(req)));
 // The SDK is embedded by third-party sites, so it must be loadable cross-origin (helmet defaults CORP to same-origin).
-app.use('/sdk', (_req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Access-Control-Allow-Origin', '*'); next(); });
+app.use('/sdk', (_req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); next(); });
 app.use(express.static(path.join(__dirname, '..', 'web'), { extensions: ['html'] }));
 app.use((req, res) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/') && req.accepts(['html', 'json']) === 'html')

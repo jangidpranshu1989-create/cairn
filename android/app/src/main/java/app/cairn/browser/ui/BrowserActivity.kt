@@ -58,6 +58,9 @@ object Ui {
     var screen by mutableStateOf<String?>(null)          // null = browser; "history", "bookmarks", "downloads", "settings…", "reader"
     var omnibox by mutableStateOf(false)
     var omniboxText by mutableStateOf<String?>(null)    // prefill
+    var omniAgent by mutableStateOf(false)               // opened from the home Omni-bar in agent mode: plain text goes to the agent
+    private val TASK = Regex("(?i)^(find|search for|compare|buy|order|book|plan|track|summari[sz]e|research|read|translate|explain|make|create|write|show|dhoondo|dhundo|kharid|mujhe|sabse|cart)\\b|\\b(karo|kar do|kr do|dikhao|batao|chahiye)\\b")
+    fun looksLikeTask(s: String) = TASK.containsMatchIn(s.trim()) && s.trim().contains(' ')
     var tabSwitcher by mutableStateOf(false)
     var menu by mutableStateOf(false)
     var assistant by mutableStateOf(false)
@@ -110,6 +113,8 @@ class BrowserActivity : FragmentActivity() {
         AppState.refreshFiles()
         handleIntent(intent, cold = true)
         setContent { CairnTheme { App(webHost, bgHost) } }
+        // Chrome-style pre-warm: once the first frame is idle, spin up a spare WebView so the next tab opens instantly.
+        android.os.Looper.myQueue().addIdleHandler { runCatching { Browser.prewarm() }; false }
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED && Prefs.onboarded)
             permLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
     }
@@ -118,11 +123,14 @@ class BrowserActivity : FragmentActivity() {
 
     override fun onStop() { super.onStop(); Browser.flushCookies() }
 
+    override fun onDestroy() { runCatching { Browser.dropSpare() }; super.onDestroy() }
+
     override fun onResume() {
         super.onResume()
         app.cairn.browser.service.AgentService.foreground = true
         Browser.current?.web?.onResume()
         if (Prefs.isPaired) SyncService.start(this, SyncService.ACTION_SYNC)
+        runCatching { app.cairn.browser.data.ServerConfig.migrate() }
         Thread { runCatching { app.cairn.browser.data.ServerConfig.refresh() } }.start()
         if (app.cairn.browser.Crash.consumeRecovered()) toast("Cairn recovered from a problem — your tabs are back")
         app.cairn.browser.vault.Sync.soon(800)

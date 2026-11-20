@@ -16,7 +16,7 @@ import java.io.ByteArrayOutputStream
 import java.util.zip.ZipInputStream
 
 /** A numbered source the assistant can cite as [n]. */
-data class Cite(val n: Int, val title: String, val url: String) {
+data class Cite(val n: Int, val title: String, val url: String, val snippet: String = "") {
     val host get() = hostOf(url)
     val label: String get() = app.cairn.browser.ui.siteName(host).ifBlank { host }.let { if (it.length > 16) it.take(15) + "…" else it }
 }

@@ -13,6 +13,7 @@ class CairnApp : Application() {
         super.onCreate()
         Crash.install(this)
         Prefs.init(this)
+        runCatching { app.cairn.browser.data.ServerConfig.migrate() }
         app.cairn.browser.data.BrowserDb.init(this)
         Thread { runCatching { app.cairn.browser.data.BrowserDb.purgeJunk() } }.start()
         app.cairn.browser.vault.Vault.init(this)

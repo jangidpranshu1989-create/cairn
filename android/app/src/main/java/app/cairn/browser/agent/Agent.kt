@@ -72,18 +72,22 @@ object Agent {
     private var lastSummary: SummaryItem? = null
     private var lastFile: Downloads.Saved? = null
     private var userText = ""
+    private var attachmentsThisTurn = 0
+    private val PAGE_Q = Regex("(?i)(this page|is page|ye page|yeh page|this (site|article|video|tab)|summar|translate|tl;?dr|@)")
     private var lastPrompt = ""
     private var lastMentions: List<Tab> = emptyList()
     /** Autonomous shopping chain state for the current turn. */
-    private var buyIntent = false; private var productsThisTurn = false; private var cartTried = false; private var checkoutTried = false
+    private var buyIntent = false; private var productsThisTurn = false; private var cartTried = false; private var checkoutTried = false; private var payTried = false; private var lastTotal = ""
     private var aiDown: String? = null
+    private val PAY_INTENT = Regex("(?i)(pay|payment|upi|checkout|order (kar|kr|place)|place (the |an )?order|khareed|kharid|buy)")
+    private val FACTUAL = Regex("(?i)(\\?|\\b(what|who|when|where|which|why|how|latest|news|price|best|vs|compare|review|specs?|launch|kya|kaun|kab|kahan|kaise|kitna|konsa|batao|bata)\\b)")
     private val BUY_INTENT = Regex("(?i)(add (it |this |that )?to (the |my )?cart|cart (me|mein|mai|m) (add|daal|dal)|add (kar|kr)|cart tak|checkout|check out|buy (it|now|this|that|the)|order (kar|kr|it|this|place)|place (the |an )?order|khareed|kharid|purchase|le (aao|ao|jao|ja)|pay (kar|kr|for|it)|payment (kar|kr))")
     /** Sources used in the current turn. Every tool result labels them [n]; the reply cites them and shows them as links. */
     private val cites = mutableListOf<Cite>()
-    private fun cite(title: String, url: String): Int {
+    private fun cite(title: String, url: String, snippet: String = ""): Int {
         val u = url.substringBefore('#')
         cites.firstOrNull { it.url.substringBefore('#') == u }?.let { return it.n }
-        val c = Cite(cites.size + 1, title.ifBlank { hostOf(url) }.take(140), url); cites += c; return c.n
+        val c = Cite(cites.size + 1, title.ifBlank { hostOf(url) }.take(140), url, snippet.replace(Regex("\\s+"), " ").trim().take(220)); cites += c; return c.n
     }
 
     private fun step(icon: String, text: String) {
@@ -148,6 +152,7 @@ ${userContext(profile)} Saved cards for offers (bank/network only): ${cards.ifEm
 
 HOW TO WORK
 - Act fast and prefer the most direct tool. Never invent prices, links or facts — only report what tools returned.
+- FORMATTING (Cairn renders rich Markdown): start with a one-line direct answer, then ## short headings and - bullets (nest with two spaces). For any comparison of 2+ options use a Markdown table (| a | b |, header row then |---|) and put "⭐" in the cell of the best pick. For product / phone / plan comparisons also add a fenced block ```compare with a JSON array like [{"name":"…","price":"₹…","rating":"4.4","pros":["…"],"cons":["…"],"best":true,"url":"…"}] (max 4 items). Code goes in fenced blocks with a language (```kotlin). Callouts: a line starting with "> **Tip:**", "> **Note:**" or "> **Warning:**". Keep it scannable; no walls of text.
 - LIVE SOURCES: for any question about facts, news, people, places, products, prices, sports, weather, how-to or anything that may have changed, call web_search FIRST — even if you think you know. Tool results label sources [1], [2]…; cite them inline right after each claim, like "… 48 MP camera [2]." or "[1][3]". Use only numbers that appear in tool results, never make up sources, and do not add your own list of sources or links at the end — Cairn shows the sources under your reply. Small talk, maths and writing tasks need no search.
 - [Attached …] blocks in the user's message are photos or files the user uploaded (already read for you). Answer about them directly; search the web if the user asks about what they show (e.g. "where can I buy this", "what is this").
 - Shopping ("sabse sasta", cheapest, best price): call compare_prices with a precise product name (include storage/size if given). Product cards are shown automatically. Then recommend the cheapest TRUSTWORTHY option (trust ≥ 70, not flagged) with price, store and link, plus 1-2 alternatives. Mention flags honestly.
@@ -256,7 +261,7 @@ HOW TO WORK
         cites.clear(); lastPrompt = text; lastMentions = mentions
         val page = tab?.takeIf { !it.isNtp }?.let { it.title.ifBlank { it.host } }
         items.add(UserMsg(text.ifBlank { if (attachments.size == 1) "Look at this" else "Look at these" }, page, mentions.map { it.title.ifBlank { it.host } }, attachments))
-        userText = text
+        userText = text; attachmentsThisTurn = attachments.size + mentions.size
         buyIntent = BUY_INTENT.containsMatchIn(text)
         if (messages.length() == 0) messages.put(JSONObject().put("role", "system").put("content", systemPrompt()))
         else messages.put(0, JSONObject().put("role", "system").put("content", systemPrompt()))
@@ -340,7 +345,7 @@ HOW TO WORK
         cites.clear()
         val q = ask?.takeIf { it.isNotBlank() } ?: "What is this? Explain it and tell me anything useful (price, where to buy, meaning, next steps)."
         items.add(LassoItem(bmp, q))
-        userText = q; lastPrompt = q
+        userText = q; lastPrompt = q; attachmentsThisTurn = 1
         if (messages.length() == 0) messages.put(JSONObject().put("role", "system").put("content", systemPrompt()))
         launch {
             step("lasso", "Looking at your selection")
@@ -378,7 +383,7 @@ HOW TO WORK
         val label = when (kind) { "summarize" -> "Summarize this page"; "mindmap" -> "Make a mind map of this page"; "read" -> "Read this page aloud"
             "pdf" -> "Save this page as PDF"; "longshot" -> "Take a long screenshot"; else -> kind }
         items.add(UserMsg(label, t.title.ifBlank { t.host }))
-        userText = label
+        userText = label; attachmentsThisTurn = 1
         launch {
             when (kind) {
                 "summarize" -> exec("summarize_page", JSONObject())
@@ -392,7 +397,7 @@ HOW TO WORK
 
     private fun launch(block: suspend () -> Unit) {
         running = true; status = "Thinking…"; steps = null
-        productsThisTurn = false; cartTried = false; checkoutTried = false; aiDown = null
+        productsThisTurn = false; cartTried = false; checkoutTried = false; payTried = false; lastTotal = ""; aiDown = null
         runCatching { app.cairn.browser.service.AgentService.start(Browser.activity) }
         job = scope.launch {
             try { block() }
@@ -485,11 +490,23 @@ HOW TO WORK
             if (calls != null && calls.length() > 0 && content.isNotBlank()) Llm.stripThinking(content).lineSequence().firstOrNull { it.isNotBlank() }?.let { step("think", it.trim().take(160)) }
             if (calls == null || calls.length() == 0) {
                 // The user asked for cart/checkout but the model stopped at the comparison: chain the next step automatically.
-                if (buyIntent && productsThisTurn && nudges < 3 && i < max - 2 && (!cartTried || !checkoutTried)) {
+                val wantsPay = Prefs.upiId.isNotBlank() && PAY_INTENT.containsMatchIn(userText)
+                if (buyIntent && productsThisTurn && nudges < 4 && i < max - 2 && (!cartTried || !checkoutTried || (wantsPay && !payTried))) {
                     nudges++
-                    val next = if (!cartTried) "add_to_cart with the index of the best trustworthy option" else "go_to_checkout"
-                    step("think", if (!cartTried) "Comparison done → adding the best option to the cart" else "In the cart → heading to checkout")
+                    val next = when {
+                        !cartTried -> "add_to_cart with the index of the best trustworthy option"
+                        !checkoutTried -> "go_to_checkout"
+                        else -> "request_approval with the exact order total${if (lastTotal.isNotBlank()) " ($lastTotal)" else ""}, merchant and item, and if APPROVED call pay_upi"
+                    }
+                    step("think", when { !cartTried -> "Comparison done → adding the best option to the cart"; !checkoutTried -> "In the cart → heading to checkout"; else -> "Address done → paying with your saved UPI ID" })
                     messages.put(JSONObject().put("role", "user").put("content", "Don't stop — the user asked you to do it. Call $next now, then continue until the order summary / payment step."))
+                    continue
+                }
+                // Factual / research question answered from memory: fetch live sources first so every claim is cited.
+                if (!acted && i == 0 && cites.isEmpty() && userText.length in 8..400 && FACTUAL.containsMatchIn(userText) && !PAGE_Q.containsMatchIn(userText) && !buyIntent && attachmentsThisTurn == 0) {
+                    acted = true
+                    step("search", "Checking live sources")
+                    messages.put(JSONObject().put("role", "user").put("content", "Before answering, call web_search for this question so the answer uses live sources and cites them inline as [1], [2]. Then answer with clear structure (headings, a markdown table for comparisons)."))
                     continue
                 }
                 // The model announced a next step instead of doing it: push it to continue (at most twice).
@@ -696,7 +713,7 @@ HOW TO WORK
                 step("read", "Reading ${r.take(3).joinToString { hostOf(it.second).removePrefix("www.") }}")
                 val pages = withContext(Dispatchers.IO) { withTimeoutOrNull(5500) { r.take(3).map { x -> async { x.second to app.cairn.browser.data.CairnSearch.pageText(x.second, 1800) } }.awaitAll().toMap() } ?: emptyMap() }
                 return "Results (cite as [n]):\n" + r.joinToString("\n\n") { x ->
-                    val n = cite(x.first, x.second)
+                    val n = cite(x.first, x.second, x.third)
                     "[$n] ${x.first}\n${x.second}\n${pages[x.second]?.takeIf { it.length > 200 }?.let { "Page excerpt: $it" } ?: x.third}"
                 }
             }
@@ -776,9 +793,23 @@ HOW TO WORK
                     ?: return "Couldn't find the checkout button on ${t.url}. Use read_page." + observe(t)
                 settle(t, 9000)
                 step("ok", "Checkout opened")
+                // Address step: fill the delivery profile, then confirm the saved address so the agent reaches the payment page by itself.
+                t.web?.let { cw ->
+                    PageJs.call(cw, "dismiss()")
+                    val pj = profile()
+                    if (pj.length() > 0) PageJs.obj(cw, "fillProfile($pj)")?.optJSONArray("filled")?.takeIf { it.length() > 0 }?.let { f ->
+                        step("fill", "Filled delivery address (${(0 until f.length()).joinToString { i -> FIELD_LABEL[f.optString(i)] ?: f.optString(i) }})"); settle(t, 1500)
+                    }
+                    for (round in 0 until 2) {
+                        val next = buyClick(t, listOf("deliver here", "deliver to this address", "use this address", "save and deliver here", "continue")) ?: break
+                        step("click", "Tapped \"${next.take(30)}\""); settle(t, 6000); PageJs.call(t.web ?: cw, "dismiss()")
+                    }
+                    PageJs.call(t.web ?: cw, "orderTotal()")?.trim('"')?.toDoubleOrNull()?.takeIf { it > 0 }?.let { lastTotal = Shopping.money(it); step("think", "Order total: $lastTotal") }
+                }
                 return "Tapped \"$hit\". Now on ${t.url}. If it asks for login/OTP use ask_user; on address steps call fill_profile; continue to the order summary, then request_approval with the exact total." + observe(t)
             }
             "pay_upi" -> {
+                payTried = true
                 val t = tab(); val w = web(); controlling = t
                 if (!approvedOnce) return "BLOCKED: call request_approval with the exact amount first."
                 val vpa = Prefs.upiId.trim()
@@ -794,6 +825,7 @@ HOW TO WORK
                 approvedOnce = false
                 settle(t, 6000)
                 step("ok", "Payment request sent → approve it with your UPI PIN in your UPI app")
+                runCatching { app.cairn.browser.service.Notifier.upiPin(Browser.activity, lastTotal, vpa) }
                 items.add(NoticeItem("lock", "Payment request sent to $vpa. Open your UPI app and enter your UPI PIN to finish — Cairn never sees or types your PIN."))
                 return (if (payHit != null) "Tapped \"$payHit\". A collect request was sent to the user's UPI app; they must approve it with their UPI PIN. Tell the user and wait (ask_user) for them to say done, then read_page to confirm the order." else "UPI ID entered but the Pay button wasn't found — use read_page.") + observe(t)
             }

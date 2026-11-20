@@ -303,10 +303,19 @@ object Browser {
         } }
     }
 
+    /** A created-but-unused WebView (Chromium already initialised), handed to the next normal tab. */
+    private var spare: WebView? = null
+    fun prewarm() {
+        if (spare != null || !::activity.isInitialized) return
+        spare = WebView(activity)
+    }
+    fun dropSpare() { spare?.let { runCatching { it.destroy() } }; spare = null }
+
     fun ensureView(t: Tab) {
         if (t.web != null) return
         val ctx = activity
-        val w = WebView(ctx)
+        val w = (if (!t.incognito) spare?.takeIf { it.context === ctx }?.also { spare = null } else null) ?: WebView(ctx)
+        if (spare == null) android.os.Looper.myQueue().addIdleHandler { runCatching { prewarm() }; false }
         configure(w, t.incognito, t.desktop)
         w.setBackgroundColor(if (app.cairn.browser.ui.C.dark) 0xFF1C1C1F.toInt() else 0xFFFFFFFF.toInt())
         w.isScrollbarFadingEnabled = true

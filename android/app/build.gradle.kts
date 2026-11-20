@@ -25,10 +25,10 @@ android {
         applicationId = "app.cairn.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "2.7.0"
+        versionCode = 11
+        versionName = "3.0.0"
         // Default Cairn Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
-        buildConfigField("String", "DEFAULT_SERVER", "\"${(project.findProperty("cairnServer") as String?) ?: "https://cairn-browser.pplx.app/port/8787"}\"")
+        buildConfigField("String", "DEFAULT_SERVER", "\"${(project.findProperty("cairnServer") as String?) ?: "https://cairn-cloud.onrender.com"}\"")
         buildConfigField("String", "SITE", "\"${(project.findProperty("cairnSite") as String?) ?: "https://jangidpranshu1989-create.github.io/cairn"}\"")
     }
 

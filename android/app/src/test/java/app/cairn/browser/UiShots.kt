@@ -163,6 +163,32 @@ class UiShots {
             revealed = true; followUps.addAll(listOf("iPhone 16 vs iPhone 16 Plus kaunsa le?", "Flipkart par bank offers kya hain?", "iPhone 16 ka exchange price kitna milega?")) })
         shoot("25_answer_sources") { App(FrameLayout(paparazzi.context), FrameLayout(paparazzi.context)) }
     }
+    @Test fun richAnswer() {
+        val t = page("https://www.flipkart.com/", "Flipkart"); Browser.tabs.add(t); Browser.current = t; Ui.assistant = true
+        Agent.items.add(UserMsg("CMF Phone 2 Pro vs Nothing Phone 3a compare karo"))
+        val cites = listOf(app.cairn.browser.agent.Cite(1, "CMF Phone 2 Pro review", "https://www.gsmarena.com/cmf_phone_2_pro-review", "6.77-inch 120Hz AMOLED, Dimensity 7300 Pro, 5000 mAh with 33W charging."),
+            app.cairn.browser.agent.Cite(2, "Nothing Phone (3a) - Flipkart", "https://www.flipkart.com/nothing-phone-3a", "Snapdragon 7s Gen 3, 50 MP periscope telephoto, ₹24,999."),
+            app.cairn.browser.agent.Cite(3, "Best phones under 25000", "https://www.91mobiles.com/best-phones-under-25000", "Our top picks for value, camera and battery."))
+        Agent.items.add(AiMsg("""**Value ke liye CMF Phone 2 Pro best hai** [1], camera ke liye Phone 3a [2].
+
+## Quick comparison
+| Spec | CMF Phone 2 Pro | Phone 3a |
+|---|---|---|
+| Price | ₹18,999 ⭐ | ₹24,999 |
+| Chip | Dimensity 7300 Pro [1] | SD 7s Gen 3 [2] |
+| Battery | 5000 mAh | 5000 mAh |
+
+```compare
+[{"name":"CMF Phone 2 Pro","price":"₹18,999","rating":"4.4","store":"Flipkart","pros":["Best value","120Hz AMOLED"],"cons":["No telephoto"],"best":true},{"name":"Nothing Phone 3a","price":"₹24,999","rating":"4.5","store":"Flipkart","pros":["Periscope zoom"],"cons":["Costlier"]}]
+```
+
+> **Tip:** Bank offer se ₹1,000 aur kam ho sakta hai.
+
+```kotlin
+val best = phones.minBy { it.price } // cheapest
+```""", sources = cites, prompt = "compare").apply { revealed = true })
+        shoot("31_rich_answer") { App(FrameLayout(paparazzi.context), FrameLayout(paparazzi.context)) }
+    }
     @Test fun attachments() {
         val t = Tab(1, false, ""); Browser.tabs.add(t); Browser.current = t; Ui.assistant = true
         val bmp = android.graphics.Bitmap.createBitmap(96, 96, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF6B7A8F.toInt()) }

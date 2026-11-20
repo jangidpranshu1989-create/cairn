@@ -61,7 +61,7 @@ object Agent {
     var pendingAsk by mutableStateOf<AskItem?>(null)
     var openRequests by mutableStateOf(0)       // bumps when the agent needs the user (approval, question) so the sheet opens
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + app.cairn.browser.Crash.handler)
     private var job: Job? = null
     private var messages = JSONArray()
     private var steps: StepsItem? = null

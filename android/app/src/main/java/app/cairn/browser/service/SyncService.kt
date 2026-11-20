@@ -37,7 +37,7 @@ import kotlin.math.min
  * that arrived while offline via the /pending endpoints.
  */
 class SyncService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + app.cairn.browser.Crash.handler)
     private var ws: WebSocket? = null
     private var loop: Job? = null
     private var attempt = 0

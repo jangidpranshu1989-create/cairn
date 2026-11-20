@@ -23,7 +23,7 @@ class ActionReceiver : BroadcastReceiver() {
         val id = intent.getStringExtra("id") ?: return
         val pending = goAsync()
         Notifier.cancelApproval(ctx, id)
-        CoroutineScope(Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.IO + app.cairn.browser.Crash.handler).launch {
             try { Api.decide(id, approve = false, verified = false); AppState.removeApproval(id) } catch (_: Exception) {} finally { pending.finish() }
         }
     }

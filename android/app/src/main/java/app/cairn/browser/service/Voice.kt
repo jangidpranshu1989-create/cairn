@@ -24,7 +24,7 @@ object Voice {
     private var file: File? = null
     private var onText: ((String) -> Unit)? = null
     private var job: Job? = null
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + app.cairn.browser.Crash.handler)
 
     fun start(ctx: Context, then: (String) -> Unit) {
         if (phase != Phase.Idle) return

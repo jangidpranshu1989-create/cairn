@@ -37,7 +37,7 @@ object BrowserDb {
 
     // ---------- History ----------
     fun addVisit(url: String, title: String) {
-        if (!Prefs.saveHistory || url.isBlank() || !url.startsWith("http")) return
+        if (!Prefs.saveHistory || url.isBlank() || !url.startsWith("http") || isJunk(url, title)) return
         val now = System.currentTimeMillis()
         val n = db.compileStatement("UPDATE history SET title=CASE WHEN ?='' THEN title ELSE ? END, at=?, visits=visits+1 WHERE url=?").apply {
             bindString(1, title); bindString(2, title); bindLong(3, now); bindString(4, url) }.executeUpdateDelete()
@@ -46,6 +46,7 @@ object BrowserDb {
     }
     fun updateTitle(url: String, title: String) {
         if (title.isBlank()) return
+        if (isJunk(url, title)) { db.delete("history", "url=?", arrayOf(url)); changed(); return }
         db.update("history", ContentValues().apply { put("title", title) }, "url=?", arrayOf(url))
     }
     fun history(query: String = "", limit: Int = 300): List<HistoryItem> {
@@ -60,10 +61,45 @@ object BrowserDb {
             val seen = LinkedHashSet<String>(); while (c.moveToNext() && seen.size < limit) { android.net.Uri.parse(c.getString(0)).host?.let { if (it.isNotEmpty()) seen.add(it) } }; seen.toList()
         }
     fun topSites(limit: Int = 8): List<HistoryItem> =
-        db.rawQuery("SELECT id,url,title,at,visits FROM history ORDER BY visits DESC, at DESC LIMIT 60", null).use { c ->
+        db.rawQuery("SELECT id,url,title,at,visits FROM history ORDER BY visits DESC, at DESC LIMIT 120", null).use { c ->
+            // One shortcut per site: app.turso.tech and turso.tech are the same shortcut. Error/blank pages never show.
             val seen = HashSet<String>()
-            buildList { while (c.moveToNext() && size < limit) { val u = c.getString(1); val host = hostOf(u); if (host.isNotEmpty() && seen.add(host)) add(HistoryItem(c.getLong(0), u, c.getString(2) ?: "", c.getLong(3), c.getInt(4))) } }
+            buildList { while (c.moveToNext() && size < limit) {
+                val u = c.getString(1); val title = c.getString(2) ?: ""
+                if (isJunk(u, title)) continue
+                val key = siteKey(u)
+                if (key.isNotEmpty() && seen.add(key)) add(HistoryItem(c.getLong(0), u, title, c.getLong(3), c.getInt(4)))
+            } }
         }
+
+    private val junkTitles = listOf("web page not available", "webpage not available", "this site can’t be reached", "this site can't be reached",
+        "page not found", "404 not found", "about:blank", "error", "no internet", "dns_probe")
+    /** Pages that must never become shortcuts or history: blank/internal/error pages. */
+    fun isJunk(url: String, title: String = ""): Boolean {
+        val u = url.trim().lowercase()
+        if (u.isEmpty() || u.startsWith("about:") || u.startsWith("chrome-error:") || u.startsWith("chrome:") || u.startsWith("data:") ||
+            u.startsWith("javascript:") || u.startsWith("file:") || u.startsWith("blob:") || u.startsWith("content:")) return true
+        if (!u.startsWith("http")) return true
+        if (hostOf(u).isEmpty()) return true
+        val t = title.trim().lowercase()
+        return t.isNotEmpty() && junkTitles.any { t == it || t.startsWith("$it ") || t.contains("err_") }
+    }
+
+    /** Registrable domain, roughly: last two labels, or three for co.in / com.au style suffixes. */
+    fun siteKey(url: String): String {
+        val h = hostOf(url).lowercase().removePrefix("m.").removePrefix("mobile.")
+        val p = h.split('.').filter { it.isNotEmpty() }
+        if (p.size <= 2) return h
+        val sld = p[p.size - 2]
+        return if (p.last().length == 2 && sld in setOf("co", "com", "net", "org", "gov", "ac", "edu", "ne", "or")) p.takeLast(3).joinToString(".") else p.takeLast(2).joinToString(".")
+    }
+
+    /** Removes junk rows already saved by older versions (blank and error pages). */
+    fun purgeJunk() = runCatching {
+        val ids = db.rawQuery("SELECT id,url,title FROM history", null).use { c -> buildList { while (c.moveToNext()) if (isJunk(c.getString(1), c.getString(2) ?: "")) add(c.getLong(0)) } }
+        ids.chunked(200).forEach { ch -> db.delete("history", "id IN (${ch.joinToString(",")})", null) }
+        if (ids.isNotEmpty()) changed()
+    }
     fun deleteHistory(id: Long) { db.delete("history", "id=?", arrayOf(id.toString())); changed() }
     fun clearHistory(sinceMs: Long = 0) { db.delete("history", "at>=?", arrayOf(sinceMs.toString())); changed() }
 

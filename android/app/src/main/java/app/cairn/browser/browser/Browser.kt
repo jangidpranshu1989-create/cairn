@@ -51,7 +51,8 @@ class Tab(val id: Long, val incognito: Boolean, initialUrl: String = "") {
     var ssl by mutableStateOf<SslProblem?>(null)
     var unsafe by mutableStateOf<UnsafeSite?>(null)
     var findMatches by mutableStateOf(0 to 0)       // (active index, total)
-    var sensitive by mutableStateOf(false)          // login / OTP / card / checkout page → Guard badge
+    var sensitive by mutableStateOf(false)          // login / OTP / card / checkout page → Guard shield in the address bar
+    var secureFocus by mutableStateOf(false)        // a password/PIN/OTP/card field is focused right now → Guard pill
     var translated by mutableStateOf<String?>(null)
     var lastActive = System.currentTimeMillis()
     var opener: Tab? = null
@@ -79,6 +80,7 @@ object Browser {
     var current by mutableStateOf<Tab?>(null)
     var shieldSession by mutableIntStateOf(0)
     lateinit var activity: BrowserActivity
+    private val rendererCrashes = HashMap<Long, Int>(); private val rendererCrashAt = HashMap<Long, Long>()
 
     private val profilesSupported get() = WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
     private const val PRIVATE_PROFILE = "cairn-private"
@@ -337,10 +339,15 @@ if(e.scrollTop>0&&e.scrollHeight>e.clientHeight+4){var o=getComputedStyle(e).ove
 addEventListener('touchstart',function(ev){try{CairnScroll.touch(up(ev.target))}catch(x){}},{capture:true,passive:true});
 var lt=0;addEventListener('scroll',function(ev){var t=ev.target,d=(t===document||t===document.documentElement||t===document.body);
 if(!d&&!(t.clientHeight>innerHeight*0.5))return;var y=d?(window.scrollY||0):(t.scrollTop||0);var n=Date.now();
-if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePixelRatio||1)),y>0)}catch(x){}},{capture:true,passive:true});})();"""
+if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePixelRatio||1)),y>0)}catch(x){}},{capture:true,passive:true});
+function sec(e){if(!e||e.tagName!='INPUT')return false;var t=(e.type||'').toLowerCase(),a=(e.autocomplete||'').toLowerCase(),n=((e.name||'')+' '+(e.id||'')+' '+(e.placeholder||'')).toLowerCase();
+return t=='password'||/password|one-time-code|cc-number|cc-csc/.test(a)||/\b(pin|otp|cvv|cvc|passcode|mpin|upi ?pin)\b/.test(n)}
+addEventListener('focusin',function(ev){try{CairnScroll.secure(sec(ev.target))}catch(x){}},true);
+addEventListener('focusout',function(){try{CairnScroll.secure(false)}catch(x){}},true);})();"""
 
     private class ScrollBridge(val t: Tab) {
         @android.webkit.JavascriptInterface fun touch(canUp: Boolean) { t.jsCanScrollUp = canUp }
+        @android.webkit.JavascriptInterface fun secure(on: Boolean) { t.web?.post { t.secureFocus = on } }
         @android.webkit.JavascriptInterface fun scroll(y: Int, canUp: Boolean) {
             val dy = y - t.jsScrollY; t.jsScrollY = y; t.jsCanScrollUp = canUp
             // Inner-scroller sites never move WebView.scrollY, so drive the dock from the page's own scroll too.
@@ -366,16 +373,16 @@ if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePi
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
             // about:blank is how a tab shows the New Tab page. Going back onto it must show the NTP, not an empty
             // white WebView (that looked like a crash).
-            if (isBlankUrl(url)) { t.url = ""; t.title = ""; t.loading = false; t.error = null; t.progress = 100; return }
+            if (isBlankUrl(url)) { t.url = ""; t.title = ""; t.loading = false; t.error = null; t.progress = 100; t.sensitive = false; t.secureFocus = false; return }
             app.cairn.browser.vault.WebBridge.fillOffer.value?.takeIf { it.tab == t }?.let { app.cairn.browser.vault.WebBridge.fillOffer.value = null }
-            t.loading = true; t.url = url; t.icon = favicon ?: BrowserDb.icon(url); t.blocked = 0; t.error = null; t.sensitive = false; t.translated = null
+            t.loading = true; t.url = url; t.icon = favicon ?: BrowserDb.icon(url); t.blocked = 0; t.error = null; t.sensitive = false; t.secureFocus = false; t.translated = null
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
         }
         override fun onPageFinished(view: WebView, url: String) {
             t.loading = false; t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
             if (isBlankUrl(url)) { t.url = ""; t.title = ""; return }
             t.url = url; t.title = view.title?.takeIf { it != url } ?: t.title
-            if (!t.incognito && url.startsWith("http")) BrowserDb.addVisit(url, view.title ?: "")
+            if (!t.incognito && url.startsWith("http") && t.error == null && t.unsafe == null && t.ssl == null) BrowserDb.addVisit(url, view.title ?: "")
             if (!t.incognito) persist()
             view.postDelayed({ if (current == t) capture(t) }, 450)
             view.postDelayed({ if (current == t && !t.loading) capture(t) }, 2200)
@@ -391,7 +398,7 @@ if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePi
                     if (t.web != view || view.url != url || t.sensitive || app.cairn.browser.data.Recall.isPrivateUrl(url)) return@postDelayed
                     view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nvar a=window.${app.cairn.browser.agent.PageJs.ns}.article();return JSON.stringify({t:a.title,x:a.text})})()") { r ->
                         runCatching { val j = JSONObject(org.json.JSONTokener(r).nextValue() as String); val title = j.optString("t"); val text = j.optString("x")
-                            Thread { app.cairn.browser.data.Recall.index(url, title, text) }.start() }
+                            Thread { runCatching { app.cairn.browser.data.Recall.index(url, title, text) } }.start() }
                     }
                 }, 2500)
             }
@@ -427,12 +434,22 @@ if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePi
             t.ssl = SslProblem(error.url, error, handler); t.loading = false
         }
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-            // Recover instead of crashing the whole browser
+            // Recover instead of crashing the whole browser: only this tab's renderer died, so only this tab is rebuilt.
             view.post {
-                val url = t.url; (t.view?.parent as? ViewGroup)?.removeView(t.view); runCatching { view.destroy() }; t.web = null; t.view = null
-                if (t.isNtp) return@post
-                // The visible tab reloads straight away; background tabs reload when they're next shown.
-                if (t == current) { t.error = null; activity.refreshContainer() } else t.error = PageError(url, -1000, "This page was closed to save memory")
+                runCatching {
+                    val url = t.url; (t.view?.parent as? ViewGroup)?.removeView(t.view); runCatching { view.destroy() }; t.web = null; t.view = null
+                    if (t.isNtp) return@post
+                    val now = System.currentTimeMillis()
+                    val n = if (now - (rendererCrashAt[t.id] ?: 0L) < 20_000) (rendererCrashes[t.id] ?: 0) + 1 else 1
+                    rendererCrashes[t.id] = n; rendererCrashAt[t.id] = now
+                    when {
+                        // The same page keeps killing its renderer: stop reloading and show an error instead of looping.
+                        n > 2 -> { t.loading = false; t.error = PageError(url, -1001, "This page keeps crashing. Tap Retry to try again.") ; if (t == current) activity.refreshContainer() }
+                        // The visible tab reloads straight away; background tabs reload when they're next shown.
+                        t == current -> { t.error = null; activity.refreshContainer(); activity.toast(if (detail.didCrash()) "Page crashed — reloaded" else "Page was closed to free memory — reloaded") }
+                        else -> t.error = PageError(url, -1000, "This page was closed to save memory")
+                    }
+                }.onFailure { app.cairn.browser.Crash.save(it, Thread.currentThread(), "render-gone") }
             }
             return true
         }
@@ -441,7 +458,7 @@ if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePi
     private class Chrome(val t: Tab) : WebChromeClient() {
         override fun onProgressChanged(view: WebView, p: Int) { t.progress = p; if (p == 100) t.loading = false }
         override fun onReceivedTitle(view: WebView, title: String?) {
-            if (!title.isNullOrBlank() && title != view.url) { t.title = title; if (!t.incognito) BrowserDb.updateTitle(view.url ?: t.url, title) }
+            if (!title.isNullOrBlank() && title != view.url) { t.title = title; if (!t.incognito && t.error == null) BrowserDb.updateTitle(view.url ?: t.url, title) }
         }
         override fun onReceivedIcon(view: WebView, icon: Bitmap?) {
             if (icon == null) return

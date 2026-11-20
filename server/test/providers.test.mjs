@@ -9,8 +9,10 @@ const fail = (s) => new Response('{"error":"x"}', { status: s });
 function mock(seq) { const calls = []; globalThis.fetch = async (url) => { calls.push(String(url)); const f = seq.shift(); return typeof f === 'function' ? f(url) : f; }; return calls; }
 const msgs = [{ role: 'user', content: 'hi' }];
 
-test('retired Pollinations is no longer in the chain', () => {
-  assert.deepEqual(providerOrder(cfg, 'smart'), ['groq', 'nvidia', 'free']);
+test('keyless gateways follow the keyed providers; LLM7 and retired hosts are gone', () => {
+  assert.deepEqual(providerOrder(cfg, 'smart'), ['groq', 'nvidia', 'kilo', 'ovh', 'pollinations']);
+  assert.deepEqual(providerOrder(cfg, 'vision').slice(-2), ['kilo', 'ovh']);
+  assert.ok(!providerOrder(cfg, 'smart').includes('free'));
   assert.ok(!providerOrder(cfg, 'smart').includes('legacy'));
 });
 
@@ -23,7 +25,7 @@ test('falls through providers and returns the first good reply', async () => {
 
 test('every provider failing gives 503 AllProvidersFailed, never an upstream 404/402', async () => {
   mock(Array(20).fill(0).map(() => fail(404)));
-  await assert.rejects(chat({ messages: msgs, _single: true }, cfg), (e) => e instanceof AllProvidersFailed && e.status === 503 && e.attempts.length === 3);
+  await assert.rejects(chat({ messages: msgs, _single: true }, cfg), (e) => e instanceof AllProvidersFailed && e.status === 503 && e.attempts.length === 5);
 });
 
 test('second pass rescues a momentary rate limit', async () => {
@@ -44,4 +46,10 @@ test('empty replies are treated as failures', async () => {
   mock([ok(''), ok('real')]);
   const j = await chat({ messages: msgs }, cfg);
   assert.equal(j._provider, 'nvidia');
+});
+
+test('Groq 429 → NVIDIA 500 → Kilo answers', async () => {
+  const calls = mock([fail(429), fail(429), fail(500), ok('kilo')]);
+  const j = await chat({ messages: msgs, _single: true }, cfg);
+  assert.equal(j._provider, 'kilo'); assert.match(calls[3], /kilo\.ai/);
 });

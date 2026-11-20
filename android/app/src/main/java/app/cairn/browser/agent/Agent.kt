@@ -77,6 +77,8 @@ object Agent {
     private var lastPrompt = ""
     private var lastMentions: List<Tab> = emptyList()
     /** Autonomous shopping chain state for the current turn. */
+    /** Store + whether the last add_to_cart this turn was confirmed, so the no-AI reply can say what happened. */
+    private var lastCart: Pair<String, Boolean>? = null
     private var buyIntent = false; private var productsThisTurn = false; private var cartTried = false; private var checkoutTried = false; private var payTried = false; private var lastTotal = ""
     private var aiDown: String? = null
     private val PAY_INTENT = Regex("(?i)(pay|payment|upi|checkout|order (kar|kr|place)|place (the |an )?order|khareed|kharid|buy)")
@@ -398,7 +400,7 @@ HOW TO WORK
     private fun launch(block: suspend () -> Unit) {
         running = true; status = "Thinking…"; steps = null
         Llm.warm(); Llm.onStatus = { status = it }
-        productsThisTurn = false; cartTried = false; checkoutTried = false; payTried = false; lastTotal = ""; aiDown = null
+        productsThisTurn = false; cartTried = false; checkoutTried = false; payTried = false; lastTotal = ""; aiDown = null; lastCart = null
         runCatching { app.cairn.browser.service.AgentService.start(Browser.activity) }
         job = scope.launch {
             try { block() }
@@ -415,7 +417,14 @@ HOW TO WORK
                 }
                 // Never a blank "Not found": if the stores were already compared, answer from those results on-device.
                 val cartDone = runCatching { offlineCart() }.getOrElse { if (it is CancellationException) throw it; null }
-                val local = if (productsThisTurn && lastProducts.isNotEmpty()) localShoppingSummary(why) else null
+                val local0 = if (productsThisTurn && lastProducts.isNotEmpty()) localShoppingSummary(why) else null
+                // Say what happened to the cart (the add was done on-device even though the AI never answered).
+                val cartNote = if (cartDone == null) lastCart?.let { (store, ok) ->
+                    val hi = Lang.detect(userText) == "Hinglish"
+                    if (ok) (if (hi) "**$store cart mein add ho gaya.** " else "**Added to your $store cart.** ")
+                    else (if (hi) "**$store par Add to cart tap kar diya** — cart khol ke confirm kar lo. " else "**Tapped Add to cart on $store** — open the cart to confirm it's there. ")
+                } else null
+                val local = if (cartNote != null) cartNote + "\n\n" + (local0 ?: "") else local0
                 when {
                     cartDone != null -> items.add(AiMsg(cartDone + (local?.let { "\n\n$it" } ?: ""), prompt = lastPrompt))
                     local != null -> items.add(AiMsg(local, prompt = lastPrompt))
@@ -825,6 +834,7 @@ HOW TO WORK
                 val st = PageJs.obj(w, "cartState()")
                 val ok = st?.optBoolean("added") == true || CART_URL.containsMatchIn(t.url)
                 step(if (ok) "ok" else "think", if (ok) "Added to cart${p?.let { " · ${it.store}" } ?: ""}" else "Tapped \"${hit.take(30)}\" — checking the result")
+                lastCart = (p?.store ?: t.host.removePrefix("www.")) to ok
                 return (if (ok) "ADDED to cart (tapped \"$hit\"). Next: call go_to_checkout." else "Tapped \"$hit\" but couldn't confirm it was added — check PAGE NOW (a size/variant may be required) and continue.") + observe(t)
             }
             "go_to_checkout" -> {

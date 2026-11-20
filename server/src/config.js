@@ -55,4 +55,5 @@ export const config = {
   approvalTtlSec: Number(process.env.APPROVAL_TTL_SEC || 180),
   dailyAiRequestsFree: Number(process.env.DAILY_AI_FREE || 300),
   dailyAiRequestsAnon: Number(process.env.DAILY_AI_ANON || 60),
+  dailyAiAnonGlobal: Number(process.env.DAILY_AI_ANON_GLOBAL || 3000),
 };

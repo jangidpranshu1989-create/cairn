@@ -68,7 +68,7 @@ const DEFAULT_SETTINGS = {
   safeBrowsing: true,
   dohMode: 'off',
   dohUrl: '',
-  serverUrl: process.env.CAIRN_SERVER || (app.isPackaged ? 'https://api.cairn.app' : 'http://localhost:8787'),
+  serverUrl: process.env.CAIRN_SERVER || (app.isPackaged ? 'https://cairn-browser.pplx.app/port/8787' : 'http://localhost:8787'),
   panelWidth: 420,
   restoreTabs: [],
 };

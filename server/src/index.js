@@ -77,13 +77,13 @@ app.put('/api/sync/:kind', requireAuth, express.json({ limit: '10mb' }), (req, r
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Legacy /account.html (used by older desktop builds for ?handoff=desktop) -> new Accounts portal. Relative redirects keep proxy prefixes.
 let _404;
-const page404 = () => (_404 ??= readFileSync(path.join(__dirname, '..', 'public', '404.html'), 'utf8')).replaceAll('{{BASE}}', config.publicUrl);
+const page404 = () => (_404 ??= readFileSync(path.join(__dirname, '..', 'web', '404.html'), 'utf8')).replaceAll('{{BASE}}', config.publicUrl);
 const qs = (req) => { const i = req.originalUrl.indexOf('?'); return i < 0 ? '' : req.originalUrl.slice(i); };
 app.get(['/account', '/account.html'], (req, res) => res.redirect(302, 'accounts/' + qs(req)));
 app.get('/', (req, res) => res.redirect(302, 'accounts/' + qs(req)));
 // The SDK is embedded by third-party sites, so it must be loadable cross-origin (helmet defaults CORP to same-origin).
 app.use('/sdk', (_req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Access-Control-Allow-Origin', '*'); next(); });
-app.use(express.static(path.join(__dirname, '..', 'public'), { extensions: ['html'] }));
+app.use(express.static(path.join(__dirname, '..', 'web'), { extensions: ['html'] }));
 app.use((req, res) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/') && req.accepts(['html', 'json']) === 'html')
     return res.status(404).type('html').send(page404());
@@ -91,7 +91,7 @@ app.use((req, res) => {
 });
 
 let _err;
-const pageError = (code, title, msg) => (_err ??= readFileSync(path.join(__dirname, '..', 'public', 'error.html'), 'utf8'))
+const pageError = (code, title, msg) => (_err ??= readFileSync(path.join(__dirname, '..', 'web', 'error.html'), 'utf8'))
   .replaceAll('{{BASE}}', config.publicUrl).replaceAll('{{CODE}}', String(code)).replaceAll('{{TITLE}}', title).replaceAll('{{MSG}}', msg);
 app.use((err, req, res, _next) => {
   const status = err.status || err.statusCode || 500;

@@ -36,6 +36,11 @@ function quota(req, res, next) {
   const day = new Date().toISOString().slice(0, 10);
   const u = req.user.anon ? null : db.prepare('SELECT plan FROM users WHERE id=?').get(req.user.id);
   const row = db.prepare('SELECT ai_requests FROM usage WHERE user_id=? AND day=?').get(req.user.id, day);
+  // Global ceiling for all anonymous installs together, so the built-in AI can't be farmed with rotating IPs.
+  if (req.user.anon) {
+    const all = db.prepare("SELECT COALESCE(SUM(ai_requests),0) n FROM usage WHERE day=? AND user_id LIKE 'anon_%'").get(day).n;
+    if (all >= config.dailyAiAnonGlobal) return res.status(429).json({ error: 'Cairn AI is busy right now. Sign in to your Cairn Account to keep going.' });
+  }
   const limit = req.user.anon ? config.dailyAiRequestsAnon : u?.plan === 'pro' ? 5000 : config.dailyAiRequestsFree;
   if ((row?.ai_requests || 0) >= limit) return res.status(429).json({ error: req.user.anon
     ? `Daily AI limit reached (${limit}). Sign in to your Cairn Account for more.`
@@ -49,7 +54,12 @@ aiRouter.post('/chat', aiAuth, quota, async (req, res) => {
   const { messages, tools, tier, stream, temperature, maxTokens, json, preferred } = req.body || {};
   if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'messages required' });
   try {
-    const out = await chat({ messages, tools, tier, stream, temperature, maxTokens, json, preferred }, config);
+    // Server-side caps: the client can ask for less, never more.
+    const cap = req.user.anon ? 2048 : 8192;
+    const mt = Math.min(cap, Math.max(1, Number(maxTokens) || 1024));
+    const msgs = messages.slice(-60);
+    if (JSON.stringify(msgs).length > 400_000) return res.status(413).json({ error: 'Conversation too long' });
+    const out = await chat({ messages: msgs, tools, tier, stream, temperature, maxTokens: mt, json, preferred }, config);
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');

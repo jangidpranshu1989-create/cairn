@@ -4,7 +4,7 @@
 //   - RS256-signed ID tokens and access tokens, published JWKS, discovery document
 //   - Refresh tokens (offline_access) with rotation + reuse detection
 //   - Per-user consent records ("Apps with access to your account") that can be revoked
-// Sign-in and consent UI live in /public/accounts (the Cairn Account portal); Cairn browsers on Android and
+// Sign-in and consent UI live in /web/accounts (the Cairn Account portal); Cairn browsers on Android and
 // desktop recognise /oauth/authorize and finish the flow natively with one tap.
 import express from 'express';
 import crypto from 'node:crypto';

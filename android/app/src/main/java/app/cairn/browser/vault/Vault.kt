@@ -103,6 +103,12 @@ object Vault {
         db.insertWithOnConflict("logins", null, ContentValues().apply { put("origin", origin); put("username", username); put("secret", SecureStore.encrypt(password)); put("updated", at) }, SQLiteDatabase.CONFLICT_REPLACE)
         changed()
     }
+    /** Removes saved passwords (and Cairn passkeys) changed since [sinceMs]; 0 = all. Deletions sync to other devices. */
+    fun clearSince(sinceMs: Long, passkeys: Boolean = false) {
+        db.delete("logins", "updated>=?", arrayOf(sinceMs.toString()))
+        if (passkeys) db.delete("passkeys", "COALESCE(created,0)>=?", arrayOf(sinceMs.toString()))
+        changed()
+    }
     fun deleteLogin(origin: String, username: String) { db.delete("logins", "origin=? AND username=?", arrayOf(origin, username)); changed() }
     fun never(origin: String) = db.rawQuery("SELECT 1 FROM never WHERE origin=?", arrayOf(origin)).use { it.moveToFirst() }
     fun setNever(origin: String) { db.insertWithOnConflict("never", null, ContentValues().apply { put("origin", origin) }, SQLiteDatabase.CONFLICT_IGNORE) }

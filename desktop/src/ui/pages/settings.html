@@ -49,15 +49,24 @@
 <section class="sec" id="s-privacy"><h1>Privacy &amp; security</h1><p class="muted">Cairn has no ads and never sells your data.</p>
   <div class="group"><h3>Protection</h3>
     <div class="opt"><div class="l"><b>Cairn Shield</b><small>Block ads, trackers and cryptominers on every site.</small></div><label class="sw"><input type="checkbox" data-k="shield"><span></span></label></div>
+    <div class="opt"><div class="l"><b>Safe Browsing</b><small>Shows a warning before phishing and malware sites open. Checked privately with hash prefixes, Cairn never sees which sites you visit.</small></div><label class="sw"><input type="checkbox" data-k="safeBrowsing"><span></span></label></div>
     <div class="opt"><div class="l"><b>Send Do Not Track &amp; Global Privacy Control</b></div><label class="sw"><input type="checkbox" data-k="doNotTrack"><span></span></label></div>
     <div class="opt"><div class="l"><b>Offer to save passwords</b></div><label class="sw"><input type="checkbox" data-k="offerSavePasswords"><span></span></label></div>
     <div class="opt"><div class="l"><b>Autofill saved passwords</b></div><label class="sw"><input type="checkbox" data-k="autofillPasswords"><span></span></label></div>
   </div>
-  <div class="group"><h3>Site permissions</h3><div id="permList"></div></div>
+  <div class="group"><h3>Secure DNS</h3>
+    <div class="opt"><div class="l"><b>Use secure DNS</b><small>Encrypts site-name lookups (DNS-over-HTTPS) so your network can't see or change them.</small></div>
+      <select class="input" id="dohMode"><option value="off">Off (network default)</option><option value="cloudflare">Cloudflare (1.1.1.1)</option><option value="google">Google (8.8.8.8)</option><option value="custom">Custom</option></select></div>
+    <div class="opt" id="dohCustomRow" hidden><div class="l"><b>Custom DoH address</b><small>For example https://dns.quad9.net/dns-query</small></div><input class="input" id="dohUrl" placeholder="https://…/dns-query" style="min-width:280px"><button class="btn" id="dohSave">Save</button></div>
+  </div>
+  <div class="group"><h3>Site permissions</h3>
+    <div class="opt"><div class="l"><b>Add a site</b><small>Set camera, microphone, location, notifications and pop-ups for a site.</small></div><input class="input" id="permAdd" placeholder="example.com"><button class="btn" id="permAddGo">Add</button></div>
+    <div id="permList"></div></div>
   <div class="group"><h3>Clear browsing data</h3>
     <div class="opt"><div class="l"><b>Time range</b></div><select class="input" id="clrRange"><option value="3600000">Last hour</option><option value="86400000">Last 24 hours</option><option value="604800000">Last 7 days</option><option value="0" selected>All time</option></select></div>
     <div class="opt"><div class="l"><b>Cookies &amp; site data</b><small>Signs you out of most sites.</small></div><label class="sw"><input type="checkbox" id="clrCookies"><span></span></label></div>
     <div class="opt"><div class="l"><b>Cached images and files</b></div><label class="sw"><input type="checkbox" id="clrCache" checked><span></span></label></div>
+    <div class="opt"><div class="l"><b>Saved passwords</b><small>Also removed from your other signed-in devices.</small></div><label class="sw"><input type="checkbox" id="clrPw"><span></span></label></div>
     <div class="opt"><div class="l"><small>History is always cleared for the chosen range.</small></div><button class="btn danger" id="clrGo">Clear data</button></div>
   </div>
   <div class="group"><h3>Policies</h3>

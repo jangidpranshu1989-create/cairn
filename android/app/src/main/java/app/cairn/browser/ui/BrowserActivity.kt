@@ -215,18 +215,33 @@ class BrowserActivity : FragmentActivity() {
         if (res.isEmpty()) return req.deny()
         if (res.all { it == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID }) return req.grant(res.toTypedArray())
         val cam = PermissionRequest.RESOURCE_VIDEO_CAPTURE in res; val mic = PermissionRequest.RESOURCE_AUDIO_CAPTURE in res
-        val key = listOfNotNull("camera".takeIf { cam }, "microphone".takeIf { mic }).joinToString("+")
+        val keys = listOfNotNull("camera".takeIf { cam }, "microphone".takeIf { mic })
         val grant = {
             val perms = listOfNotNull(Manifest.permission.CAMERA.takeIf { cam }, Manifest.permission.RECORD_AUDIO.takeIf { mic }).toTypedArray()
             runtime(perms) { ok -> if (ok) req.grant(res.toTypedArray()) else req.deny() }
         }
-        when (BrowserDb.perm(origin, key)) {
-            true -> grant()
-            false -> req.deny()
-            null -> Ui.prompt = SitePrompt(origin, when { cam && mic -> "use your camera and microphone"; cam -> "use your camera"; else -> "use your microphone" }, if (cam) "camera" else "mic") { allow, remember ->
-                if (remember && !t.incognito) BrowserDb.setPerm(origin, key, allow)
+        val legacy = BrowserDb.perm(origin, "camera+microphone")
+        val saved = keys.map { BrowserDb.perm(origin, it) ?: legacy }
+        when {
+            saved.any { it == false } -> req.deny()
+            saved.all { it == true } -> grant()
+            else -> Ui.prompt = SitePrompt(origin, when { cam && mic -> "use your camera and microphone"; cam -> "use your camera"; else -> "use your microphone" }, if (cam) "camera" else "mic") { allow, remember ->
+                if (remember && !t.incognito) keys.forEach { BrowserDb.setPerm(origin, it, allow) }
                 if (allow) grant() else req.deny()
             }
+        }
+    }
+
+    /** Web Notifications (WebView has none built in): asked like Chrome, remembered per site in Site settings. */
+    fun onNotifyPermission(t: Tab, origin: String, done: (String) -> Unit) {
+        when (BrowserDb.perm(origin, "notifications")) {
+            true -> return done("granted"); false -> return done("denied"); null -> {}
+        }
+        if (t.incognito) return done("denied")
+        Ui.prompt = SitePrompt(origin, "show notifications", "notifications") { allow, _ ->
+            BrowserDb.setPerm(origin, "notifications", allow)
+            if (allow && android.os.Build.VERSION.SDK_INT >= 33) runtime(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { ok -> done(if (ok) "granted" else "denied") }
+            else done(if (allow) "granted" else "denied")
         }
     }
 

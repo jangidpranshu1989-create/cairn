@@ -136,6 +136,7 @@ object BrowserDb {
     fun perms(): List<Triple<String, String, Boolean>> = db.rawQuery("SELECT origin,perm,allow FROM perms ORDER BY origin", null).use { c ->
         buildList { while (c.moveToNext()) add(Triple(c.getString(0), c.getString(1), c.getInt(2) == 1)) }
     }
+    fun clearPerm(origin: String, perm: String) { db.delete("perms", "origin=? AND perm=?", arrayOf(origin, perm)); changed() }
     fun clearPerms(origin: String? = null) { if (origin == null) db.delete("perms", null, null) else db.delete("perms", "origin=?", arrayOf(origin)); changed() }
 }
 

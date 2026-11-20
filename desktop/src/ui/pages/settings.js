@@ -40,21 +40,43 @@
 
   // clear data
   $('#clrGo').onclick = async () => {
-    const r = Number($('#clrRange').value);
-    await api('history:clear', { since: r ? Date.now() - r : 0, cookies: $('#clrCookies').checked, cache: $('#clrCache').checked });
+    const r = Number($('#clrRange').value); const pw = $('#clrPw').checked;
+    if (pw && !confirm('Delete saved passwords for this time range from this computer and every synced device? This can\'t be undone.')) return;
+    await api('history:clear', { since: r ? Date.now() - r : 0, cookies: $('#clrCookies').checked, cache: $('#clrCache').checked, passwords: pw });
     toast('Browsing data cleared');
   };
-  const PERM_NAMES = { geolocation: 'Location', camera: 'Camera', microphone: 'Microphone', notifications: 'Notifications', 'clipboard-read': 'Clipboard', midi: 'MIDI', openExternal: 'Open apps' };
+
+  // secure DNS
+  const dohPaint = () => { $('#dohMode').value = S.dohMode || 'off'; $('#dohUrl').value = S.dohUrl || ''; $('#dohCustomRow').hidden = $('#dohMode').value !== 'custom'; };
+  dohPaint();
+  $('#dohMode').onchange = async (e) => { const m = e.target.value; $('#dohCustomRow').hidden = m !== 'custom'; if (m !== 'custom' || /^https:\/\//.test(S.dohUrl || '')) await save({ dohMode: m }); };
+  $('#dohSave').onclick = async () => { const u = $('#dohUrl').value.trim(); if (!/^https:\/\/[^/]+/.test(u)) return toast('Enter an https:// address'); await save({ dohMode: 'custom', dohUrl: u }); };
+
+  // site permissions: Ask / Allow / Block per site
+  const PERMS = [['camera', 'Camera'], ['microphone', 'Microphone'], ['geolocation', 'Location'], ['notifications', 'Notifications'], ['popups', 'Pop-ups']];
+  const PERM_NAMES = Object.fromEntries([...PERMS, ['clipboard-read', 'Clipboard'], ['midi', 'MIDI'], ['openExternal', 'Open apps']]);
   function renderPerms() {
-    const sp = S.sitePermissions || {}; const el = $('#permList'); const sites = Object.keys(sp).filter(o => Object.keys(sp[o]).length);
-    if (!sites.length) { el.innerHTML = '<div class="opt"><div class="l"><small>Sites you allow or block (location, camera, microphone, notifications) appear here.</small></div></div>'; return; }
-    el.innerHTML = sites.map(o => `<div class="opt"><div class="l"><b>${esc(o.replace(/^https?:\/\//, ''))}</b><small>${Object.entries(sp[o]).map(([k, v]) => `${PERM_NAMES[k] || k}: ${v ? 'Allowed' : 'Blocked'}`).join(' · ')}</small></div><button class="btn" data-reset="${esc(o)}">Reset</button></div>`).join('');
+    const sp = S.sitePermissions || {}; const el = $('#permList'); const sites = Object.keys(sp);
+    if (!sites.length) { el.innerHTML = '<div class="opt"><div class="l"><small>Sites you allow or block appear here.</small></div></div>'; return; }
+    el.innerHTML = sites.map(o => `<div class="opt" style="flex-wrap:wrap;gap:8px"><div class="l" style="min-width:180px"><b>${esc(o.replace(/^https?:\/\//, ''))}</b></div>
+      ${PERMS.map(([k, n]) => `<label class="small muted">${n} <select class="input" data-site="${esc(o)}" data-perm="${k}"><option value="ask"${sp[o][k] === undefined ? ' selected' : ''}>${k === 'popups' ? 'Default' : 'Ask'}</option><option value="allow"${sp[o][k] === true ? ' selected' : ''}>Allow</option><option value="block"${sp[o][k] === false ? ' selected' : ''}>Block</option></select></label>`).join('')}
+      <button class="btn" data-reset="${esc(o)}">Reset</button></div>`).join('');
+  }
+  async function setPerm(o, k, v) {
+    const sp = JSON.parse(JSON.stringify(S.sitePermissions || {})); sp[o] = sp[o] || {};
+    if (v === 'ask') delete sp[o][k]; else sp[o][k] = v === 'allow';
+    await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; toast('Saved');
   }
   renderPerms();
+  $('#permList').addEventListener('change', (e) => { const s = e.target.closest('select[data-perm]'); if (s) setPerm(s.dataset.site, s.dataset.perm, s.value); });
   $('#permList').addEventListener('click', async (e) => {
     const o = e.target.closest('[data-reset]')?.dataset.reset; if (!o) return;
     const sp = { ...(S.sitePermissions || {}) }; delete sp[o]; await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; renderPerms(); toast('Permissions reset');
   });
+  $('#permAddGo').onclick = async () => {
+    let v = $('#permAdd').value.trim(); if (!v.includes('.')) return toast('Enter a site like example.com');
+    try { const o = new URL(/^https?:/.test(v) ? v : 'https://' + v).origin; const sp = { ...(S.sitePermissions || {}) }; sp[o] = sp[o] || {}; await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; $('#permAdd').value = ''; renderPerms(); } catch { toast('That address is not valid'); }
+  };
   api('cloud:base').then(b => { $('#privacyLink').href = 'https://cairn.app/privacy.html'; });
 
   // downloads

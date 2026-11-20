@@ -16,6 +16,7 @@ import { aiRouter } from './ai.js';
 import { attachHub } from './hub.js';
 import { syncRouter } from './sync.js';
 import { oidcRouter, oauthApi } from './oidc.js';
+import { safetyRouter, startSafety } from './safety.js';
 import { readFileSync } from 'node:fs';
 
 const VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version; } catch { return '0.0.0'; } })();
@@ -38,6 +39,8 @@ app.use('/api/transfers', transfersRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/sync/v2', syncRouter);
 app.use('/api/oauth', oauthApi);
+app.use('/api/safety', safetyRouter);
+startSafety();
 app.use('/', oidcRouter);
 
 // Public website: contact form + Pro waitlist (rate-limited, validated, stored for the team)

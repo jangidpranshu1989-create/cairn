@@ -14,7 +14,7 @@ const search = require('./search');
 let tabsMod, cloud, llm, passwords, pageTools, AgentCls;
 
 const UI_DIR = path.join(__dirname, '..', 'ui');
-const PAGES = new Set(['search', 'newtab', 'settings', 'history', 'bookmarks', 'downloads', 'passwords', 'account', 'mindmap', 'error', 'about', 'reader']);
+const PAGES = new Set(['search', 'newtab', 'settings', 'history', 'bookmarks', 'downloads', 'passwords', 'account', 'mindmap', 'error', 'about', 'reader', 'unsafe']);
 const isMac = process.platform === 'darwin';
 
 let win, tabs, agent, agentTabId = null;
@@ -328,6 +328,7 @@ function registerIpc() {
     const ses = session.fromPartition('persist:cairn');
     if (opts.cookies) await ses.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] });
     if (opts.cache) await ses.clearCache();
+    if (opts.passwords) passwords.clearSince(since);
     return true;
   }, { internal: true });
 
@@ -368,6 +369,7 @@ function registerIpc() {
     s.save();
     if ('theme' in patch) applyTheme();
     if ('serverUrl' in patch) cloud.connect();
+    if ('dohMode' in patch || 'dohUrl' in patch) applySecureDns();
     send('settings:changed', s.data);
     return true;
   }, { internal: true });
@@ -426,6 +428,8 @@ function registerIpc() {
     pending.pw.set(id, { origin, username, password });
     send('pw:prompt', { id, origin, username, update: st === 'update' });
   });
+  handle('safety:back', (e) => { const t = [...tabs.tabs.values()].find(x => x.view.webContents === e.sender); if (!t) return; const nh = t.view.webContents.navigationHistory; if (nh.canGoBack() && nh.getActiveIndex() > 1) nh.goToOffset(-2); else t.view.webContents.loadURL('cairn://newtab'); }, { internal: true });
+  handle('safety:proceed', (e, url) => { try { const u = new URL(url); if (!/^https?:$/.test(u.protocol)) return; require('./safety').allow(u.hostname); e.sender.loadURL(url); } catch {} }, { internal: true });
   handle('perm:decide', (_e, id, allow, remember) => {
     const p = pending.perms.get(id); pending.perms.delete(id); if (!p) return;
     clearTimeout(p.timer); p.cb(!!allow);
@@ -565,6 +569,17 @@ app.on('second-instance', (_e, argv) => {
 app.on('open-url', (e, url) => { e.preventDefault(); if (url.startsWith('cairn://auth-callback') && cloud?.handleAuthCallback(url)) send('toast', { text: 'Signed in to Cairn' }); });
 
 app.userAgentFallback = chromeUA();
+// Built-in Secure DNS (DNS-over-HTTPS) for every page Cairn loads.
+const DOH = { cloudflare: 'https://cloudflare-dns.com/dns-query', google: 'https://dns.google/dns-query' };
+function applySecureDns() {
+  const s = store.get().settings.data;
+  const url = s.dohMode === 'custom' ? (/^https:\/\//.test(s.dohUrl || '') ? s.dohUrl.trim() : '') : DOH[s.dohMode];
+  try {
+    if (url) app.configureHostResolver({ secureDnsMode: 'secure', secureDnsServers: [url] });
+    else app.configureHostResolver({ secureDnsMode: 'automatic', secureDnsServers: [] });
+  } catch (e) { console.warn('Secure DNS:', e.message); }
+}
+
 // The Cairn server address is published in the public repo so every install finds the same account server.
 async function discoverServer() {
   const s = store.get().settings;
@@ -581,6 +596,7 @@ async function discoverServer() {
 
 app.whenReady().then(async () => {
   store.init();
+  applySecureDns();
   tabsMod = require('./tabs'); cloud = require('./cloud'); llm = require('./llm'); passwords = require('./passwords'); pageTools = require('./page-tools');
   AgentCls = require('./agent/agent').Agent;
   registerProtocol();

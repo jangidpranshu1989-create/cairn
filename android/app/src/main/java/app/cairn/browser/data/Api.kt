@@ -34,7 +34,9 @@ object Api {
     private val JSON = "application/json".toMediaType()
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS)
-        .pingInterval(25, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
+        .pingInterval(25, TimeUnit.SECONDS).retryOnConnectionFailure(true)
+        .dns(object : okhttp3.Dns { override fun lookup(hostname: String) = app.cairn.browser.browser.SecureDns.resolver?.let { r -> runCatching { r.lookup(hostname) }.getOrNull() } ?: okhttp3.Dns.SYSTEM.lookup(hostname) })
+        .build()
     private val refreshLock = Any()
 
     fun ep(path: String) = Prefs.server + "/api" + path

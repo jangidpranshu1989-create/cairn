@@ -16,6 +16,7 @@ class CairnApp : Application() {
         app.cairn.browser.vault.Vault.init(this)
         app.cairn.browser.vault.Sync.init(this)
         app.cairn.browser.browser.Shield.init(this)
+        runCatching { app.cairn.browser.browser.SecureDns.apply() }
         app.cairn.browser.agent.PageJs.init(this)
         app.cairn.browser.service.ReadAloud.init(this)
         val nm = getSystemService(NotificationManager::class.java)
@@ -44,6 +45,9 @@ class CairnApp : Application() {
         nm.createNotificationChannel(NotificationChannel(CH_AGENT_DONE, "Assistant results", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Tells you when a background task is done"
         })
+        nm.createNotificationChannel(NotificationChannel(CH_SITES, "Website notifications", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Notifications from websites you allowed in Site settings"
+        })
         app.cairn.browser.data.Recall.init(this)
         app.cairn.browser.browser.Favicons.init(this)
         app.cairn.browser.data.CairnSearch.init(this)
@@ -61,5 +65,6 @@ class CairnApp : Application() {
         const val CH_PRICES = "prices"
         const val CH_AGENT = "agent"
         const val CH_AGENT_DONE = "agent_done"
+        const val CH_SITES = "sites"
     }
 }

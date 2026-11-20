@@ -38,3 +38,13 @@ assert.equal((await j('/oauth/token', form({ grant_type: 'refresh_token', refres
 assert.equal((await j('/oauth/token', form({ grant_type: 'refresh_token', refresh_token: rf.d.refresh_token, client_id: q.client_id }))).s, 400); // family revoked
 assert.equal((await j('/api/auth/login', { method: 'POST', body: { email: su.d.user.email, password: pw } })).s, 200);
 console.log('OIDC smoke test passed');
+
+// Safe Browsing lookup (hash-prefix): the built-in test host must match, an unknown prefix must not.
+{
+  const { createHash } = await import('node:crypto');
+  const BASE2 = process.env.BASE || 'http://localhost:8787';
+  const h = createHash('sha256').update('phishing.testsafebrowsing.cairn').digest('hex');
+  const r = await (await fetch(`${BASE2}/api/safety/lookup?p=${h.slice(0, 8)},00000000`)).json();
+  if (!r.matches?.some(m => m.hash === h && m.kind === 'phishing')) throw new Error('safety lookup failed');
+  console.log('Safe Browsing lookup passed');
+}

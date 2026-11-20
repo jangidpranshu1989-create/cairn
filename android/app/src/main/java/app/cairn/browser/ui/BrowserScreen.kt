@@ -162,6 +162,7 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
             if (tab == null || tab.isNtp) NewTabPage(tab?.incognito == true)
             tab?.error?.let { ErrorPage(tab, it.code, it.description) }
             tab?.ssl?.let { SslPage(tab) }
+            tab?.unsafe?.let { UnsafePage(tab) }
             AgentEdge(Agent.controlling != null && Agent.controlling == tab)
             // Small transient pills float just above the dock edge; they're narrow and centred so the page stays usable.
             Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -412,6 +413,40 @@ fun SslPage(tab: Tab) {
             Text("$why Cairn can't confirm this is the real ${hostOf(p.url)}.", color = C.muted, fontSize = 13.5.sp, lineHeight = 20.sp)
             Spacer(Modifier.height(8.dp))
             Text("Proceed to ${hostOf(p.url)} (unsafe)", color = C.err, fontSize = 13.5.sp, modifier = Modifier.clickable { tab.ssl = null; p.handler.proceed() }.padding(vertical = 8.dp))
+        }
+    }
+}
+
+/** Full-screen red interstitial for phishing and malware sites (Chrome-style). */
+@Composable
+fun UnsafePage(tab: Tab) {
+    var details by remember { mutableStateOf(false) }
+    val p = tab.unsafe ?: return
+    val red = Color(0xFFC5221F); val host = hostOf(p.url)
+    Column(Modifier.fillMaxSize().background(red).verticalScroll(rememberScrollState()).padding(28.dp), verticalArrangement = Arrangement.Center) {
+        Spacer(Modifier.height(48.dp))
+        Icon(Ic.GppBad, null, Modifier.size(48.dp), tint = Color.White)
+        Spacer(Modifier.height(22.dp))
+        Text(if (p.kind == "malware") "The site ahead contains malware" else "Dangerous site", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, lineHeight = 30.sp)
+        Spacer(Modifier.height(12.dp))
+        Text(if (p.kind == "malware") "Attackers on $host might attempt to install dangerous programs on your phone that steal or delete your information (for example, photos, passwords, messages and credit cards)."
+            else "Attackers on $host may trick you into doing something dangerous like installing software or revealing your personal information (for example, passwords, phone numbers or credit cards).",
+            color = Color.White.copy(alpha = 0.92f), fontSize = 15.sp, lineHeight = 22.sp)
+        Spacer(Modifier.height(30.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.clip(RoundedCornerShape(24.dp)).background(Color.White).clickable {
+                tab.unsafe = null; if (!Browser.back(tab)) Browser.load(tab, NTP)
+            }.padding(horizontal = 22.dp, vertical = 12.dp)) { Text("Back to safety", color = red, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+            Spacer(Modifier.width(12.dp))
+            TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "Details", color = Color.White) }
+        }
+        if (details) {
+            Spacer(Modifier.height(16.dp))
+            Text("Cairn Safe Browsing recently found ${if (p.kind == "malware") "malware" else "phishing"} on $host. Websites that are normally safe are sometimes infected. Cairn checked this privately: only a short piece of a hash left your phone.",
+                color = Color.White.copy(alpha = 0.9f), fontSize = 13.5.sp, lineHeight = 20.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("Proceed anyway (unsafe)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable { app.cairn.browser.browser.SafeBrowsing.allow(host); tab.unsafe = null; Browser.load(tab, p.url) }.padding(vertical = 8.dp))
         }
     }
 }
@@ -824,7 +859,7 @@ fun SitePromptDialog(p: SitePrompt) {
     var remember by remember { mutableStateOf(true) }
     fun done(allow: Boolean) { Ui.prompt = null; p.decide(allow, remember) }
     AlertDialog(onDismissRequest = { done(false) }, containerColor = C.surface2, shape = RoundedCornerShape(22.dp),
-        icon = { Icon(when (p.icon) { "camera" -> Ic.Videocam; "mic" -> Ic.Mic; else -> Ic.LocationOn }, null, tint = C.text) },
+        icon = { Icon(when (p.icon) { "camera" -> Ic.Videocam; "mic" -> Ic.Mic; "notifications" -> Ic.Notifications; else -> Ic.LocationOn }, null, tint = C.text) },
         title = { Text("${hostOf(p.origin)} wants to ${p.what}", color = C.text, fontSize = 17.sp, textAlign = TextAlign.Center) },
         text = {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { remember = !remember }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

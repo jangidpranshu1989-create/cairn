@@ -109,7 +109,10 @@ object Prefs {
 
     // ---- Account / companion ----
     var server by str("server", BuildConfig.DEFAULT_SERVER)
-    var serverAuto by bool("serverAuto", true)          // follow the published Cairn server address (server.json) unless set by hand
+    var serverAuto by bool("serverAuto", true)
+    var safeBrowsing by bool("safeBrowsing", true)
+    var dohMode by str("dohMode", "off")                  // off | cloudflare | google | custom
+    var dohUrl by str("dohUrl", "")          // follow the published Cairn server address (server.json) unless set by hand
     var deviceIdS by str("deviceId", "")
     var userJsonS by str("user", "")
     var accessTokenS by secret("at")

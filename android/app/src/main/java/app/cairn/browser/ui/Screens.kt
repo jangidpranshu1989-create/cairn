@@ -71,6 +71,8 @@ fun Screens(route: String) {
             "settings/general" -> GeneralSettings()
             "settings/privacy" -> PrivacySettings()
             "settings/sites" -> SiteSettings()
+            "settings/site" -> SiteDetail()
+            "settings/dns" -> SecureDnsScreen()
             "settings/clear" -> ClearData()
             "settings/passwords" -> PasswordSettings()
             "settings/ai" -> AiSettings()
@@ -389,33 +391,128 @@ fun PrivacySettings() {
         }
         SectionLabel("Security")
         Group {
+            Toggle(Ic.GppBad, "Safe Browsing", "Warns you before dangerous sites open. Checked privately, Cairn never sees which sites you visit", Prefs.safeBrowsing) { Prefs.safeBrowsing = it }; Divider()
             Toggle(Ic.Https, "Always use secure connections", "Upgrade links to HTTPS when possible", Prefs.httpsUpgrade) { Prefs.httpsUpgrade = it }; Divider()
-            Row2(Ic.ManageAccounts, "Site settings", "Camera, microphone and location permissions", onClick = { Ui.go("settings/sites") })
+            Row2(Ic.Public, "Use secure DNS", when (Prefs.dohMode) { "cloudflare" -> "Cloudflare (1.1.1.1)"; "google" -> "Google (8.8.8.8)"; "custom" -> Prefs.dohUrl.removePrefix("https://").substringBefore('/'); else -> "Off · uses your network's DNS" }, onClick = { Ui.go("settings/dns") }); Divider()
+            Row2(Ic.ManageAccounts, "Site settings", "Camera, microphone, location, notifications and pop-ups", onClick = { Ui.go("settings/sites") })
         }
         SectionLabel("Data")
         Group { Row2(Ic.DeleteSweep, "Clear browsing data", "History, cookies, cache and site data", onClick = { Ui.go("settings/clear") }) }
     }
 }
 
+private val PERMS = listOf(
+    Triple("camera", "Camera", Ic.Videocam), Triple("microphone", "Microphone", Ic.Mic), Triple("location", "Location", Ic.LocationOn),
+    Triple("notifications", "Notifications", Ic.Notifications), Triple("popups", "Pop-ups and redirects", Ic.OpenInNew))
+private var siteDetailOrigin by mutableStateOf("")
+
 @Composable
 fun SiteSettings() {
     val v = BrowserDb.version.intValue
     val list = remember(v) { runCatching { BrowserDb.perms() }.getOrDefault(emptyList()) }
+    var adding by remember { mutableStateOf(false) }; var newSite by remember { mutableStateOf("") }
     ScreenHeader("Site settings", { Ui.back() }) { if (list.isNotEmpty()) TextButton(onClick = { BrowserDb.clearPerms() }) { Text("Reset all", color = C.muted) } }
-    if (list.isEmpty()) EmptyState(Ic.ManageAccounts, "No site permissions", "When a site asks for your camera, microphone or location, your choice appears here.", Modifier.fillMaxSize())
-    else LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            SectionLabel("Default for all sites")
+            Group {
+                PERMS.forEachIndexed { i, (k, label, icon) ->
+                    if (i > 0) Divider()
+                    if (k == "popups") Toggle(icon, label, if (Prefs.popups) "Allowed" else "Blocked (recommended)", Prefs.popups) { Prefs.popups = it; Browser.applySettings() }
+                    else Row2(icon, label, if (k == "notifications") "Ask before sending (recommended)" else "Ask first (recommended)")
+                }
+            }
+            SectionLabel("Sites")
+            Group { Row2(Ic.Add, "Add a site", "Choose permissions for a site before you visit it", onClick = { newSite = ""; adding = true }) }
+            if (list.isEmpty()) Text("When a site asks for a permission, your choice appears here. Tap a site to change it.", color = C.faint, fontSize = 13.sp, modifier = Modifier.padding(20.dp))
+            Spacer(Modifier.height(8.dp))
+        }
         list.groupBy { it.first }.forEach { (origin, ps) ->
             item(key = origin) {
-                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().clickable { siteDetailOrigin = origin; Ui.go("settings/site") }.padding(start = 20.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Favicon(origin, size = 20.dp); Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text(hostOf(origin), color = C.text, fontSize = 14.5.sp)
-                        Text(ps.joinToString(" · ") { "${it.second.replace("+", " & ").replaceFirstChar { c -> c.uppercase() }}: ${if (it.third) "Allowed" else "Blocked"}" }, color = C.faint, fontSize = 12.sp)
+                        Text(ps.joinToString(" · ") { p -> "${PERMS.firstOrNull { it.first == p.second }?.second ?: p.second.replace("+", " & ").replaceFirstChar { c -> c.uppercase() }}: ${if (p.third) "Allowed" else "Blocked"}" }, color = C.faint, fontSize = 12.sp, maxLines = 2)
                     }
                     IconBtn(Ic.Delete, "Reset", tint = C.faint) { BrowserDb.clearPerms(origin) }
                 }
             }
         }
+    }
+    if (adding) AlertDialog(onDismissRequest = { adding = false }, containerColor = C.surface2, title = { Text("Add a site", color = C.text) },
+        text = { OutlinedTextField(newSite, { newSite = it.trim() }, singleLine = true, placeholder = { Text("example.com") }, colors = fieldColors(), shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false)) },
+        confirmButton = { TextButton(enabled = newSite.contains('.'), onClick = {
+            val u = Uri.parse(if (newSite.startsWith("http")) newSite else "https://$newSite")
+            siteDetailOrigin = "${u.scheme}://${u.authority}"; adding = false; Ui.go("settings/site")
+        }) { Text("Next", color = C.text) } },
+        dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel", color = C.muted) } })
+}
+
+@Composable
+fun SiteDetail() {
+    val origin = siteDetailOrigin
+    val v = BrowserDb.version.intValue
+    ScreenHeader(hostOf(origin), { Ui.back() })
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
+        Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Favicon(origin, size = 22.dp); Spacer(Modifier.width(12.dp)); Text(origin, color = C.muted, fontSize = 13.sp)
+        }
+        SectionLabel("Permissions")
+        Group {
+            PERMS.forEachIndexed { i, (k, label, icon) ->
+                if (i > 0) Divider()
+                val cur = remember(v) { BrowserDb.perm(origin, k) ?: if (k == "camera" || k == "microphone") BrowserDb.perm(origin, "camera+microphone") else null }
+                val value = when (cur) { true -> "allow"; false -> "block"; else -> "ask" }
+                Choice(label, listOf("ask" to (if (k == "popups") "Use default (${if (Prefs.popups) "allowed" else "blocked"})" else "Ask"), "allow" to "Allow", "block" to "Block"), value, { pick ->
+                    BrowserDb.clearPerm(origin, "camera+microphone")
+                    when (pick) { "allow" -> BrowserDb.setPerm(origin, k, true); "block" -> BrowserDb.setPerm(origin, k, false); else -> BrowserDb.clearPerm(origin, k) }
+                }, icon)
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Group { Row2(Ic.Delete, "Reset permissions", "This site will ask again", tint = C.err, onClick = { BrowserDb.clearPerms(origin); Ui.back() }) }
+    }
+}
+
+@Composable
+fun SecureDnsScreen() {
+    val scope = rememberCoroutineScope()
+    var mode by remember { mutableStateOf(Prefs.dohMode) }; var custom by remember { mutableStateOf(Prefs.dohUrl) }
+    var status by remember { mutableStateOf<String?>(null) }; var busy by remember { mutableStateOf(false) }
+    fun save(m: String, c: String) {
+        busy = true; status = null
+        scope.launch {
+            val err = if (m == "off") null else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.cairn.browser.browser.SecureDns.test(m, c) }
+            busy = false
+            if (err != null) { status = "Couldn't use this provider: $err"; return@launch }
+            Prefs.dohMode = m; Prefs.dohUrl = c; mode = m
+            app.cairn.browser.browser.SecureDns.apply()
+            status = if (m == "off") "Secure DNS is off" else "Secure DNS is on. New pages use it now."
+            Haptics.confirm()
+        }
+    }
+    ScreenHeader("Use secure DNS", { Ui.back() })
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(bottom = 28.dp)) {
+        Text("Secure DNS (DNS-over-HTTPS) encrypts the lookups that turn site names into addresses, so your network or internet provider can't see or change them.",
+            color = C.muted, fontSize = 13.5.sp, lineHeight = 19.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        Group {
+            listOf("off" to ("Off" to "Use your network's DNS"), "cloudflare" to ("Cloudflare" to "1.1.1.1 · fast, privacy-first"), "google" to ("Google" to "8.8.8.8 · Google Public DNS"), "custom" to ("Custom" to "Any DNS-over-HTTPS address")).forEachIndexed { i, (k, t) ->
+                if (i > 0) Divider()
+                Row2(null, t.first, t.second, onClick = { if (k == "custom") mode = "custom" else save(k, custom) },
+                    trailing = { RadioButton(selected = mode == k, onClick = { if (k == "custom") mode = "custom" else save(k, custom) }) })
+            }
+        }
+        if (mode == "custom") {
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(custom, { custom = it.trim() }, Modifier.padding(horizontal = 16.dp).fillMaxWidth(), label = { Text("DoH address") }, placeholder = { Text("https://dns.example/dns-query") },
+                singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false))
+            Spacer(Modifier.height(10.dp))
+            PrimaryButton("Save", Modifier.padding(horizontal = 16.dp).fillMaxWidth(), enabled = custom.startsWith("https://"), busy = busy) { save("custom", custom) }
+        }
+        status?.let { Text(it, color = if (it.startsWith("Couldn't")) C.err else C.ok, fontSize = 13.sp, modifier = Modifier.padding(20.dp)) }
+        if (!app.cairn.browser.browser.SecureDns.supported) Text("Your Android System WebView is too old for in-app secure DNS. Update \"Android System WebView\" from the Play Store.", color = C.warn, fontSize = 12.5.sp, modifier = Modifier.padding(20.dp))
     }
 }
 
@@ -424,7 +521,8 @@ fun ClearData() {
     val ctx = LocalContext.current
     var range by remember { mutableStateOf("all") }
     var history by remember { mutableStateOf(true) }; var cookies by remember { mutableStateOf(true) }; var cache by remember { mutableStateOf(true) }
-    var tabs by remember { mutableStateOf(false) }; var perms by remember { mutableStateOf(false) }
+    var tabs by remember { mutableStateOf(false) }; var perms by remember { mutableStateOf(false) }; var passwords by remember { mutableStateOf(false) }
+    var confirmPw by remember { mutableStateOf(false) }
     ScreenHeader("Clear browsing data", { Ui.back() })
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
         Spacer(Modifier.height(4.dp))
@@ -434,19 +532,29 @@ fun ClearData() {
             Toggle(Ic.History, "Browsing history", null, history) { history = it }; Divider()
             Toggle(Ic.Cookie, "Cookies and site data", "Signs you out of most sites", cookies) { cookies = it }; Divider()
             Toggle(Ic.Image, "Cached images and files", null, cache) { cache = it }; Divider()
+            Toggle(Ic.Key, "Saved passwords", "Also removed from your other signed-in devices", passwords) { passwords = it }; Divider()
             Toggle(Ic.ManageAccounts, "Site permissions", null, perms) { perms = it }; Divider()
             Toggle(Ic.Tab, "Close all tabs", null, tabs) { tabs = it }
         }
         Spacer(Modifier.height(20.dp))
-        PrimaryButton("Clear data", Modifier.padding(horizontal = 16.dp).fillMaxWidth(), enabled = history || cookies || cache || tabs || perms) {
+        fun run() {
             val since = when (range) { "hour" -> System.currentTimeMillis() - 3_600_000; "day" -> System.currentTimeMillis() - 86_400_000; "week" -> System.currentTimeMillis() - 7 * 86_400_000L; else -> 0L }
             if (history) BrowserDb.clearHistory(since)
             if (cookies) { CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush(); WebStorage.getInstance().deleteAllData() }
             if (cache) { WebView(ctx).apply { clearCache(true); destroy() }; Browser.tabs.forEach { it.web?.clearCache(true) } }
             if (perms) BrowserDb.clearPerms()
+            if (passwords) runCatching { app.cairn.browser.vault.Vault.clearSince(since) }
             if (tabs) { Browser.closeAll(false); Browser.closeAll(true) }
             act.toast("Browsing data cleared"); Ui.back()
         }
+        PrimaryButton("Clear data", Modifier.padding(horizontal = 16.dp).fillMaxWidth(), enabled = history || cookies || cache || tabs || perms || passwords) {
+            if (passwords) confirmPw = true else run()
+        }
+        if (confirmPw) AlertDialog(onDismissRequest = { confirmPw = false }, containerColor = C.surface2,
+            title = { Text("Delete saved passwords?", color = C.text) },
+            text = { Text("Passwords saved or changed ${when (range) { "hour" -> "in the last hour"; "day" -> "in the last 24 hours"; "week" -> "in the last 7 days"; else -> "at any time" }} are deleted from this phone and every device synced with your Cairn Account. This can't be undone.", color = C.muted) },
+            confirmButton = { TextButton(onClick = { confirmPw = false; run() }) { Text("Delete", color = C.err) } },
+            dismissButton = { TextButton(onClick = { confirmPw = false }) { Text("Cancel", color = C.muted) } })
         Text("Clearing cookies affects all time ranges because Android WebView can't remove cookies by date.", color = C.faint, fontSize = 12.sp, modifier = Modifier.padding(20.dp))
     }
 }

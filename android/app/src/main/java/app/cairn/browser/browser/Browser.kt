@@ -49,6 +49,7 @@ class Tab(val id: Long, val incognito: Boolean, initialUrl: String = "") {
     var desktop by mutableStateOf(Prefs.desktopDefault)
     var error by mutableStateOf<PageError?>(null)
     var ssl by mutableStateOf<SslProblem?>(null)
+    var unsafe by mutableStateOf<UnsafeSite?>(null)
     var findMatches by mutableStateOf(0 to 0)       // (active index, total)
     var sensitive by mutableStateOf(false)          // login / OTP / card / checkout page → Guard badge
     var translated by mutableStateOf<String?>(null)
@@ -167,7 +168,7 @@ object Browser {
         if (url == NTP) { t.web?.loadUrl("about:blank"); t.url = ""; t.title = ""; return }
         ensureView(t)
         if (t == current) activity.refreshContainer()
-        t.error = null; t.ssl = null
+        t.error = null; t.ssl = null; t.unsafe = null
         t.url = url
         t.web!!.loadUrl(url, headers())
     }
@@ -369,6 +370,14 @@ object Browser {
         }
         override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
             if (req.url.host == app.cairn.browser.data.CairnSearch.HOST) return app.cairn.browser.data.CairnSearch.intercept(req, app.cairn.browser.ui.C.dark)
+            if (req.isForMainFrame && (req.url.scheme == "http" || req.url.scheme == "https")) {
+                // Runs on WebView's network thread, so the page never starts loading if it's dangerous.
+                SafeBrowsing.check(req.url.host)?.let { kind ->
+                    val u = req.url.toString()
+                    view.post { t.unsafe = UnsafeSite(u, kind); t.loading = false; t.progress = 100 }
+                    return WebResourceResponse("text/html", "utf-8", java.io.ByteArrayInputStream("<!doctype html><title>Dangerous site</title>".toByteArray()))
+                }
+            }
             if (Prefs.shield && !req.isForMainFrame && Shield.isBlocked(req.url.host)) {
                 view.post { t.blocked++; shieldSession++; Prefs.shieldTotal = Prefs.shieldTotal + 1 }
                 return Shield.empty()
@@ -407,7 +416,9 @@ object Browser {
             t.icon = icon; if (!t.incognito) view.url?.let { BrowserDb.saveIcon(it, icon); Favicons.offer(it, icon) }
         }
         override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
-            if (!isUserGesture && !Prefs.popups) { activity.toast("Pop-up blocked"); return false }
+            val site = runCatching { Uri.parse(t.url).let { "${it.scheme}://${it.authority}" } }.getOrDefault("")
+            val allowed = BrowserDb.perm(site, "popups") ?: Prefs.popups
+            if (!isUserGesture && !allowed) { activity.toast("Pop-up blocked · allow it in Site settings"); return false }
             val nt = newTab(NTP, t.incognito, foreground = !Prefs.openLinksInBackground || !isUserGesture, opener = t)
             ensureView(nt)
             (resultMsg.obj as WebView.WebViewTransport).webView = nt.web

@@ -56,6 +56,10 @@ object WebBridge {
                 val l = Vault.loginsFor(origin)
                 if (l.isNotEmpty() && fillOffer.value?.tab != t) fillOffer.value = FillOffer(t, origin, l)
             }
+            "notif-state" -> send(JSONObject().put("state", when (app.cairn.browser.data.BrowserDb.perm(origin, "notifications")) { true -> "granted"; false -> "denied"; else -> "default" }))
+            "notif-request" -> if (isMain && origin.startsWith("http")) app.cairn.browser.browser.Browser.activity.onNotifyPermission(t, origin) { st -> send(JSONObject().put("state", st)) } else send(JSONObject().put("state", "denied"))
+            "notif-show" -> if (origin.startsWith("http") && app.cairn.browser.data.BrowserDb.perm(origin, "notifications") == true)
+                app.cairn.browser.service.Notifier.site(app.cairn.browser.browser.Browser.activity, origin, m.optString("title").take(120), m.optString("body").take(400), t.url)
             "pk-create", "pk-get" -> scope.launch {
                 if (!Prefs.cairnPasskeys || t.incognito) { send(JSONObject().put("ok", false).put("fallback", true)); return@launch }
                 try {
@@ -82,6 +86,20 @@ object WebBridge {
   B.onmessage = function(e){ var m; try { m = JSON.parse(e.data); } catch(_) { return; } var p = pend[m.id]; if (!p) return; delete pend[m.id]; p(m); };
   function call(type, o){ return new Promise(function(res){ var id = ++seq; pend[id] = res; o = o || {}; o.id = id; o.type = type; B.postMessage(JSON.stringify(o)); }); }
   function post(type, o){ o = o || {}; o.type = type; try { B.postMessage(JSON.stringify(o)); } catch(_){} }
+
+  // ---- Web Notifications (WebView has no Notification API) ----
+  if (!window.Notification || !window.Notification.__cairn) {
+    var state = 'default';
+    var N = function(title, opts){ opts = opts || {}; this.title = String(title); this.body = opts.body || ''; this.onclick = null; this.onclose = null;
+      if (state === 'granted') post('notif-show', { title: this.title, body: String(this.body) }); };
+    N.prototype.close = function(){};
+    N.prototype.addEventListener = function(){};
+    Object.defineProperty(N, 'permission', { get: function(){ return state; } });
+    N.requestPermission = function(cb){ return call('notif-request', {}).then(function(m){ state = m.state || 'denied'; if (typeof cb === 'function') cb(state); return state; }); };
+    N.__cairn = 1;
+    try { window.Notification = N; } catch(_){}
+    call('notif-state', {}).then(function(m){ state = m.state || 'default'; });
+  }
 
   // ---- Password capture + fill ----
   function vis(el){ var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }

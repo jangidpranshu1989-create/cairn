@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Dangerous site</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="cairn://unsafe/pages/internal.css">
+<style>html,body{background:#c5221f!important;color:#fff;margin:0}
+.e{min-height:100vh;display:grid;place-items:center;padding:40px}.e>div{max-width:600px}
+h1{color:#fff;font-size:28px;margin:22px 0 12px}p{color:rgba(255,255,255,.92);line-height:1.55;font-size:15px}
+.row{display:flex;gap:10px;align-items:center;margin-top:30px}
+.safe{background:#fff;color:#c5221f;border:0;border-radius:22px;padding:11px 22px;font-weight:600;font-size:14px;cursor:pointer}
+.link{background:none;border:0;color:#fff;text-decoration:underline;cursor:pointer;font-size:14px;padding:8px}
+#more{display:none;margin-top:18px}#more.on{display:block}</style></head>
+<body><div class="e"><div>
+<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10z"/><path d="m9.5 9.5 5 5M14.5 9.5l-5 5"/></svg>
+<h1 id="t">Dangerous site</h1><p id="d"></p>
+<div class="row"><button class="safe" id="back">Back to safety</button><button class="link" id="det">Details</button></div>
+<div id="more"><p id="why"></p><button class="link" id="go">Proceed anyway (unsafe)</button></div>
+</div></div>
+<script src="cairn://unsafe/pages/internal.js"></script>
+<script>
+(() => { const q = new URLSearchParams(location.search); const url = q.get('url') || ''; const kind = q.get('kind') === 'malware' ? 'malware' : 'phishing';
+  const h = (() => { try { return new URL(url).hostname; } catch { return 'this site'; } })();
+  document.getElementById('t').textContent = kind === 'malware' ? 'The site ahead contains malware' : 'Dangerous site';
+  document.getElementById('d').textContent = kind === 'malware'
+    ? `Attackers currently on ${h} might attempt to install dangerous programs on your computer that steal or delete your information (for example, photos, passwords, messages and credit cards).`
+    : `Attackers on ${h} may trick you into doing something dangerous like installing software or revealing your personal information (for example, passwords, phone numbers or credit cards).`;
+  document.getElementById('why').textContent = `Cairn Safe Browsing recently detected ${kind} on ${h}. Websites that are normally safe are sometimes infected. Cairn checked this privately: only a short piece of a hash left your computer.`;
+  document.getElementById('det').onclick = () => document.getElementById('more').classList.toggle('on');
+  document.getElementById('back').onclick = () => api('safety:back');
+  document.getElementById('go').onclick = () => { if (/^https?:\/\//i.test(url)) api('safety:proceed', url); };
+})();
+</script></body></html>

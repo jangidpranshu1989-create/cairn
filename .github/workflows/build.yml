@@ -17,8 +17,10 @@ jobs:
       - name: Boot smoke test
         working-directory: server
         run: |
-          DATA_DIR=/tmp/sdata JWT_SECRET=ci-secret node src/index.js & sleep 4
+          DATA_DIR=/tmp/sdata CAPTCHA_DEV_ANSWER=1 PUBLIC_URL=http://localhost:8787 node src/index.js & sleep 4
           curl -fsS http://localhost:8787/api/health
+          curl -fsS http://localhost:8787/.well-known/openid-configuration
+          BASE=http://localhost:8787 node test/oidc-smoke.mjs
   desktop:
     strategy:
       fail-fast: false

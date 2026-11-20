@@ -320,6 +320,7 @@ object Browser {
     private class Client(val t: Tab) : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
             val u = req.url; val s = u.scheme?.lowercase() ?: return false
+            if ((s == "http" || s == "https") && app.cairn.browser.ui.OneTap.intercept(t, u, req.isForMainFrame)) return true
             if (s == "http" || s == "https" || s == "about" || s == "data" || s == "blob" || s == "javascript") return false
             if (s == "cairn" && u.host == "ask") {
                 // "Ask a follow-up" from a Cairn Search page continues in the assistant, with that page as context.

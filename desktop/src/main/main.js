@@ -149,6 +149,29 @@ function createWindow() {
   tabs.on('ask', (text) => send('agent:prefill', { text, run: true }));
   tabs.on('speak', (text) => send('agent:event', { type: 'speak', text }));
   tabs.on('tool', (t) => runPageTool(t));
+  tabs.isAuthorizeUrl = (url) => cloud.isAuthorizeUrl(url);
+  tabs.on('oauth-authorize', async (url, tab) => {
+    const wc = tab.view.webContents;
+    const fallback = () => { tab.oneTapBypass = url; wc.loadURL(url).catch(() => {}); };
+    try {
+      const req = await cloud.oauthRequest(url);
+      if (String(req.prompt || '').split(' ').includes('login')) return fallback();
+      const u = cloud.publicSession().user || {};
+      const name = u.name || (u.email || '').split('@')[0] || 'you';
+      const scopes = req.scopes.filter(s => s.id !== 'openid').map(s => '• ' + s.label);
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'question', title: 'Continue with Cairn', buttons: [`Continue as ${name}`, 'Cancel', 'Use another account'], defaultId: 0, cancelId: 1, noLink: true,
+        message: `Continue to ${req.client.name}?`,
+        detail: `${req.client.domain}${req.client.firstParty ? ' · by Cairn' : ''}\n\nSigned in as ${u.email || name}.\n${req.client.name} will be able to:\n• Know who you are on Cairn\n${scopes.join('\n')}\n\nCairn never shares your password, passkeys or browsing data.`,
+      });
+      if (response === 2) return fallback();
+      const to = await cloud.oauthApprove(url, response === 0);
+      wc.loadURL(to).catch(() => {});
+      if (response === 0) send('toast', { text: `Signed in to ${req.client.name} with Cairn` });
+    } catch (e) {
+      if (e.redirect) wc.loadURL(e.redirect).catch(() => {}); else fallback();
+    }
+  });
   tabs.on('auth-callback', (url, tab) => { if (cloud.handleAuthCallback(url)) { tab.view.webContents.loadURL('cairn://account').catch(() => {}); send('toast', { text: 'Signed in to Cairn' }); } });
   tabs.on('page-key', (e, input) => { if (input.type === 'keyDown' && input.key === 'Escape' && agent?.running) { /* allow page escape */ } });
 
@@ -372,7 +395,7 @@ function registerIpc() {
   handle('cloud:removeDevice', (_e, id) => cloud.removeDevice(id), { internal: true });
   handle('cloud:deleteAccount', (_e, pw) => cloud.deleteAccount(pw), { internal: true });
   handle('cloud:base', () => cloud.base());
-  handle('cloud:passkeyPage', () => { tabs.create(cloud.base() + '/account.html?handoff=desktop'); });
+  handle('cloud:passkeyPage', () => { tabs.create(cloud.base() + '/accounts/?handoff=desktop'); });
 
   // passwords — management (internal pages only)
   handle('pw:all', () => passwords.all(), { internal: true });

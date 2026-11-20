@@ -68,7 +68,7 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary" href="cairn://settings#phone">${ICON('phone')} Pair a phone</a><button class="btn" id="pk">${ICON('key')} Manage passkeys</button><button class="btn danger" id="out">Sign out</button></div></div>
       <div class="card" style="margin-top:16px"><h3 style="margin:0 0 6px">Delete account</h3><p class="muted" style="margin:0 0 12px">Permanently deletes your Cairn account, sessions, passkeys, paired devices, pending transfers and synced data from our server. Local browsing data on this computer is not affected.</p>
       <form id="del" style="display:flex;gap:8px;flex-wrap:wrap"><input class="input" type="password" name="pw" placeholder="Confirm with your password" autocomplete="current-password" style="flex:1;min-width:200px"><button class="btn danger" type="submit">Delete permanently</button></form><div class="err" id="delErr" style="margin-top:8px"></div></div>`;
-    $('#pk').onclick = () => api('nav:go', base + '/account.html');
+    $('#pk').onclick = () => api('nav:go', base + '/accounts/');
     $('#out').onclick = async () => { await api('cloud:logout'); toast('Signed out'); render(); };
     $('#del').onsubmit = async (e) => {
       e.preventDefault(); const pw = e.target.pw.value; $('#delErr').textContent = '';

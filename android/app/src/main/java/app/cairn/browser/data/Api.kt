@@ -178,4 +178,15 @@ object Api {
         if (r.code == 401) { Prefs.anonAiToken = "" }
         return JSONObject(r.json())
     }
+
+    // ---------- "Continue with Cairn" one-tap (OAuth 2.0 / OIDC) ----------
+    /** Client + scopes for an authorize request, or throws with the server's message. */
+    suspend fun oauthRequest(query: String): JSONObject = withContext(Dispatchers.IO) {
+        JSONObject(exec(Request.Builder().url(ep("/oauth/request?") + query).build()).json())
+    }
+    /** Approve (or deny) and get the redirect URL that carries the authorization code back to the site. */
+    suspend fun oauthApprove(params: JSONObject, approve: Boolean): String = withContext(Dispatchers.IO) {
+        val body = JSONObject(params.toString()).put("approve", approve).put("via", "android")
+        JSONObject(authed { url(ep("/oauth/approve")).post(body.toString().toRequestBody(JSON)) }.json()).getString("redirect")
+    }
 }

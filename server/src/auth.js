@@ -102,7 +102,7 @@ authRouter.get('/verify', (req, res) => {
     const p = jwt.verify(String(req.query.t), config.jwtSecret);
     if (p.purpose !== 'verify') throw new Error();
     db.prepare('UPDATE users SET email_verified=1 WHERE id=?').run(p.sub);
-    res.redirect('/account.html?verified=1');
+    res.redirect(`${config.publicUrl}/accounts/?verified=1`);
   } catch { res.status(400).send('Verification link is invalid or expired.'); }
 });
 
@@ -183,7 +183,7 @@ authRouter.post('/forgot', authLimiter, async (req, res) => {
     if (u) {
       const token = crypto.randomBytes(32).toString('base64url');
       db.prepare('INSERT INTO reset_tokens (token_hash, user_id, expires_at) VALUES (?,?,?)').run(sha256(token), u.id, now() + 30 * 60_000);
-      await sendMail(email.data, 'Reset your Cairn password', `Reset your password (valid 30 minutes): ${config.publicUrl}/reset.html?t=${token}`).catch(() => {});
+      await sendMail(email.data, 'Reset your Cairn password', `Reset your password (valid 30 minutes): ${config.publicUrl}/accounts/reset.html?t=${token}`).catch(() => {});
     }
   }
   res.json({ ok: true }); // never reveal whether an email exists
@@ -217,6 +217,8 @@ authRouter.delete('/account', requireAuth, async (req, res) => {
   // Remove stored transfer files before the rows cascade away.
   const tdir = path.join(config.dataDir, 'transfers');
   for (const t of db.prepare('SELECT id FROM transfers WHERE user_id=?').all(u.id)) fs.rm(path.join(tdir, path.basename(t.id)), { force: true }, () => {});
+  for (const t of ['oauth_codes', 'oauth_refresh', 'oauth_consents']) try { db.prepare(`DELETE FROM ${t} WHERE user_id=?`).run(u.id); } catch {}
+  try { db.prepare('DELETE FROM oauth_clients WHERE owner_id=?').run(u.id); } catch {}
   db.prepare('DELETE FROM users WHERE id=?').run(u.id);
   audit(u.id, 'account_deleted');
   res.json({ ok: true });

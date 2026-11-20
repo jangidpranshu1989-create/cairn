@@ -127,6 +127,7 @@ fun App(webHost: FrameLayout, bgHost: FrameLayout) {
         if (Ui.siteInfo) SiteInfoSheet()
         Ui.linkMenu?.let { LinkMenuSheet(it) }
         Ui.prompt?.let { SitePromptDialog(it) }
+        OneTapSheet()
         VoiceOverlay()
         Ui.fullscreen?.let { v ->
             Box(Modifier.fillMaxSize().background(Color.Black)) {

@@ -1,7 +1,19 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const isProd = process.env.NODE_ENV === 'production';
+
+// Secrets that must survive restarts: env var if set, otherwise generated once and kept in DATA_DIR (0600).
+function persistedSecret(name, file) {
+  if (process.env[name]) return process.env[name];
+  const dir = process.env.DATA_DIR || './data'; fs.mkdirSync(dir, { recursive: true });
+  const f = path.join(dir, file);
+  try { return fs.readFileSync(f, 'utf8').trim(); } catch {}
+  const v = crypto.randomBytes(48).toString('base64url');
+  fs.writeFileSync(f, v, { mode: 0o600 }); return v;
+}
 
 function required(name, fallback) {
   const v = process.env[name];
@@ -13,15 +25,15 @@ function required(name, fallback) {
 export const config = {
   isProd,
   port: Number(process.env.PORT || 8787),
-  publicUrl: process.env.PUBLIC_URL || 'http://localhost:8787',
+  publicUrl: (process.env.PUBLIC_URL || 'http://localhost:8787').replace(/\/$/, ''),
   dataDir: process.env.DATA_DIR || './data',
-  jwtSecret: required('JWT_SECRET', isProd ? undefined : crypto.randomBytes(32).toString('hex')),
+  jwtSecret: persistedSecret('JWT_SECRET', 'jwt.secret'),
   accessTtlSec: 15 * 60,
   refreshTtlSec: 60 * 60 * 24 * 30,
   // WebAuthn / passkeys
-  rpId: process.env.RP_ID || 'localhost',
+  rpId: process.env.RP_ID || new URL(process.env.PUBLIC_URL || 'http://localhost:8787').hostname,
   rpName: process.env.RP_NAME || 'Cairn',
-  rpOrigins: (process.env.RP_ORIGINS || 'http://localhost:8787').split(',').map(s => s.trim()),
+  rpOrigins: (process.env.RP_ORIGINS || new URL(process.env.PUBLIC_URL || 'http://localhost:8787').origin).split(',').map(s => s.trim()),
   // Production defaults to the public site only (desktop pages use cairn:// and native clients send no Origin).
   corsOrigins: (process.env.CORS_ORIGINS || (isProd ? (process.env.PUBLIC_URL || '') : '*')).split(',').map(s => s.trim()).filter(Boolean),
   // AI providers

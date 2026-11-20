@@ -116,5 +116,21 @@ const pairStart = () => api('/devices/pair/start', { method: 'POST' });
 const removeDevice = (id) => api('/devices/' + id, { method: 'DELETE' });
 async function deleteAccount(password) { await api('/auth/account', { method: 'DELETE', body: { password } }); setSession(null); return { ok: true }; }
 
-module.exports = { events, api, isSignedIn, publicSession, login, signup, captcha, logout, handleAuthCallback, connect,
+// ---------- "Continue with Cairn" one-tap ----------
+function isAuthorizeUrl(url) {
+  if (!isSignedIn()) return false;
+  try { const u = new URL(url), b = new URL(base()); return u.origin === b.origin && u.pathname === b.pathname.replace(/\/$/, '') + '/oauth/authorize'; } catch { return false; }
+}
+async function oauthRequest(url) {
+  const r = await fetch(base() + '/api/oauth/request' + new URL(url).search);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || 'This sign-in request is not valid'), { redirect: j.redirect });
+  return j;
+}
+async function oauthApprove(url, approve) {
+  const params = Object.fromEntries(new URL(url).searchParams);
+  return (await api('/oauth/approve', { method: 'POST', body: { ...params, approve, via: 'desktop' } })).redirect;
+}
+
+module.exports = { isAuthorizeUrl, oauthRequest, oauthApprove, events, api, isSignedIn, publicSession, login, signup, captcha, logout, handleAuthCallback, connect,
   requestApproval, decideLocally, sendToPhone, devices, pairStart, removeDevice, deleteAccount, base };

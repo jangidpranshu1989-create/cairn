@@ -84,11 +84,18 @@ class Tabs extends EventEmitter {
       if (/^https?:|^cairn:/.test(url)) this.create(url, { active: disposition !== 'background-tab', openerIndex: this.order.indexOf(tab.id) });
       return { action: 'deny' };
     });
+    // "Continue with Cairn": a signed-in user gets a native one-tap prompt instead of the web consent page.
+    const oneTap = (e, url) => {
+      if (tab.private || tab.oneTapBypass === url || !this.isAuthorizeUrl?.(url)) return false;
+      e.preventDefault(); this.emit('oauth-authorize', url, tab); return true;
+    };
     wc.on('will-navigate', (e, url) => {
-      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); }
+      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); return; }
+      oneTap(e, url);
     });
-    wc.on('will-redirect', (e, url) => {
-      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); }
+    wc.on('will-redirect', (e, url, _inPlace, isMainFrame) => {
+      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); return; }
+      if (isMainFrame !== false) oneTap(e, url);
     });
     wc.on('context-menu', (_e, p) => this.contextMenu(tab, p));
     wc.on('before-input-event', (e, input) => this.emit('page-key', e, input, tab));

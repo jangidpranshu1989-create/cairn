@@ -15,13 +15,14 @@ import { transfersRouter } from './transfers.js';
 import { aiRouter } from './ai.js';
 import { attachHub } from './hub.js';
 import { syncRouter } from './sync.js';
+import { oidcRouter, oauthApi } from './oidc.js';
 import { readFileSync } from 'node:fs';
 
 const VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version; } catch { return '0.0.0'; } })();
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: {
-  directives: { defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:'], styleSrc: ["'self'", "'unsafe-inline'", 'https://api.fontshare.com'],
+  directives: { defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'https:'], styleSrc: ["'self'", "'unsafe-inline'", 'https://api.fontshare.com'],
     fontSrc: ["'self'", 'https://cdn.fontshare.com'], scriptSrc: ["'self'"], connectSrc: ["'self'"] } } }));
 // Bearer-token API (no cookies), so CORS only needs to allow the public site and Cairn's own internal pages.
 app.use(cors({ credentials: false, origin: (o, cb) => cb(null, !o || config.corsOrigins.includes('*') || config.corsOrigins.includes(o) || /^cairn:\/\//.test(o)) }));
@@ -36,6 +37,8 @@ app.use('/api/approvals', approvalsRouter);
 app.use('/api/transfers', transfersRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/sync/v2', syncRouter);
+app.use('/api/oauth', oauthApi);
+app.use('/', oidcRouter);
 
 // Public website: contact form + Pro waitlist (rate-limited, validated, stored for the team)
 const contactLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });
@@ -69,7 +72,20 @@ app.put('/api/sync/:kind', requireAuth, express.json({ limit: '10mb' }), (req, r
 
 // Hosted account pages (sign-in, passkeys, reset) live in /public
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Legacy /account.html (used by older desktop builds for ?handoff=desktop) -> new Accounts portal. Relative redirects keep proxy prefixes.
+let _404;
+const page404 = () => (_404 ??= readFileSync(path.join(__dirname, '..', 'public', '404.html'), 'utf8')).replaceAll('{{BASE}}', config.publicUrl);
+const qs = (req) => { const i = req.originalUrl.indexOf('?'); return i < 0 ? '' : req.originalUrl.slice(i); };
+app.get(['/account', '/account.html'], (req, res) => res.redirect(302, 'accounts/' + qs(req)));
+app.get('/', (req, res) => res.redirect(302, 'accounts/' + qs(req)));
+// The SDK is embedded by third-party sites, so it must be loadable cross-origin (helmet defaults CORP to same-origin).
+app.use('/sdk', (_req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Access-Control-Allow-Origin', '*'); next(); });
 app.use(express.static(path.join(__dirname, '..', 'public'), { extensions: ['html'] }));
+app.use((req, res) => {
+  if (req.method === 'GET' && !req.path.startsWith('/api/') && req.accepts(['html', 'json']) === 'html')
+    return res.status(404).type('html').send(page404());
+  res.status(404).json({ error: 'Not found' });
+});
 
 app.use((err, _req, res, _next) => {
   console.error(err);
@@ -78,4 +94,4 @@ app.use((err, _req, res, _next) => {
 
 const server = http.createServer(app);
 attachHub(server);
-server.listen(config.port, () => console.log(`Cairn server on :${config.port} (groq=${!!config.groqKey}, nvidia=${!!config.nvidiaKey})`));
+server.listen(config.port, () => console.log(`Cairn server on :${config.port} · issuer ${config.publicUrl} · AI providers: groq=${!!config.groqKey} nvidia=${!!config.nvidiaKey}`));

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://jangidpranshu1989-create.github.io/cairn/sitemap.xml

@@ -34,7 +34,7 @@ app.use(strictCors);
 app.use(express.json({ limit: '4mb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, time: now(), version: VERSION, storage: config.tursoUrl ? 'turso' : supabaseEnabled() ? 'supabase' : 'local' }));
+app.get('/api/health', (_req, res) => res.set('Cache-Control', 'no-store').json({ ok: true, time: now(), uptime: Math.round(process.uptime()), version: VERSION, storage: config.tursoUrl ? 'turso' : supabaseEnabled() ? 'supabase' : 'local' }));
 app.use('/api/auth', authRouter);
 app.use('/api/passkeys', passkeyRouter);
 app.use('/api/devices', devicesRouter);

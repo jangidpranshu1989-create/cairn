@@ -5,4 +5,34 @@ object Intents {
     // Any phrasing of "put it in my cart / buy it": "add X from Vijay Sales to my cart", "cart mein daal do", "isko kharid lo",
     // "buy the cheapest", "checkout tak le jao". The words may be far apart, so match the cart/buy words themselves.
     val BUY = Regex("(?i)(\\bto (the |my |your )?(cart|bag|basket|trolley)\\b|\\b(cart|bag|basket)\\s*(me|mein|mai|m|par|pe)?\\s*(add|daal|dal|daalo|dalo|daal ?do|dal ?do|rakh|rakho|kar|kr|karo|kro)\\b|\\badd (kar|kr|karo|kro|kardo|krdo|kar ?do)\\b|\\badd (it|this|that|these|them)\\b|cart tak|\\bcheck ?out\\b|\\bbuy (it|now|this|that|these|them|the|me|a|an|one|kar|kr|karo)\\b|\\border (kar|kr|karo|kro|it|this|that|place|now|de|do)\\b|place (the |an |my )?order|kh(a)?r(ee|i)d (lo|do|le|de|ke|kar|kr|karo|kro|dena|lena)\\b|kh(a)?r(ee|i)do\\b|\\bpurchase\\b|le (aao|ao|jao|ja|lo)\\b|\\bmanga (do|lo|de)\\b|pay (kar|kr|for|it)|payment (kar|kr))")
+
+    // "find / compare / dhundh / price of …" — shopping requests that don't say "cart".
+    val FIND = Regex("(?i)\\b(find|search|look ?up|compare|dhund\\w*|dhoond\\w*|khoj\\w*|price|prices|daam|kimat|keemat|cheapest|sasta|sabse sasta|best deal|lowest)\\b")
+
+    private val STORE_WORDS = listOf("amazon.in", "amazon", "flipkart", "croma", "reliance digital", "reliance", "vijay sales", "vijaysales",
+        "tata cliq", "tatacliq", "myntra", "meesho", "jiomart", "best buy", "bestbuy", "walmart", "target", "ebay")
+    private val FILLER = Regex("(?i)\\b(mere|mera|meri|mujhe|humein|hume|liye|ke|ka|ki|ko|please|pls|plz|bhai|bro|yaar|zara|jaldi|abhi|ek|one|a|an|the|my|me|mein|mai|m|on|from|at|in|se|par|pe|and|aur|or|then|phir|fir|to|for|of|it|this|that|isko|usko|ise|use|" +
+        "find|search|look|lookup|up|compare|dhund\\w*|dhoond\\w*|khoj\\w*|nikal\\w*|dikha\\w*|bata\\w*|show|get|give|bring|buy|order|purchase|kh(a)?r(ee|i)d\\w*|manga\\w*|le|lo|la|aao|ao|jao|ja|" +
+        "add|cart|bag|basket|trolley|checkout|check|out|daal\\w*|dal\\w*|rakh\\w*|kar|kr|karo|kro|kardo|krdo|kar ?do|de|do|dena|dedo|lena|ho|hai|h|" +
+        "price|prices|daam|kimat|keemat|cheapest|sasta|sabse|best|deal|deals|lowest|wala|wali|vala|vali|i|want|need|chahiye|can|you|u|plz|now|today|online|store|website|site|app)\\b")
+
+    /**
+     * The product named in a shopping request, without the AI: "mere liye iphone 17 find kr flipkart and add to cart kr de"
+     * → "iphone 17". Returns null when nothing product-like is left.
+     */
+    fun product(text: String): String? {
+        var t = " " + text.lowercase().replace(Regex("https?://\\S+"), " ") + " "
+        for (w in STORE_WORDS) t = t.replace(Regex("(?i)\\b" + Regex.escape(w) + "\\b"), " ")
+        t = t.replace(Regex("[,.!?;:\"'()\\[\\]|/]+"), " ")
+        t = FILLER.replace(t, " ")
+        val out = t.replace(Regex("\\s+"), " ").trim()
+        return out.takeIf { it.length >= 2 && it.any(Char::isLetterOrDigit) }
+    }
+
+    /** The store named in the request (lower-case key as used by [Shopping.STORES]), if any. */
+    fun store(text: String): String? {
+        val l = text.lowercase()
+        return listOf("flipkart" to "flipkart", "amazon" to "amazon", "croma" to "croma", "reliance" to "reliance", "vijay ?sales" to "vijaysales",
+            "tata ?cliq" to "tatacliq", "best ?buy" to "bestbuy", "walmart" to "walmart").firstOrNull { Regex("\\b${it.first}\\b").containsMatchIn(l) }?.second
+    }
 }

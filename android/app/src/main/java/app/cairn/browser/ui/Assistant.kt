@@ -116,6 +116,7 @@ private fun NetImage(urls: List<String>, modifier: Modifier, referer: String? = 
 @Composable
 fun AssistantSheet() {
     LaunchedEffect(Agent.openRequests) { if (Agent.openRequests > 0) Ui.assistant = true }
+    LaunchedEffect(Ui.assistant) { if (Ui.assistant) app.cairn.browser.agent.Llm.warm() }
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val h = constraints.maxHeight.toFloat()

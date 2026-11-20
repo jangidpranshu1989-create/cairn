@@ -144,19 +144,21 @@ fun Dock(tab: Tab?, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         AddressPill(tab)
         Spacer(Modifier.height(6.dp))
+        // Fixed 42dp slots for the four buttons and the rest for the Assistant pill, so "Assistant" is always shown in
+        // full (weights gave the label only ~36dp on a 360dp phone and it was clipped to "Assis").
         Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
             val canBack = tab != null && (tab.canBack || !tab.isNtp)
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                IconBtn(Ic.ArrowBack, "Back", tint = if (canBack) C.text else C.faint, size = 46.dp, enabled = canBack) { Haptics.tick(); tab?.let { Browser.back(it) } }
+            Box(Modifier.width(42.dp), contentAlignment = Alignment.Center) {
+                IconBtn(Ic.ArrowBack, "Back", tint = if (canBack) C.text else C.faint, size = 42.dp, enabled = canBack) { Haptics.tick(); tab?.let { Browser.back(it) } }
             }
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Box(Modifier.width(42.dp), contentAlignment = Alignment.Center) {
                 val canFwd = tab?.canForward == true
-                IconBtn(Ic.ArrowForward, "Forward", tint = if (canFwd) C.text else C.faint, size = 46.dp, enabled = canFwd) { Haptics.tick(); Browser.forward(tab) }
+                IconBtn(Ic.ArrowForward, "Forward", tint = if (canFwd) C.text else C.faint, size = 42.dp, enabled = canFwd) { Haptics.tick(); Browser.forward(tab) }
             }
-            AssistantPill(Modifier.weight(2.6f))
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { TabsTile(tab) }
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                IconBtn(Ic.Add, "New tab", tint = C.text, size = 46.dp) { Haptics.tick(); Browser.newTab(NTP, tab?.incognito == true); Ui.omnibox = true }
+            AssistantPill(Modifier.weight(1f))
+            Box(Modifier.width(42.dp), contentAlignment = Alignment.Center) { TabsTile(tab) }
+            Box(Modifier.width(42.dp), contentAlignment = Alignment.Center) {
+                IconBtn(Ic.Add, "New tab", tint = C.text, size = 42.dp) { Haptics.tick(); Browser.newTab(NTP, tab?.incognito == true); Ui.omnibox = true }
             }
         }
     }
@@ -214,19 +216,26 @@ private fun AssistantPill(modifier: Modifier) {
     val rot by t.animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "rot")
     val col = C.agent
     val shape = RoundedCornerShape(25.dp)
-    Row(modifier.padding(horizontal = 4.dp).height(48.dp).clip(shape).background(C.surface).border(1.dp, C.line2, shape)
-        .combinedClickableCompat(onClick = { Haptics.tick(); Ui.assistant = true }, onLongClick = { Haptics.long(); startLasso() })
-        .padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-            if (Agent.running) Canvas(Modifier.size(24.dp).rotate(rot)) { drawArc(col, 0f, 110f, false, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round)) }
-            Logo(18.dp, lift = if (Agent.running) 1f else 0f)
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(if (Agent.running) "Working…" else "Assistant", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.weight(1f))
-        Box(Modifier.size(40.dp).clip(CircleShape).background(if (C.dark) Color(0xFFECECEC) else C.text).clickable {
-            Haptics.tick(); act.listen { q -> if (q.isNotBlank()) { Ui.assistant = true; Agent.run(q) } }
-        }, contentAlignment = Alignment.Center) {
-            Icon(Ic.GraphicEq, "Talk to Cairn", Modifier.size(20.dp), tint = if (C.dark) Color(0xFF1C1C1F) else C.bg)
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.padding(horizontal = 6.dp)) {
+        // Narrow phones (< 340dp wide) get a slightly smaller label and voice button so the full word still fits.
+        val tight = maxWidth < 140.dp
+        val voice = maxWidth >= 120.dp // on the very narrowest phones the label wins; voice stays in the address bar
+        Row(Modifier.fillMaxWidth().height(48.dp).clip(shape).background(C.surface).border(1.dp, C.line2, shape)
+            .combinedClickableCompat(onClick = { Haptics.tick(); Ui.assistant = true }, onLongClick = { Haptics.long(); startLasso() })
+            .padding(start = if (tight) 10.dp else 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+                if (Agent.running) Canvas(Modifier.size(22.dp).rotate(rot)) { drawArc(col, 0f, 110f, false, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round)) }
+                Logo(17.dp, lift = if (Agent.running) 1f else 0f)
+            }
+            Spacer(Modifier.width(if (tight) 6.dp else 8.dp))
+            Text(if (Agent.running) "Working…" else "Assistant", color = C.text, fontSize = if (tight) 13.sp else 14.sp, fontWeight = FontWeight.Medium,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Visible, modifier = Modifier.weight(1f))
+            val vs = if (tight) 32.dp else 38.dp
+            if (voice) Box(Modifier.size(vs).clip(CircleShape).background(if (C.dark) Color(0xFFECECEC) else C.text).clickable {
+                Haptics.tick(); act.listen { q -> if (q.isNotBlank()) { Ui.assistant = true; Agent.run(q) } }
+            }, contentAlignment = Alignment.Center) {
+                Icon(Ic.GraphicEq, "Talk to Cairn", Modifier.size(if (tight) 17.dp else 19.dp), tint = if (C.dark) Color(0xFF1C1C1F) else C.bg)
+            }
         }
     }
 }

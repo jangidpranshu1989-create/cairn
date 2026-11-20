@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcut glyph on the 108dp adaptive-icon canvas: 42dp artwork centred in the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:scaleX="1.75" android:scaleY="1.75" android:translateX="33.0" android:translateY="33.0">
+        <path android:strokeColor="#FFEEEDEA" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M2.5 11h19"/>
+        <path android:strokeColor="#FFEEEDEA" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M5 11l1.6-5.6a1.5 1.5 0 0 1 1.9-1l2.4.8a3.5 3.5 0 0 0 2.2 0l2.4-.8a1.5 1.5 0 0 1 1.9 1L19 11"/>
+        <path android:strokeColor="#FFEEEDEA" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M4 16a3 3 0 1 0 6 0a3 3 0 1 0-6 0Z"/>
+        <path android:strokeColor="#FFEEEDEA" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M14 16a3 3 0 1 0 6 0a3 3 0 1 0-6 0Z"/>
+        <path android:strokeColor="#FFEEEDEA" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M10 16a2 2 0 0 1 4 0"/>
+    </group>
+</vector>

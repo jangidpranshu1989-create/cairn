@@ -72,8 +72,35 @@ async function chat(opts) {
     }
   }
   if (opts.tier === 'vision' || (cloudErr.status === 429 && /daily/i.test(cloudErr.message))) throw cloudErr;
+  let freeErr;
   try { return await freeChat(opts); }
-  catch (e) { if (signal?.aborted) throw e; throw cloudErr.status && cloudErr.status !== 503 ? cloudErr : new Error('NO_AI'); }
+  catch (e) { if (signal?.aborted) throw e; freeErr = e; }
+  // Both failed. Cairn Cloud on Render's free tier answers 404 from its edge (x-render-routing: no-server) for the
+  // 30-60 s it takes to wake up, so wait for it patiently (~40 s) instead of failing after 2 s.
+  const transientCloud = (e) => !e.status || [404, 408, 425, 502, 503, 504].includes(e.status) || (e.status === 429 && !/daily|limit/i.test(e.message));
+  if (transientCloud(cloudErr) && Date.now() - downAt > 30_000) {
+    for (const wait of [2000, 3000, 5000, 7000, 10000, 12000]) {
+      await new Promise(r => setTimeout(r, wait));
+      if (signal?.aborted) throw new Error('aborted');
+      try {
+        const j = await okJson(await serverFetch('/ai/chat', { json: { ...rest, stream: false }, signal }));
+        downAt = 0;
+        return { message: j.choices[0].message, provider: j._provider || 'cairn', usage: j.usage };
+      } catch (e) { if (signal?.aborted) throw e; cloudErr = e; if (!transientCloud(e)) break; }
+    }
+  }
+  downAt = Date.now();
+  void freeErr;
+  throw cloudErr.status && cloudErr.status !== 503 && cloudErr.status !== 404 ? cloudErr : new Error('NO_AI');
+}
+let downAt = 0;
+
+/** Wakes Cairn Cloud in the background (the free tier sleeps after 15 idle minutes). */
+let lastWarm = 0;
+function warm() {
+  if (Date.now() - lastWarm < 60_000) return;
+  lastWarm = Date.now();
+  fetch(base() + '/api/health', { signal: AbortSignal.timeout(70_000) }).catch(() => {});
 }
 
 async function readSse(r, onDelta) {
@@ -129,4 +156,4 @@ async function transcribe(buffer, mime, language) {
 // Cloud TTS isn't offered; Cairn reads aloud with the system's voices.
 async function speech() { throw new Error('No voice installed for this language. Install a system voice for it in your OS settings.'); }
 
-module.exports = { chat, stream, complete, completeJSON, transcribe, speech, status };
+module.exports = { chat, stream, complete, completeJSON, transcribe, speech, status, warm };

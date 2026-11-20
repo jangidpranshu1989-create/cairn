@@ -1,0 +1,1 @@
+3.0.2: permanent fix for "Cairn Cloud 404 / LLM7 429" - the app wakes the server early and waits for it instead of giving up. Shopping (find, compare, add to cart, checkout) now works on-device even when every AI is down. New shortcut icons and labels, and the dock shows the full "Assistant".

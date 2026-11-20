@@ -42,6 +42,33 @@
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
     <article class="rv">
+      <div><div class="ver">v2.7.0</div><time datetime="2026-11-20">20 November 2026</time><span class="tag">Sharper agent, permanent cloud</span></div>
+      <div class="prose">
+        <p>Fixes from real-phone testing of 2.6.0, a quicker home screen, and a Cairn Cloud database that survives restarts.</p>
+        <h3>Agent taps the right button</h3>
+        <ul>
+          <li>On-screen reading (OCR and vision) now captures only the web page, so the chat window and dock can't be read or tapped by mistake. Before, the agent could tap the word "Add" inside its own chat message.</li>
+          <li>Add to Cart, Buy Now and Go to Cart are found as real buttons in the page, including Flipkart's and Amazon's fixed bottom bars. If the button isn't on screen, Cairn scrolls once and looks again.</li>
+          <li>On-screen matching only taps the whole button label, such as "add to cart". It never taps a single word in a sentence.</li>
+        </ul>
+        <h3>Fewer rate limits</h3>
+        <ul>
+          <li>The agent sends about 60–70% less page data per step: only labelled buttons, links and fields, plus visible prices. Older page views are dropped from the conversation.</li>
+          <li>When Groq says 429, Cairn waits 1.5 seconds and retries on llama-3.1-8b-instant. If that is limited too, it rests that key and moves straight to the next one.</li>
+          <li>Settings, AI now takes several free keys at once (Groq, Gemini and OpenRouter) and rotates between them.</li>
+        </ul>
+        <h3>Home and speed</h3>
+        <ul>
+          <li>New home screen: one glowing box for searching, opening sites or giving Cairn a task, one-tap task chips, and a card to continue your last chat.</li>
+          <li>Android keeps the visible tab's page process at high priority, so it is less likely to be closed under memory pressure.</li>
+        </ul>
+        <h3>Cairn Cloud server</h3>
+        <ul>
+          <li>Optional permanent storage on Supabase's free tier. When anything changes, the server saves a compressed copy of its database within 15 seconds, plus a final copy on shutdown and one dated backup per day. It restores everything on boot, including login keys, so free hosts like Koyeb no longer lose accounts.</li>
+        </ul>
+      </div>
+    </article>
+    <article class="rv">
       <div><div class="ver">v2.6.0</div><time datetime="2026-11-20">20 November 2026</time><span class="tag">Agent that finishes the job</span></div>
       <div class="prose">
         <p>The assistant no longer stops at product cards. It compares, adds the best deal to your cart, goes to checkout and can pay within a limit you set.</p>
@@ -231,7 +258,7 @@
     <div><h4>Company</h4><ul><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li><li><a href="security.html">Security</a></li></ul></div>
     <div><h4>Legal</h4><ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of service</a></li><li><a href="security.html#disclosure">Responsible disclosure</a></li></ul></div>
   </div>
-  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v2.6.0 · Built with Groq &amp; NVIDIA NIM</span></div>
+  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v2.7.0 · Built with Groq &amp; NVIDIA NIM</span></div>
 </div></footer>
 <script src="assets/site.js" defer></script>
 </body>

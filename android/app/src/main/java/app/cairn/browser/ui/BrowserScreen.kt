@@ -61,6 +61,7 @@ import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import app.cairn.browser.agent.Agent
+import app.cairn.browser.agent.Chats
 import app.cairn.browser.browser.Browser
 import app.cairn.browser.browser.Downloads
 import app.cairn.browser.browser.NTP
@@ -238,6 +239,13 @@ private val defaults = listOf("Wikipedia" to "https://www.wikipedia.org", "Amazo
     "GitHub" to "https://github.com", "X" to "https://x.com", "LinkedIn" to "https://www.linkedin.com", "MakeMyTrip" to "https://www.makemytrip.com")
 
 private data class Idea(val icon: androidx.compose.ui.graphics.vector.ImageVector, val title: String, val prompt: String)
+private val quick = listOf(
+    Triple(Ic.ShoppingBag, "Sabse sasta phone", "Sabse sasta CMF Phone 2 Pro trusted store se dhoondo aur cart mein daal ke checkout tak le jao"),
+    Triple(Ic.Summarize, "Summarize this page", "Summarize the page I was reading"),
+    Triple(Ic.Flight, "Cheapest flight", "Find the cheapest flight from Delhi to Mumbai this Friday"),
+    Triple(Ic.BellRing, "Track a price", "Track the price of Sony WH-1000XM5 and alert me when it drops"),
+    Triple(Ic.Newspaper, "Today's news", "Give me today's top India news with sources"),
+)
 private val ideas = listOf(
     Idea(Ic.ShoppingBag, "Compare prices", "Find the cheapest iPhone 16 from a trusted store"),
     Idea(Ic.Swarm, "Plan a trip", "Plan a weekend in Jaipur: best flight, hotel and cab"),
@@ -284,14 +292,39 @@ fun NewTabPage(private: Boolean) {
             ProfileAvatar(34.dp) { Ui.profile = true }
         }
         Spacer(Modifier.height(24.dp))
-        // Search / ask
-        Row(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(18.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(18.dp))
-            .clickable { Ui.omniboxText = null; Ui.omnibox = true }.padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Ic.Search, null, Modifier.size(18.dp), tint = C.muted); Spacer(Modifier.width(12.dp))
-            Text("Search or ask Cairn", color = C.faint, fontSize = 16.sp, modifier = Modifier.weight(1f))
-            IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 42.dp) { act.listen { ask(it) } }
+        // Search / ask — one box for both, with a slow agent glow so it reads as "Cairn can do this for you"
+        val motion = android.provider.Settings.Global.getFloat(LocalContext.current.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+        val glow = rememberGlowPhase(motion)
+        Column(Modifier.fillMaxWidth().glowBorder(motion, glow, 20.dp, 1.2.dp).clip(RoundedCornerShape(20.dp)).background(C.surface)
+            .clickable { Ui.omniboxText = null; Ui.omnibox = true }) {
+            Row(Modifier.fillMaxWidth().height(58.dp).padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Ic.Search, null, Modifier.size(18.dp), tint = C.muted); Spacer(Modifier.width(12.dp))
+                Text("Search, open a site or give Cairn a task", color = C.faint, fontSize = 15.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 42.dp) { act.listen { ask(it) } }
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                quick.forEach { (ic, label, prompt) ->
+                    Row(Modifier.clip(RoundedCornerShape(50)).background(C.surface2).clickable { Haptics.tick(); ask(prompt) }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(ic, null, Modifier.size(14.dp), tint = C.agent); Spacer(Modifier.width(6.dp))
+                        Text(label, color = C.text, fontSize = 12.5.sp, maxLines = 1)
+                    }
+                }
+            }
         }
-        Spacer(Modifier.height(26.dp))
+        // Pick up the last assistant conversation where it stopped
+        val lastChat = Chats.list.maxByOrNull { it.updated }
+        if (lastChat != null && System.currentTimeMillis() - lastChat.updated < 3 * 86_400_000L) {
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.agentSoft).clickable { Haptics.tick(); if (Agent.openChat(lastChat.id)) Ui.assistant = true }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Ic.AutoAwesome, null, Modifier.size(18.dp), tint = C.agent); Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Continue: ${lastChat.title}", color = C.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (lastChat.preview.isNotBlank()) Text(lastChat.preview, color = C.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(Ic.ChevronRight, null, Modifier.size(16.dp), tint = C.muted)
+            }
+        }
+        Spacer(Modifier.height(24.dp))
         // Favourites
         Column(Modifier.fillMaxWidth()) {
             sites.chunked(4).forEach { row ->

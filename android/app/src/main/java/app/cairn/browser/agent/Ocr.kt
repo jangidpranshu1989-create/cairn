@@ -57,7 +57,15 @@ object Ocr {
         for (b in res.textBlocks) for (l in b.lines) {
             val t = norm(l.text); val box = l.boundingBox ?: continue
             for ((rank, w) in wants.withIndex()) {
-                val score = when { t == w -> 100; t.startsWith(w) -> 80; t.contains(w) && t.length <= w.length + 12 -> 60; else -> 0 } - rank
+                // Exact button phrases win; a single word ("add") is only accepted as the whole line, never inside a sentence.
+                val multi = w.contains(' ')
+                val score = when {
+                    t == w -> 100
+                    multi && t.startsWith(w) && t.length <= w.length + 6 -> 85
+                    multi && t.contains(w) && t.length <= w.length + 12 -> 60
+                    else -> 0
+                } - rank * 2
+                if (score <= 0 || box.height() < 12) continue
                 if (score > bestScore) { bestScore = score; best = Triple(box.exactCenterX(), box.exactCenterY(), l.text) }
             }
         }

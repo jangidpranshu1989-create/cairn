@@ -61,22 +61,25 @@ object Llm {
     }
 
     /** A keyless or personal-key OpenAI-compatible endpoint called straight from the phone. */
-    private class Direct(val name: String, val url: String, val key: String?, val smart: String, val fast: String, val json: Boolean)
+    private class Direct(val name: String, val url: String, val key: String?, val smart: String, val fast: String, val json: Boolean, val small: String? = null)
+    /** Provider → time until which it is skipped after a hard rate limit, so the next request goes straight to another key. */
+    private val coolUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /**
      * Direct fallbacks, best first. The old text.pollinations.ai host is retired (404 "legacy API", 1 reply / 45 s), so it
      * is only the very last resort; LLM7's keyless gateway supports tool calls; a personal key (Settings → AI) beats both.
      */
     private fun directs(): List<Direct> = buildList {
-        val k = Prefs.aiKey.trim()
-        if (k.isNotEmpty()) when (Prefs.aiKeyProvider) {
-            "groq" -> add(Direct("Groq (your key)", "https://api.groq.com/openai/v1/chat/completions", k, "openai/gpt-oss-120b", "openai/gpt-oss-20b", true))
-            "gemini" -> add(Direct("Gemini (your key)", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", k, "gemini-flash-latest", "gemini-flash-lite-latest", true))
-            "openrouter" -> add(Direct("OpenRouter (your key)", "https://openrouter.ai/api/v1/chat/completions", k, "openrouter/free", "openrouter/free", false))
-        }
+        // Legacy single key (2.6.0) counts for its provider if the new per-provider field is empty.
+        val legacy = Prefs.aiKey.trim(); val lp = Prefs.aiKeyProvider
+        fun keyOf(p: String, v: String): String = v.trim().ifEmpty { if (lp == p) legacy else "" }
+        val groq = keyOf("groq", Prefs.groqKey); val gem = keyOf("gemini", Prefs.geminiKey); val orKey = keyOf("openrouter", Prefs.openrouterKey)
+        if (groq.isNotEmpty()) add(Direct("Groq (your key)", "https://api.groq.com/openai/v1/chat/completions", groq, "openai/gpt-oss-120b", "openai/gpt-oss-20b", true, small = "llama-3.1-8b-instant"))
+        if (gem.isNotEmpty()) add(Direct("Gemini (your key)", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", gem, "gemini-flash-latest", "gemini-flash-lite-latest", true, small = "gemini-flash-lite-latest"))
+        if (orKey.isNotEmpty()) add(Direct("OpenRouter (your key)", "https://openrouter.ai/api/v1/chat/completions", orKey, "openrouter/free", "openrouter/free", false))
         add(Direct("LLM7", "https://api.llm7.io/v1/chat/completions", null, "default", "default", false))
         add(Direct("Pollinations", "https://text.pollinations.ai/openai", null, "openai", "openai", false))
-    }
+    }.let { all -> val now = System.currentTimeMillis(); all.filter { (coolUntil[it.name] ?: 0L) < now }.ifEmpty { all } }
 
     /** Skip a server that just failed (offline, 404, 5xx) for a minute, so every step doesn't wait on it again. */
     @Volatile private var cloudDownUntil = 0L
@@ -97,6 +100,7 @@ object Llm {
         if (tools != null) b.put("tools", tools).put("tool_choice", "auto")
         if (json && d.json) b.put("response_format", JSONObject().put("type", "json_object"))
         var last: ApiException? = null
+        var usedSmall = false
         repeat(3) { attempt ->
             val rq = Request.Builder().url(d.url).post(b.toString().toRequestBody(JSON_T)).apply { d.key?.let { header("Authorization", "Bearer $it") } }.build()
             http.newCall(rq).execute().use { r ->
@@ -112,10 +116,15 @@ object Llm {
                 last = ApiException(r.code, t.take(200))
                 // Short rate limits ("retry in 1 seconds") are waited out on the same provider; anything else moves on.
                 val wait = r.header("Retry-After")?.toDoubleOrNull() ?: runCatching { JSONObject(t).optJSONObject("error")?.optDouble("retry_after") }.getOrNull()?.takeIf { !it.isNaN() }
-                if (r.code != 429 || attempt == 2 || (wait ?: 2.0) > 5) throw last!!
+                if (r.code != 429) throw last!!
+                // Rate limited: back off 1.5 s and retry once on the provider's small, fast model (much higher TPM on
+                // Groq's free tier); if that is limited too, park this key for 45 s and let the next key answer.
+                if (d.small != null && !usedSmall) { usedSmall = true; Thread.sleep(1500); b.put("model", d.small); if (tools != null && d.small.startsWith("llama-3.1")) b.put("parallel_tool_calls", false); return@repeat }
+                if (attempt == 2 || (wait ?: 2.0) > 5) { coolUntil[d.name] = System.currentTimeMillis() + 45_000; throw last!! }
                 Thread.sleep(((wait ?: 1.5) * 1000).toLong().coerceIn(500, 5000))
             }
         }
+        if (last?.status == 429) coolUntil[d.name] = System.currentTimeMillis() + 45_000
         throw last ?: ApiException(0, "failed")
     }
 
@@ -225,7 +234,7 @@ object Llm {
         } catch (e: Exception) {
             if (cancelled(e)) throw e
             // A personal Gemini or OpenRouter key can see images too.
-            val d = directs().firstOrNull { it.key != null && Prefs.aiKeyProvider in setOf("gemini", "openrouter") } ?: throw e
+            val d = directs().firstOrNull { it.key != null && (it.name.startsWith("Gemini") || it.name.startsWith("OpenRouter")) } ?: throw e
             stripThinking(directChat(d, msgs, null, "smart", false, maxTokens, 0.2).optString("content"))
         }
     }

@@ -194,7 +194,13 @@ object PageTools {
 
     // ---------- Screenshots ----------
     /** What the user sees in this WebView right now (for OCR / vision fallbacks). */
-    suspend fun viewBitmap(w: WebView): Bitmap = copy(w)
+    suspend fun viewBitmap(w: WebView): Bitmap = withContext(Dispatchers.Main) {
+        // Draw ONLY the WebView's own content (never a window/screen grab), so the chat sheet, dock or any overlay sitting
+        // on top of the page can never end up in OCR / vision and get tapped by mistake.
+        val bmp = Bitmap.createBitmap(w.width.coerceAtLeast(1), w.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        Canvas(bmp).apply { translate(-w.scrollX.toFloat(), -w.scrollY.toFloat()) }.also { w.draw(it) }
+        bmp
+    }
 
     private suspend fun copy(w: WebView): Bitmap = withContext(Dispatchers.Main) {
         val bmp = Bitmap.createBitmap(w.width, w.height, Bitmap.Config.ARGB_8888)

@@ -1,6 +1,6 @@
 # One-click free deploy of Cairn Cloud on Render: https://render.com/deploy?repo=https://github.com/jangidpranshu1989-create/cairn
 # Free web services sleep after 15 min idle — add a free UptimeRobot HTTP monitor on <url>/api/health every 5 min.
-# The free disk is wiped on restart, so set TURSO_DATABASE_URL / TURSO_AUTH_TOKEN (free) to keep accounts and sync data.
+# The free disk is wiped on restart, so set SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (or TURSO_*) to keep accounts and sync data.
 services:
   - type: web
     name: cairn-cloud
@@ -34,4 +34,10 @@ services:
       - key: TURSO_DATABASE_URL
         sync: false
       - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
         sync: false

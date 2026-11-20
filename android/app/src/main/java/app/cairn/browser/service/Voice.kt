@@ -20,6 +20,8 @@ object Voice {
     var phase by mutableStateOf(Phase.Idle); private set
     var level by mutableFloatStateOf(0f); private set      // 0..1 live input level for the waveform
     var error by mutableStateOf<String?>(null)
+    /** Shown to the user when recording or transcription fails after the mic sheet has closed (otherwise it fails silently). */
+    var onError: ((String) -> Unit)? = null
     private var rec: MediaRecorder? = null
     private var file: File? = null
     private var onText: ((String) -> Unit)? = null
@@ -45,9 +47,9 @@ object Voice {
                 val amp = runCatching { r.maxAmplitude }.getOrDefault(0)
                 val l = (amp / 12_000f).coerceIn(0f, 1f)
                 level = level * 0.55f + l * 0.45f
-                if (l > 0.08f) { heard = true; quietSince = System.currentTimeMillis() }
+                if (l > 0.035f) { heard = true; quietSince = System.currentTimeMillis() }
                 val now = System.currentTimeMillis()
-                if ((heard && now - quietSince > 1600) || now - started > 60_000 || (!heard && now - started > 8000)) { finish(); break }
+                if ((heard && now - quietSince > 1600) || now - started > 60_000 || (!heard && now - started > 10_000)) { finish(); break }
                 delay(70)
             }
         }
@@ -61,14 +63,16 @@ object Voice {
         phase = Phase.Transcribing
         scope.launch {
             try {
-                val text = Llm.transcribe(f)
+                val text = app.cairn.browser.agent.Intents.cleanTranscript(Llm.transcribe(f))
                 phase = Phase.Idle
-                if (text.isNotBlank()) onText?.invoke(text) else error = "Didn't catch that — try again"
+                if (text.isNotBlank()) onText?.invoke(text) else fail("Didn't catch that — try again")
             } catch (e: CancellationException) { phase = Phase.Idle }
-            catch (e: Exception) { phase = Phase.Idle; error = e.message ?: "Couldn't transcribe" }
+            catch (e: Exception) { phase = Phase.Idle; fail(if (e.message?.contains("Groq", true) == true || e.message?.contains("503") == true) "Voice is unavailable right now — please type instead" else "Couldn't hear that (${e.message?.take(60) ?: "network"}) — try again") }
             finally { f.delete() }
         }
     }
+
+    private fun fail(msg: String) { error = msg; onError?.invoke(msg) }
 
     fun cancel() {
         job?.cancel(); rec?.let { runCatching { it.stop() }; it.release() }; rec = null; file?.delete(); level = 0f; phase = Phase.Idle

@@ -67,4 +67,29 @@ class OfflineProductTest {
         assertTrue(Intents.FIND.containsMatchIn("iphone 17 ka sabse sasta price"))
         assertFalse(Intents.FIND.containsMatchIn("summarize this page"))
     }
+
+    @Test fun goalCartOnly() {
+        assertEquals("cart", Intents.goal("mere liye iphone 17 find kr flipkart and add to cart kr de"))
+        assertEquals("cart", Intents.goal("iphone 16 sabse sasta cart mein daal do"))
+        assertEquals("cart", Intents.goal("Add Samsung Galaxy S25 Ultra from Amazon to my cart"))
+    }
+    @Test fun goalCheckoutAndPay() {
+        assertEquals("checkout", Intents.goal("cart mein daal ke checkout tak le jao"))
+        assertEquals("pay", Intents.goal("buy the cheapest OnePlus 13 on Croma"))
+        assertEquals("pay", Intents.goal("iphone 17 kharid lo"))
+        assertEquals("pay", Intents.goal("order kar do aur UPI se pay kar"))
+        assertEquals("checkout", Intents.goal("checkout kar do but don't pay"))
+        assertEquals("none", Intents.goal("summarize this page"))
+    }
+    @Test fun voiceRouting() {
+        assertTrue(Intents.voiceIsSearch("flipkart.com"))
+        assertTrue(Intents.voiceIsSearch("weather Kota"))
+        assertFalse(Intents.voiceIsSearch("मेरे लिए आईफोन ढूंढो"))
+        assertFalse(Intents.voiceIsSearch("mere liye iphone 17 find kr flipkart"))
+    }
+    @Test fun transcriptCleanup() {
+        assertEquals("", Intents.cleanTranscript(" ."))
+        assertEquals("", Intents.cleanTranscript(" Thank you."))
+        assertEquals("Hello, find iPhone on Flipkart", Intents.cleanTranscript(" Hello, find iPhone on Flipkart."))
+    }
 }

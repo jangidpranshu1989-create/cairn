@@ -25,6 +25,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -70,7 +79,7 @@ object HomeMode { var agent by mutableStateOf(Prefs.homeAgent) }
 
 /** Home top bar: wordmark on the left; weather and your profile on the right. */
 @Composable
-fun HomeHeader() {
+fun HomeHeader(motion: Boolean = false, tilt: Offset = Offset.Zero) {
     val now = rememberNow()
     LaunchedEffect(Unit) { Weather.refresh() }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -81,12 +90,21 @@ fun HomeHeader() {
         Spacer(Modifier.width(4.dp))
         ProfileAvatar(34.dp) { Ui.profile = true }
     }
-    Spacer(Modifier.height(30.dp))
-    AnimatedContent(greetingFor(now), label = "greet", transitionSpec = { fadeIn(tween(400)) togetherWith fadeOut(tween(200)) }) { g ->
-        Text(g, color = C.text, fontSize = 30.sp, lineHeight = 36.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Spacer(Modifier.height(22.dp))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).enter(0, motion)) {
+            Text(java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.getDefault()).format(now.time).uppercase(), color = C.agent, fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp, maxLines = 1)
+            Spacer(Modifier.height(6.dp))
+            AnimatedContent(greetingFor(now), label = "greet", transitionSpec = { fadeIn(tween(400)) togetherWith fadeOut(tween(200)) }) { g ->
+                Text(g, color = C.text, fontSize = 30.sp, lineHeight = 35.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text("Search, ask, or hand Cairn a task", color = C.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(10.dp))
+        CairnOrb(104.dp, motion, tilt, Modifier.enter(1, motion)) { Ui.assistant = true }
     }
-    Spacer(Modifier.height(4.dp))
-    Text(java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.getDefault()).format(now.time) + " · What can Cairn do for you?", color = C.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable
@@ -103,8 +121,8 @@ fun OmniBar(motion: Boolean, quick: List<Triple<ImageVector, String, String>>) {
     val border by animateFloatAsState(if (agent) 1f else .55f, tween(300), label = "b")
     val shape = RoundedCornerShape(26.dp)
     fun open() { Ui.omniboxText = null; Ui.omniAgent = agent; Ui.omnibox = true }
-    Column(Modifier.fillMaxWidth().glowBorder(motion && agent, glow, 26.dp, 1.3.dp).clip(shape)
-        .background(Brush.verticalGradient(listOf(C.surface, C.surface2.copy(alpha = .9f))))
+    Column(Modifier.fillMaxWidth().enter(2, motion).glowBorder(motion, glow, 26.dp, if (agent) 1.4.dp else .9.dp).clip(shape)
+        .background(Brush.verticalGradient(listOf(C.surface.copy(alpha = .86f), C.surface2.copy(alpha = .78f))))
         .border(1.dp, Brush.verticalGradient(listOf(C.line2.copy(alpha = border), C.line)), shape)
         .clickable { open() }.padding(start = 18.dp, end = 10.dp, top = 18.dp, bottom = 10.dp)) {
         Text(if (agent) "Tell Cairn what to do…" else "Search or type a URL", color = C.faint, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -123,7 +141,7 @@ fun OmniBar(motion: Boolean, quick: List<Triple<ImageVector, String, String>>) {
                 }
             }
             Spacer(Modifier.weight(1f))
-            IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 40.dp) { act.listen { if (agent || Ui.looksLikeTask(it)) ask(it) else Browser.open(it, Browser.current ?: Browser.newTab()) } }
+            IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 40.dp) { act.listen { if (agent) ask(it) else act.voiceCommand(it) } }
             Spacer(Modifier.width(4.dp))
             Box(Modifier.size(40.dp).clip(CircleShape).background(if (agent) C.agent else C.text).clickable { Haptics.tick(); open() }, contentAlignment = Alignment.Center) {
                 Icon(Ic.Send, if (agent) "Ask Cairn" else "Search", Modifier.size(17.dp), tint = if (agent) C.accentInk else C.bg)
@@ -131,9 +149,9 @@ fun OmniBar(motion: Boolean, quick: List<Triple<ImageVector, String, String>>) {
         }
     }
     Spacer(Modifier.height(12.dp))
-    DeliveryChip()
+    Box(Modifier.enter(3, motion)) { DeliveryChip() }
     Spacer(Modifier.height(12.dp))
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().enter(4, motion).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         quick.forEach { (ic, label, prompt) ->
             Row(Modifier.clip(CircleShape).background(C.surface).border(1.dp, C.line, CircleShape).clickable { Haptics.tick(); ask(prompt) }.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(ic, null, Modifier.size(14.dp), tint = C.agent); Spacer(Modifier.width(7.dp))
@@ -167,7 +185,8 @@ fun ShortcutGrid(sites: List<Pair<String, String>>) {
         sites.chunked(4).forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { (name, url) ->
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).clickable { Haptics.tick(); Browser.current?.let { Browser.load(it, url) } ?: Browser.newTab(url) }.padding(vertical = 8.dp),
+                    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                    Column(Modifier.weight(1f).pressTilt(src, true).clip(RoundedCornerShape(16.dp)).clickable(interactionSource = src, indication = androidx.compose.material3.ripple()) { Haptics.tick(); Browser.current?.let { Browser.load(it, url) } ?: Browser.newTab(url) }.padding(vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.size(56.dp).clip(RoundedCornerShape(18.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(18.dp)), contentAlignment = Alignment.Center) { Favicon(url, size = 28.dp, corner = 7.dp) }
                         Spacer(Modifier.height(7.dp))
@@ -233,29 +252,69 @@ fun SectionTitle(t: String) {
     Spacer(Modifier.height(10.dp))
 }
 
-/** "Let Cairn handle it": four real tasks in an even 2 × 2 grid. */
+/** "Let Cairn handle it": a wide hero task with a moving sheen, then three compact tasks. */
 @Composable
-fun BentoGrid() {
+fun BentoGrid(motion: Boolean = false) {
     val watching = app.cairn.browser.service.PriceWatch.tracks.size
     Spacer(Modifier.height(26.dp))
     SectionTitle("Let Cairn handle it")
-    Row(Modifier.fillMaxWidth().height(118.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Tile(Ic.ShoppingBag, "Find → Cart → Pay", "Trusted stores, your address", Modifier.weight(1f), hero = true) {
-            Ui.omniboxText = "Find CMF Phone 2 Pro (Black, 256 GB) from a trusted store, add it to cart and take it to payment"; Ui.omniAgent = true; Ui.omnibox = true }
-        Tile(Ic.Globe, "Research", "Cited answers in a table", Modifier.weight(1f)) { ask("Research the best 5G phones under ₹25,000 right now and compare them in a table with sources") }
-    }
+    HeroTile(motion) {
+        Ui.omniboxText = "Find CMF Phone 2 Pro (Black, 256 GB) from a trusted store and add it to my cart"; Ui.omniAgent = true; Ui.omnibox = true }
     Spacer(Modifier.height(10.dp))
-    Row(Modifier.fillMaxWidth().height(118.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Tile(Ic.BellRing, "Price watch", if (watching > 0) "$watching watching" else "Alert me when it drops", Modifier.weight(1f)) { if (watching > 0) Ui.go("settings/prices") else ask("Track the price of Sony WH-1000XM5 and alert me when it drops") }
-        Tile(Ic.Flight, "Plan a trip", "Flights, stays and cabs", Modifier.weight(1f)) { ask("Plan a weekend in Jaipur: best flight, hotel and cab with prices") }
+    Row(Modifier.fillMaxWidth().height(112.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Tile(Ic.Globe, "Research", "Cited answers", Modifier.weight(1f), motion = motion) { ask("Research the best 5G phones under ₹25,000 right now and compare them in a table with sources") }
+        Tile(Ic.BellRing, "Price watch", if (watching > 0) "$watching watching" else "Alert on drops", Modifier.weight(1f), motion = motion) { if (watching > 0) Ui.go("settings/prices") else ask("Track the price of Sony WH-1000XM5 and alert me when it drops") }
+        Tile(Ic.Flight, "Plan a trip", "Flights · stays", Modifier.weight(1f), motion = motion) { ask("Plan a weekend in Jaipur: best flight, hotel and cab with prices") }
     }
 }
 
 @Composable
-private fun Tile(icon: ImageVector, title: String, sub: String, modifier: Modifier, hero: Boolean = false, onClick: () -> Unit) {
+private fun HeroTile(motion: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val sheen = if (motion) rememberInfiniteTransition(label = "sheen").animateFloat(-1f, 2f, infiniteRepeatable(tween(4200, easing = LinearEasing)), label = "s").value else -1f
+    val agent = C.agent
+    Box(Modifier.fillMaxWidth().height(144.dp).pressTilt(src, motion).clip(shape)
+        .background(Brush.linearGradient(listOf(agent.copy(alpha = .30f), C.surface, Color(0xFF6E8BFF).copy(alpha = .12f))))
+        .border(1.dp, agent.copy(alpha = .28f), shape)
+        .drawWithContent {
+            drawContent()
+            val x = size.width * sheen
+            drawRect(Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(alpha = .10f), Color.Transparent), Offset(x - size.width * .3f, 0f), Offset(x + size.width * .3f, size.height)))
+        }
+        .clickable(interactionSource = src, indication = androidx.compose.material3.ripple()) { Haptics.tick(); onClick() }.padding(16.dp)) {
+        Column(Modifier.align(Alignment.TopStart).fillMaxWidth(.68f)) {
+            Box(Modifier.size(34.dp).clip(RoundedCornerShape(11.dp)).background(agent), contentAlignment = Alignment.Center) { Icon(Ic.ShoppingBag, null, Modifier.size(17.dp), tint = C.accentInk) }
+            Spacer(Modifier.height(12.dp))
+            Text("Find it · cart it · pay safely", color = C.text, fontSize = 16.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(2.dp))
+            Text("Compares trusted stores. Every payment needs your OK.", color = C.muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        // Three floating "price cards" stacked in 3D on the right.
+        Box(Modifier.align(Alignment.CenterEnd).size(88.dp, 96.dp)) {
+            val bob = if (motion) rememberInfiniteTransition(label = "cards").animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "b").value else .5f
+            listOf(Triple(-14f, 0, .55f), Triple(-6f, 1, .8f), Triple(4f, 2, 1f)).forEach { (rot, i, a) ->
+                Box(Modifier.align(Alignment.Center).size(70.dp, 44.dp).graphicsLayer {
+                    rotationZ = rot; rotationY = -18f; translationY = (i - 1) * 16.dp.toPx() - bob * (i + 1) * 1.5f.dp.toPx(); translationX = (i - 1) * 6.dp.toPx(); alpha = a; cameraDistance = 12f * density
+                }.clip(RoundedCornerShape(10.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    Column {
+                        Box(Modifier.width(30.dp).height(5.dp).clip(CircleShape).background(C.line2))
+                        Spacer(Modifier.height(6.dp))
+                        if (i == 2) Text("₹24,990", color = C.ok, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        else Box(Modifier.width(40.dp).height(6.dp).clip(CircleShape).background(C.line))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Tile(icon: ImageVector, title: String, sub: String, modifier: Modifier, hero: Boolean = false, motion: Boolean = false, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
-    Column(modifier.fillMaxHeight().clip(shape).background(if (hero) Brush.linearGradient(listOf(C.agentSoft, C.surface)) else Brush.linearGradient(listOf(C.surface, C.surface)))
-        .border(1.dp, if (hero) C.agent.copy(alpha = .25f) else C.line, shape).clickable { Haptics.tick(); onClick() }.padding(14.dp)) {
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Column(modifier.fillMaxHeight().pressTilt(src, motion).clip(shape).background(if (hero) Brush.linearGradient(listOf(C.agentSoft, C.surface)) else Brush.linearGradient(listOf(C.surface, C.surface)))
+        .border(1.dp, if (hero) C.agent.copy(alpha = .25f) else C.line, shape).clickable(interactionSource = src, indication = androidx.compose.material3.ripple()) { Haptics.tick(); onClick() }.padding(14.dp)) {
         Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(if (hero) C.agent else C.agentSoft), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(16.dp), tint = if (hero) C.accentInk else C.agent) }
         Spacer(Modifier.weight(1f))
         Text(title, color = C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -6,7 +6,7 @@ import pathlib, datetime
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / 'website'
 PAGES = pathlib.Path(__file__).resolve().parent / 'site_pages'
-VERSION = '2.5.0'
+VERSION = '2.6.0'
 # Our own site (GitHub Pages). cairn.app belongs to someone else, so nothing may point there.
 SITE = 'https://jangidpranshu1989-create.github.io/cairn'
 RELEASES = 'https://github.com/jangidpranshu1989-create/cairn/releases/latest/download'

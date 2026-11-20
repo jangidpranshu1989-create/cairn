@@ -193,6 +193,9 @@ object PageTools {
     }
 
     // ---------- Screenshots ----------
+    /** What the user sees in this WebView right now (for OCR / vision fallbacks). */
+    suspend fun viewBitmap(w: WebView): Bitmap = copy(w)
+
     private suspend fun copy(w: WebView): Bitmap = withContext(Dispatchers.Main) {
         val bmp = Bitmap.createBitmap(w.width, w.height, Bitmap.Config.ARGB_8888)
         val loc = IntArray(2); w.getLocationInWindow(loc)

@@ -7,12 +7,18 @@ export const PROVIDERS = {
   // Keyless community endpoint (OpenAI-compatible, supports tools + streaming). Built-in last resort so Cairn's
   // assistant works out of the box with zero setup. Disable with AI_FREE_FALLBACK=0.
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', label: 'Gemini' },
-  free: { base: 'https://text.pollinations.ai', path: '/openai', label: 'Cairn Free AI', keyless: true },
+  openrouter: { base: 'https://openrouter.ai/api/v1', label: 'OpenRouter' },
+  // Keyless OpenAI-compatible endpoint (tools + streaming). The old text.pollinations.ai/openai endpoint was retired
+  // (it now answers 404 "Model not found" / 402), which surfaced in the app as a bare "Not found".
+  free: { base: 'https://api.llm7.io/v1', label: 'Cairn Free AI', keyless: true },
+  legacy: { base: 'https://text.pollinations.ai', path: '/openai', label: 'Pollinations (legacy)', keyless: true },
 };
-const keyFor = (p, cfg) => (p === 'groq' ? cfg.groqKey : p === 'nvidia' ? cfg.nvidiaKey : p === 'gemini' ? cfg.geminiKey : '');
+const keyFor = (p, cfg) => (p === 'groq' ? cfg.groqKey : p === 'nvidia' ? cfg.nvidiaKey : p === 'gemini' ? cfg.geminiKey : p === 'openrouter' ? cfg.openrouterKey : '');
 
 export function modelFor(provider, tier, cfg) {
-  if (provider === 'free') return cfg.freeModel || 'openai';
+  if (provider === 'free') return cfg.freeModel || 'default';
+  if (provider === 'legacy') return 'openai';
+  if (provider === 'openrouter') return cfg.openrouterModel || 'openrouter/free';
   if (provider === 'gemini') return cfg.geminiModel;
   if (tier === 'vision') return provider === 'groq' ? cfg.groqVisionModel : cfg.nvidiaVisionModel;
   if (provider === 'groq') return tier === 'fast' ? cfg.groqFastModel : cfg.groqModel;
@@ -21,13 +27,14 @@ export function modelFor(provider, tier, cfg) {
 
 /** Order providers by preference; skip ones without keys. Vision prefers NVIDIA (multimodal Nemotron). */
 export function providerOrder(cfg, tier, preferred) {
-  let order = tier === 'vision' ? ['groq', 'gemini', 'nvidia'] : ['groq', 'nvidia', 'gemini'];
+  let order = tier === 'vision' ? ['groq', 'gemini', 'nvidia', 'openrouter'] : ['groq', 'nvidia', 'gemini', 'openrouter'];
   if (preferred && order.includes(preferred)) order = [preferred, ...order.filter(p => p !== preferred)];
-  if (tier !== 'vision' && cfg.freeFallback !== false) order.push('free');
+  if (tier !== 'vision' && cfg.freeFallback !== false) order.push('free', 'legacy');
   return order.filter(p => PROVIDERS[p].keyless || keyFor(p, cfg));
 }
 
-const retriable = (status) => status === 429 || status >= 500 || status === 408;
+// Any of these means "this provider can't answer right now" → move on to the next one instead of failing the request.
+const retriable = (status) => [400, 401, 402, 403, 404, 408, 409, 413, 422, 429].includes(status) || status >= 500;
 
 /**
  * chat({ messages, tools, tier, stream, temperature, maxTokens, preferred }, cfg)
@@ -51,7 +58,7 @@ export async function chat(opts, cfg) {
     if (p === 'groq' && /gpt-oss/.test(body.model)) body.reasoning_effort = opts.reasoning || 'low';
     if (p === 'gemini') delete body.chat_template_kwargs;
     try {
-      if (p === 'free') { delete body.chat_template_kwargs; delete body.reasoning_effort; delete body.response_format; }
+      if (p === 'free' || p === 'legacy') { delete body.chat_template_kwargs; delete body.reasoning_effort; delete body.response_format; }
       const headers = { 'Content-Type': 'application/json' };
       if (keyFor(p, cfg)) headers.Authorization = `Bearer ${keyFor(p, cfg)}`;
       const r = await fetch(`${PROVIDERS[p].base}${PROVIDERS[p].path || '/chat/completions'}`, {
@@ -63,7 +70,7 @@ export async function chat(opts, cfg) {
       if (!r.ok) {
         const text = await r.text();
         lastErr = Object.assign(new Error(`${PROVIDERS[p].label} ${r.status}: ${text.slice(0, 300)}`), { status: r.status });
-        if (retriable(r.status) || r.status === 404 || r.status === 400) continue; // try next provider
+        if (retriable(r.status)) continue; // try next provider
         throw lastErr;
       }
       if (opts.stream) { r._provider = p; return r; }

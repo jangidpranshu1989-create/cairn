@@ -180,6 +180,7 @@ fun AssistantSheet() {
             if (Agent.items.isEmpty()) EmptyAssistant(Modifier.weight(1f))
             else LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(Agent.items, key = { it.key }) { Box(Modifier.animateItem(fadeInSpec = tween(220), placementSpec = spring(stiffness = 500f))) { ItemView(it) } }
+                if (Agent.running && app.cairn.browser.agent.PageTools.live.isNotEmpty() && Prefs.agentLivePreview) item(key = "live") { Box(Modifier.animateItem()) { LivePreview(inline = true) } }
                 if (Agent.running) item(key = "working") { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp).animateItem()) {
                     AgentDots(); Spacer(Modifier.width(10.dp))
                     AnimatedContent(Agent.status.ifBlank { "Thinking…" }, label = "status", transitionSpec = { (fadeIn(tween(220)) + slideInVertically { it / 2 }) togetherWith fadeOut(tween(140)) }) { st ->
@@ -593,11 +594,18 @@ private fun Steps(s: StepsItem) {
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Icon(if (open) Ic.ExpandLess else Ic.ExpandMore, null, Modifier.size(18.dp), tint = C.faint)
         }
-        if (open) Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp)) {
-            s.steps.forEach { st ->
-                Row(Modifier.padding(vertical = 4.dp)) {
-                    Icon(stepIcon(st.icon), null, Modifier.size(14.dp).padding(top = 2.dp), tint = C.faint); Spacer(Modifier.width(10.dp))
-                    Text(st.text, color = C.muted, fontSize = 12.5.sp, lineHeight = 18.sp)
+        // Live reasoning feed: while the agent works, the latest steps stay visible as a chain (found → doing next).
+        if (open || !s.done) Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp)) {
+            val shown = if (open) s.steps.toList() else s.steps.takeLast(4)
+            if (!open && s.steps.size > 4) Text("+${s.steps.size - 4} earlier steps", color = C.faint, fontSize = 11.5.sp, modifier = Modifier.padding(bottom = 2.dp))
+            shown.forEachIndexed { i, st ->
+                val current = !s.done && i == shown.lastIndex
+                if (st.icon == "think") Row(Modifier.padding(vertical = 4.dp)) {
+                    Icon(Ic.Lightbulb, null, Modifier.size(14.dp).padding(top = 2.dp), tint = C.accent); Spacer(Modifier.width(10.dp))
+                    Text(st.text, color = C.text, fontSize = 12.5.sp, lineHeight = 18.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                } else Row(Modifier.padding(vertical = 4.dp)) {
+                    Icon(stepIcon(st.icon), null, Modifier.size(14.dp).padding(top = 2.dp), tint = if (current) C.accent else C.faint); Spacer(Modifier.width(10.dp))
+                    Text(st.text, color = if (current) C.text else C.muted, fontSize = 12.5.sp, lineHeight = 18.sp)
                 }
             }
         }
@@ -609,7 +617,8 @@ private fun stepIcon(k: String): ImageVector = when (k) {
     "type" -> Ic.Keyboard; "scroll" -> Ic.SwapVert; "shop", "store" -> Ic.ShoppingBag; "down" -> Ic.Download
     "pdf" -> Ic.PictureAsPdf; "shot" -> Ic.Screenshot; "speak" -> Ic.Headphones; "lock" -> Ic.Lock
     "map" -> Ic.AccountTree; "sum" -> Ic.Summarize; "phone" -> Ic.PhoneAndroid; "ask" -> Ic.HelpOutline
-    "warn" -> Ic.WarningAmber; else -> Ic.ChevronRight
+    "warn" -> Ic.WarningAmber; "think" -> Ic.Lightbulb; "eye" -> Ic.Visibility; "ok" -> Ic.CheckCircle; "fill" -> Ic.EditNote
+    "offer" -> Ic.Payments; "stop" -> Ic.Cancel; else -> Ic.ChevronRight
 }
 
 @Composable

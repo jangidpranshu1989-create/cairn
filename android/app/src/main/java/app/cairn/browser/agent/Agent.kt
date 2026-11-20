@@ -74,6 +74,10 @@ object Agent {
     private var userText = ""
     private var lastPrompt = ""
     private var lastMentions: List<Tab> = emptyList()
+    /** Autonomous shopping chain state for the current turn. */
+    private var buyIntent = false; private var productsThisTurn = false; private var cartTried = false; private var checkoutTried = false
+    private var aiDown: String? = null
+    private val BUY_INTENT = Regex("(?i)(add (it |this |that )?to (the |my )?cart|cart (me|mein|mai|m) (add|daal|dal)|add (kar|kr)|cart tak|checkout|check out|buy (it|now|this|that|the)|order (kar|kr|it|this|place)|place (the |an )?order|khareed|kharid|purchase|le (aao|ao|jao|ja)|pay (kar|kr|for|it)|payment (kar|kr))")
     /** Sources used in the current turn. Every tool result labels them [n]; the reply cites them and shows them as links. */
     private val cites = mutableListOf<Cite>()
     private fun cite(title: String, url: String): Int {
@@ -140,15 +144,17 @@ object Agent {
         return """You are Cairn, the AI agent built into the Cairn web browser for Android. You complete tasks for the user by operating the browser with tools. Today is ${java.text.DateFormat.getDateInstance(java.text.DateFormat.LONG, java.util.Locale.ENGLISH).format(java.util.Date())}. Default shopping country: ${Prefs.shoppingCountry}.
 
 $lang This rule overrides everything else, including the language of web pages and tool results. Keep replies short, warm and practical — this is a phone screen. Use Markdown (bold, bullets, links as [text](url)).
-${userContext(profile)} Saved cards for offers (bank/network only): ${cards.ifEmpty { listOf("none") }.joinToString()}.
+${userContext(profile)} Saved cards for offers (bank/network only): ${cards.ifEmpty { listOf("none") }.joinToString()}. ${payInfo()}
 
 HOW TO WORK
 - Act fast and prefer the most direct tool. Never invent prices, links or facts — only report what tools returned.
 - LIVE SOURCES: for any question about facts, news, people, places, products, prices, sports, weather, how-to or anything that may have changed, call web_search FIRST — even if you think you know. Tool results label sources [1], [2]…; cite them inline right after each claim, like "… 48 MP camera [2]." or "[1][3]". Use only numbers that appear in tool results, never make up sources, and do not add your own list of sources or links at the end — Cairn shows the sources under your reply. Small talk, maths and writing tasks need no search.
 - [Attached …] blocks in the user's message are photos or files the user uploaded (already read for you). Answer about them directly; search the web if the user asks about what they show (e.g. "where can I buy this", "what is this").
 - Shopping ("sabse sasta", cheapest, best price): call compare_prices with a precise product name (include storage/size if given). Product cards are shown automatically. Then recommend the cheapest TRUSTWORTHY option (trust ≥ 70, not flagged) with price, store and link, plus 1-2 alternatives. Mention flags honestly.
-- "Add to cart": open_url the chosen product URL, read_page, then click the Add to Cart button (click_text "Add to Cart" works on most stores). Verify with read_page.
-- Checkout: go cart → checkout. If login/OTP/CAPTCHA appears, use ask_user (the user handles it on screen, then replies "done"). On every address / contact / personal-details step call fill_profile FIRST (it fills name, email, phone and address from the user's encrypted Delivery Profile), then read_page, then continue. Before paying, call find_offers to surface coupons and bank offers for the user's cards, and apply_coupon when a code is available. Stop at the payment page. Before the FINAL "Place order"/"Pay" click you MUST call request_approval with amount, merchant and item; click the final button only if APPROVED. Never type card numbers, CVV, UPI PIN or OTPs yourself.
+- AUTONOMOUS BUYING: when the user asks to add to cart / buy / checkout / "cart mein daal ke checkout tak le jao", chain it without stopping or asking: compare_prices → add_to_cart(index of the best trustworthy pick; it opens the page, closes popups, enters the delivery PIN, picks the variant, taps Add to Cart with DOM + on-screen OCR + vision fallback and verifies) → go_to_checkout (opens the cart and taps Place Order / Proceed to Buy) → fill_profile on address steps → reach the order summary / payment page. Before each tool call write ONE short line of what you found and what you'll do next (e.g. "Lowest trusted: ₹20,999 on Flipkart → adding to cart"); it is shown live to the user.
+- If a button can't be found by id, use click_text — it heals itself with on-screen OCR and vision when the DOM selector fails.
+- Checkout: if login/OTP/CAPTCHA appears, use ask_user (the user handles it on screen, then replies "done"). On every address / contact step call fill_profile FIRST. Before paying, call find_offers and apply_coupon when a code is available.
+- PAYING: at the payment step call request_approval with the exact total (amount like "₹20,999"), merchant and item. Cairn may auto-approve it when it is within the user's UPI autopay limit; otherwise the user approves with fingerprint. Only if APPROVED: call pay_upi (selects UPI, enters the user's saved UPI ID and taps Pay — the user then enters the UPI PIN in their UPI app; you can never enter it) or, if the user prefers another method, click the final Pay button once. Never type card numbers, CVV, UPI PIN or OTPs yourself.
 - Reading aloud ("read this article to me", "padh ke sunao"): read_article (with url if given; use web_search to find it, e.g. Wikipedia) then read_aloud source=last_article. This runs in the background without touching the user's tab.
 - Saving files to the phone: save_pdf (source=last_article for articles), screenshot or download_file with the folder the user named (e.g. "Documents/Wikipedia"). Files go to the phone's Download folder (screenshots to Pictures/Cairn). save_to_device moves the last file to another folder.
 - Page tools on the current tab: summarize_page, make_mindmap, save_pdf, screenshot (full=true for a long screenshot).
@@ -174,6 +180,15 @@ HOW TO WORK
     private fun b(d: String) = JSONObject().put("type", "boolean").put("description", d)
     private fun en(vararg v: String) = JSONObject().put("type", "string").put("enum", JSONArray(v.toList()))
     private fun p(vararg kv: Pair<String, JSONObject>) = JSONObject().apply { kv.forEach { put(it.first, it.second) } }
+
+    private fun payInfo(): String = if (Prefs.autopay && Prefs.upiId.isNotBlank())
+        "UPI autopay is ON: payments up to ₹${Prefs.payLimit} each (₹${spentLeft()} left today) are approved automatically; pay with pay_upi."
+        else if (Prefs.upiId.isNotBlank()) "The user saved a UPI ID for pay_upi; every payment still needs their approval." else "No UPI ID saved; at the payment step stop after approval and let the user pick a method."
+
+    private fun today() = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+    private fun spentToday(): Int = if (Prefs.paySpentDay == today()) Prefs.paySpent else 0
+    private fun spentLeft(): Int = (Prefs.payDailyLimit - spentToday()).coerceAtLeast(0)
+    private fun rupees(s: String): Double? = Regex("""(\d[\d,]*(?:\.\d{1,2})?)""").find(s.replace(" ", ""))?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
 
     private val TOOLS by lazy { JSONArray(listOf(
         fn("web_search", "Search the web and get top results (title, url, snippet).", p("query" to s("search query")), listOf("query")),
@@ -206,6 +221,9 @@ HOW TO WORK
         fn("parallel_tasks", "Run 2-5 independent sub-tasks AT THE SAME TIME, each by its own background sub-agent (e.g. flights, hotels, cabs). Returns each sub-agent's findings.", p("goal" to s("the overall goal"), "tasks" to JSONObject().put("type", "array").put("items", JSONObject().put("type", "object").put("properties", p("title" to s("2-3 word label, e.g. Flights"), "task" to s("precise instruction"))).put("required", JSONArray(listOf("title", "task"))))), listOf("goal", "tasks")),
         fn("recall_history", "Search the full text of pages the user visited before (on-device memory). Returns matching pages with snippets.", p("query" to s("what the page was about")), listOf("query")),
         fn("translate_page", "Translate the current page in place into a language.", p("language" to s("target language, e.g. English, Hindi, French")), listOf("language")),
+        fn("add_to_cart", "Autonomously add a product to the cart: opens the product page in the visible tab, closes popups, enters the delivery PIN from the profile, picks the requested variant, taps Add to Cart (DOM → on-screen OCR → vision fallback) and verifies. Use the index from compare_prices, or a url.", p("index" to n("index from the last compare_prices results"), "url" to s("product URL when not from compare_prices"), "variant" to s("e.g. \"8GB 256GB Black\" (optional)"))),
+        fn("go_to_checkout", "From the current store: open the cart and tap Place Order / Proceed to Buy / Checkout, returning the next page (login, address or order summary)."),
+        fn("pay_upi", "On the payment page, AFTER request_approval returned APPROVED: choose UPI, enter the user's saved UPI ID and tap Pay. The user confirms with their UPI PIN in their UPI app."),
         fn("show_products", "Display product cards for indices from the last compare_prices results (best first).", p("indices" to JSONObject().put("type", "array").put("items", JSONObject().put("type", "number")), "headline" to s("one-line headline")), listOf("indices")),
     )) }
 
@@ -239,6 +257,7 @@ HOW TO WORK
         val page = tab?.takeIf { !it.isNtp }?.let { it.title.ifBlank { it.host } }
         items.add(UserMsg(text.ifBlank { if (attachments.size == 1) "Look at this" else "Look at these" }, page, mentions.map { it.title.ifBlank { it.host } }, attachments))
         userText = text
+        buyIntent = BUY_INTENT.containsMatchIn(text)
         if (messages.length() == 0) messages.put(JSONObject().put("role", "system").put("content", systemPrompt()))
         else messages.put(0, JSONObject().put("role", "system").put("content", systemPrompt()))
         val note = tab?.takeIf { !it.isNtp }?.let { "\n\n[Current tab: \"${it.title}\" ${it.url}]" } ?: ""
@@ -373,12 +392,18 @@ HOW TO WORK
 
     private fun launch(block: suspend () -> Unit) {
         running = true; status = "Thinking…"; steps = null
+        productsThisTurn = false; cartTried = false; checkoutTried = false; aiDown = null
         runCatching { app.cairn.browser.service.AgentService.start(Browser.activity) }
         job = scope.launch {
             try { block() }
             catch (e: CancellationException) { items.add(AiMsg("Stopped.")) }
-            catch (e: NoAiException) { items.add(AiMsg("Cairn's AI isn't reachable right now. Check your internet connection and try again.", error = true, setup = true)) }
-            catch (e: ApiException) { items.add(AiMsg(e.message ?: "Something went wrong.", error = true, setup = e.status == 401)) }
+            catch (e: NoAiException) {
+                val why = (e as? AiUnavailableException)?.summary
+                // Never a blank "Not found": if the stores were already compared, answer from those results on-device.
+                val local = if (productsThisTurn && lastProducts.isNotEmpty()) localShoppingSummary(why) else null
+                items.add(local?.let { AiMsg(it, prompt = lastPrompt) } ?: AiMsg("Cairn's AI couldn't be reached on any provider. ${if (why != null) "Details: $why. " else ""}Check your connection and tap Retry. You can also add your own free AI key in Settings → AI.", error = true, setup = true))
+            }
+            catch (e: ApiException) { items.add(AiMsg(apiError(e), error = true, setup = e.status == 401)) }
             catch (e: Exception) { items.add(AiMsg(friendly(e), error = true)) }
             finally {
                 withContext(NonCancellable) {
@@ -390,6 +415,37 @@ HOW TO WORK
                 }
             }
         }
+    }
+
+    private fun apiError(e: ApiException): String {
+        val m = e.message?.takeIf { it.isNotBlank() && !it.equals("not found", true) }
+        return when (e.status) {
+            401 -> "Please sign in again (HTTP 401)."
+            404 -> "The Cairn server didn't recognise this request (HTTP 404). Update Cairn or check Settings → Account → Server."
+            429 -> (m ?: "Too many requests right now") + " (HTTP 429)"
+            else -> (m ?: "Something went wrong") + " (HTTP ${e.status})"
+        }
+    }
+
+    /** Rule-based recommendation from the compared listings, used when every AI provider is down. */
+    private fun localShoppingSummary(why: String?): String {
+        val list = lastProducts
+        val best = list.firstOrNull { it.best } ?: list.first()
+        val alts = list.filter { it !== best }.take(2)
+        val hi = Lang.detect(userText) == "Hinglish"
+        val sb = StringBuilder()
+        sb.append(if (hi) "**Sabse sasta trusted option:** " else "**Cheapest trustworthy option:** ")
+        sb.append("[${best.title.take(80)}](${best.url}) — **${Shopping.money(best.price)}** on ${best.store} (trust ${best.trust}/100")
+        best.discount?.takeIf { it > 0 }?.let { sb.append(", $it% off") }; sb.append(")\n")
+        if (best.flags.isNotEmpty()) sb.append("\n⚠ ${best.flags.joinToString("; ")}\n")
+        if (alts.isNotEmpty()) {
+            sb.append(if (hi) "\n**Dusre options:**\n" else "\n**Alternatives:**\n")
+            alts.forEach { sb.append("- [${it.store}](${it.url}) — ${Shopping.money(it.price)}${if (it.trust < 70) " (low trust ${it.trust})" else ""}\n") }
+        }
+        sb.append(if (hi) "\nAI abhi respond nahi kar raha, isliye ye recommendation on-device rules se bani hai" else "\nThe AI didn't respond, so this recommendation was made on-device from the compared prices")
+        if (why != null) sb.append(" ($why)")
+        sb.append(".")
+        return sb.toString()
     }
 
     private fun friendly(e: Exception) = when (e) {
@@ -404,7 +460,7 @@ HOW TO WORK
         for (attempt in 0 until 3) {
             try { return Llm.chat(trim(messages), TOOLS, "smart", maxTokens = 3000, temperature = if (attempt == 0) 0.2 else 0.35) }
             catch (e: CancellationException) { throw e }
-            catch (e: NoAiException) { throw e }
+            catch (e: NoAiException) { if (attempt >= 1) throw e; last = e; status = "Switching AI provider…"; delay(2500); continue }
             catch (e: ApiException) { if (e.status in setOf(401, 402, 403, 429)) throw e; last = e }
             catch (e: Exception) { last = e }
             status = "Reconnecting to the AI…"; delay(700L * (attempt + 1))
@@ -425,7 +481,17 @@ HOW TO WORK
             val am = JSONObject().put("role", "assistant").put("content", content)
             if (calls != null && calls.length() > 0) am.put("tool_calls", calls)
             messages.put(am)
+            // Live reasoning feed: the model's short note before acting ("Lowest is Flipkart, opening it…") is shown as a step.
+            if (calls != null && calls.length() > 0 && content.isNotBlank()) Llm.stripThinking(content).lineSequence().firstOrNull { it.isNotBlank() }?.let { step("think", it.trim().take(160)) }
             if (calls == null || calls.length() == 0) {
+                // The user asked for cart/checkout but the model stopped at the comparison: chain the next step automatically.
+                if (buyIntent && productsThisTurn && nudges < 3 && i < max - 2 && (!cartTried || !checkoutTried)) {
+                    nudges++
+                    val next = if (!cartTried) "add_to_cart with the index of the best trustworthy option" else "go_to_checkout"
+                    step("think", if (!cartTried) "Comparison done → adding the best option to the cart" else "In the cart → heading to checkout")
+                    messages.put(JSONObject().put("role", "user").put("content", "Don't stop — the user asked you to do it. Call $next now, then continue until the order summary / payment step."))
+                    continue
+                }
                 // The model announced a next step instead of doing it: push it to continue (at most twice).
                 if (acted && nudges < 2 && i < max - 2 && content.length < 600 && WILL_DO.containsMatchIn(content) && !content.contains("?")) {
                     nudges++
@@ -503,8 +569,19 @@ HOW TO WORK
         PageJs.call(w, "overlay('move', $x, $y, ${PageJs.q(label)})"); delay(420)
         app.cairn.browser.ui.Haptics.agentTap()
         PageJs.call(w, "overlay('click', $x, $y, ${PageJs.q(label)})")
-        val m = PageJs.obj(w, "metrics()"); val sc = w.width / (m?.optDouble("w", 0.0)?.takeIf { it > 0 } ?: (w.width / w.resources.displayMetrics.density.toDouble()))
-        val px = (x * sc).toFloat(); val py = (y * sc).toFloat()
+        val sc = cssScale(w)
+        tapPx(t, (x * sc).toFloat(), (y * sc).toFloat())
+    }
+
+    /** Device pixels per CSS pixel for this WebView. */
+    private suspend fun cssScale(w: android.webkit.WebView): Double {
+        val m = PageJs.obj(w, "metrics()")
+        return w.width / (m?.optDouble("w", 0.0)?.takeIf { it > 0 } ?: (w.width / w.resources.displayMetrics.density.toDouble()))
+    }
+
+    /** Real finger tap at view pixel coordinates (works on canvas / shadow-DOM buttons the DOM can't reach). */
+    private suspend fun tapPx(t: Tab, px: Float, py: Float) {
+        val w = t.web ?: return
         val now = SystemClock.uptimeMillis()
         withContext(Dispatchers.Main) {
             MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, px, py, 0).also { it.source = android.view.InputDevice.SOURCE_TOUCHSCREEN; w.dispatchTouchEvent(it); it.recycle() }
@@ -515,10 +592,55 @@ HOW TO WORK
 
     private suspend fun paymentPage(w: android.webkit.WebView): Boolean = runCatching { PageJs.obj(w, "pageState()")?.optBoolean("payment") == true }.getOrDefault(false)
 
-    private fun guardFinal(label: String): String? {
+    private fun guardFinal(label: String, url: String = ""): String? {
         if (!FINAL_ACTION.containsMatchIn(label)) return null
+        // "Place Order" on a cart page only moves to checkout (address / summary) — nothing is paid yet.
+        if (CART_URL.containsMatchIn(url) && !Regex("(?i)pay").containsMatchIn(label)) return null
         if (approvedOnce) { approvedOnce = false; return null }
         return "BLOCKED: \"$label\" looks like placing an order or paying. Call request_approval first (with amount, merchant, item), then retry this click only if approved."
+    }
+
+    private val CART_URL = Regex("(?i)/viewcart|/cart(/|\\?|$)|/gp/cart|/checkout/cart|/basket")
+
+    /**
+     * Self-healing click: DOM text match first; if the selector fails (dynamic / obfuscated / canvas buttons), read the
+     * screen with on-device OCR, and finally ask the vision model for the button's position. Returns the tapped label.
+     */
+    private suspend fun smartClick(t: Tab, labels: List<String>, allowFinal: Boolean = false): String? {
+        val w = t.web ?: return null
+        for (l in labels) {
+            val loc = PageJs.obj(w, "findByText(${PageJs.q(l)})") ?: continue
+            val label = loc.optString("text")
+            if (!allowFinal && guardFinal(label, t.url) != null) continue
+            step("click", "Tapping \"${label.take(50)}\"")
+            touch(t, loc.getDouble("x"), loc.getDouble("y"), label.take(30))
+            return label
+        }
+        PageJs.call(w, "overlay('remove')")
+        val bmp = runCatching { PageTools.viewBitmap(w) }.getOrNull() ?: return null
+        step("eye", "Selector failed → reading the screen (OCR) for \"${labels.first()}\"")
+        Ocr.locate(bmp, labels)?.let { (x, y, txt) ->
+            step("click", "Found \"${txt.take(40)}\" on screen → tapping")
+            controlling = t; app.cairn.browser.ui.Haptics.agentTap(); tapPx(t, x, y); return txt
+        }
+        step("eye", "OCR missed it → asking vision to locate the button")
+        val hit = runCatching {
+            val small = android.graphics.Bitmap.createScaledBitmap(bmp, 540, (540.0 * bmp.height / bmp.width).toInt().coerceAtLeast(1), true)
+            val out = java.io.ByteArrayOutputStream(); small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
+            val b64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+            val r = Llm.vision("Find the tappable button labelled like one of: ${labels.joinToString(" | ")}. Reply ONLY JSON {\"found\":true|false,\"x\":0-1,\"y\":0-1,\"label\":\"text\"} where x,y are the button centre as a fraction of image width/height.", b64, 120)
+            JSONObject(r.substring(r.indexOf('{'), r.lastIndexOf('}') + 1))
+        }.getOrNull()
+        if (hit != null && hit.optBoolean("found")) {
+            val x = hit.optDouble("x", -1.0); val y = hit.optDouble("y", -1.0)
+            if (x in 0.0..1.0 && y in 0.0..1.0) {
+                val label = hit.optString("label").ifBlank { labels.first() }
+                if (!allowFinal && guardFinal(label, t.url) != null) return null
+                step("click", "Vision located \"${label.take(40)}\" → tapping")
+                controlling = t; tapPx(t, (x * bmp.width).toFloat(), (y * bmp.height).toFloat()); return label
+            }
+        }
+        return null
     }
 
     private val http = OkHttpClient.Builder().callTimeout(12, TimeUnit.SECONDS).build()
@@ -569,10 +691,82 @@ HOW TO WORK
                 } catch (e: Exception) { items.remove(card); throw e }
                 lastProducts = res.results
                 card.items.clear(); card.items.addAll(res.results.take(8)); card.stores.addAll(res.stores); card.done = true
+                if (res.results.isNotEmpty()) {
+                    productsThisTurn = true
+                    val best = res.results.firstOrNull { it.best } ?: res.results.first()
+                    step("think", "Lowest trusted price: ${Shopping.money(best.price)} on ${best.store}" + if (buyIntent) " → opening product page to add to cart" else "")
+                }
                 if (res.results.isEmpty()) { items.remove(card); return "No listings found. Store status: ${res.stores.joinToString { "${it.name}=${it.error ?: it.count}" }}. Try a simpler query or web_search." }
                 return "Store status: ${res.stores.joinToString { "${it.name}=${if (it.error != null) "error" else it.count}" }}\nResults sorted by price (index|store|title|variant|price|mrp|rating|reviews|trust|flags|url):\n" +
                     res.results.mapIndexed { i, r -> "$i|${r.store}|${r.title.take(110)}|${r.variant}|${r.price}|${r.mrp ?: ""}|${r.rating ?: ""}|${r.reviews ?: ""}|${r.trust}|${r.flags.joinToString("; ")}|${r.url}" }.joinToString("\n") +
-                    "\nProduct cards are already shown to the user. Now give a short recommendation: best trustworthy pick with price + store + link, and 1-2 alternatives."
+                    "\nProduct cards are already shown to the user. " + if (buyIntent) "The user wants you to BUY / add to cart: write one line naming the best trustworthy pick, then immediately call add_to_cart with its index (do not ask)." else "Now give a short recommendation: best trustworthy pick with price + store + link, and 1-2 alternatives."
+            }
+            "add_to_cart" -> {
+                cartTried = true
+                val p = if (a.has("index")) lastProducts.getOrNull(a.optInt("index")) else null
+                val url = p?.url ?: a.optString("url").takeIf { it.startsWith("http") } ?: return "Give an index from compare_prices or a product url."
+                step("nav", "Opening ${p?.store ?: hostOf(url)} product page${p?.let { " (${Shopping.money(it.price)})" } ?: ""}")
+                val t = tab().also { Browser.select(it); Browser.load(it, url) }
+                controlling = t; settle(t, 10000)
+                val w = t.web ?: return "The page didn't open."
+                if (t.error != null) return "ERROR: the product page failed to load (${t.error?.description})."
+                PageJs.call(w, "dismiss()")
+                val pin = profile().optString("pin")
+                if (pin.length in 5..7) PageJs.obj(w, "pincode(${PageJs.q(pin)})")?.takeIf { it.optBoolean("found") && !it.optBoolean("already") }?.let { step("fill", "Entered delivery PIN $pin"); settle(t, 3000) }
+                val v = a.optString("variant").ifBlank { p?.variant.orEmpty() }
+                if (v.isNotBlank()) PageJs.obj(w, "variant(${PageJs.q(v)})")?.optJSONArray("picked")?.takeIf { it.length() > 0 }?.let { step("click", "Picked variant ${(0 until it.length()).joinToString { i -> it.optString(i) }}"); settle(t, 3000) }
+                val st0 = PageJs.obj(w, "cartState()")
+                if (st0?.optBoolean("outOfStock") == true) return "This listing is OUT OF STOCK. Tell the user and try the next cheapest trustworthy index." + observe(t)
+                if (st0?.optBoolean("goToCart") == true) { step("ok", "Already in your cart"); return "The product is already in the cart. Next: go_to_checkout." }
+                step("think", "Looking for the Add to Cart button")
+                val hit = smartClick(t, listOf("Add to Cart", "Add to Bag", "Add to basket", "ADD TO CART", "Add")) ?: return "Couldn't find an Add to Cart button (DOM, OCR and vision tried). Use read_page and click it, or try the next store." + observe(t)
+                settle(t, 5000); PageJs.call(w, "dismiss()")
+                val st = PageJs.obj(w, "cartState()")
+                val ok = st?.optBoolean("added") == true || CART_URL.containsMatchIn(t.url)
+                step(if (ok) "ok" else "think", if (ok) "Added to cart${p?.let { " · ${it.store}" } ?: ""}" else "Tapped \"${hit.take(30)}\" — checking the result")
+                return (if (ok) "ADDED to cart (tapped \"$hit\"). Next: call go_to_checkout." else "Tapped \"$hit\" but couldn't confirm it was added — check PAGE NOW (a size/variant may be required) and continue.") + observe(t)
+            }
+            "go_to_checkout" -> {
+                checkoutTried = true
+                val t = tab(); val w = web(); controlling = t
+                if (!CART_URL.containsMatchIn(t.url)) {
+                    step("nav", "Opening the cart")
+                    val h = t.host
+                    val cart = when {
+                        "flipkart" in h -> "https://www.flipkart.com/viewcart"
+                        "amazon.in" in h -> "https://www.amazon.in/gp/cart/view.html"
+                        "amazon." in h -> "https://${h}/gp/cart/view.html"
+                        else -> null
+                    }
+                    if (cart != null) { Browser.load(t, cart); settle(t, 9000) }
+                    else smartClick(t, listOf("Go to Cart", "View Cart", "Cart", "Go to Bag"))?.let { settle(t, 6000) }
+                }
+                PageJs.call(t.web ?: w, "dismiss()")
+                step("think", "In the cart → proceeding to checkout")
+                val hit = smartClick(t, listOf("Place Order", "Proceed to Buy", "Proceed to checkout", "Checkout", "Check out", "Continue"), allowFinal = CART_URL.containsMatchIn(t.url))
+                    ?: return "Couldn't find the checkout button on ${t.url}. Use read_page." + observe(t)
+                settle(t, 9000)
+                step("ok", "Checkout opened")
+                return "Tapped \"$hit\". Now on ${t.url}. If it asks for login/OTP use ask_user; on address steps call fill_profile; continue to the order summary, then request_approval with the exact total." + observe(t)
+            }
+            "pay_upi" -> {
+                val t = tab(); val w = web(); controlling = t
+                if (!approvedOnce) return "BLOCKED: call request_approval with the exact amount first."
+                val vpa = Prefs.upiId.trim()
+                if (vpa.isBlank()) return "The user hasn't saved a UPI ID (Settings → Agent payments). Ask them to choose a payment method on screen with ask_user."
+                step("lock", "Choosing UPI")
+                smartClick(t, listOf("UPI", "Pay by any UPI App", "UPI ID", "Other UPI"), allowFinal = true)?.let { settle(t, 2500) }
+                var r = PageJs.obj(w, "fillUpi(${PageJs.q(vpa)})")
+                if (r?.optBoolean("found") != true) { smartClick(t, listOf("Add new UPI ID", "Enter UPI ID", "UPI ID"), allowFinal = true); settle(t, 2000); r = PageJs.obj(w, "fillUpi(${PageJs.q(vpa)})") }
+                if (r?.optBoolean("found") != true) return "Couldn't find the UPI ID field. Use read_page, choose UPI and type the ID ${vpa.take(3)}… manually, or ask_user." + observe(t)
+                step("fill", "Entered your UPI ID ${vpa.replace(Regex("^(.{2}).*(@.*)$"), "$1•••$2")}")
+                if (r.optBoolean("verify")) { smartClick(t, listOf("Verify"), allowFinal = true); settle(t, 3000) }
+                val payHit = smartClick(t, listOf("Pay", "Pay Now", "Proceed", "Continue", "Make Payment"), allowFinal = true)
+                approvedOnce = false
+                settle(t, 6000)
+                step("ok", "Payment request sent → approve it with your UPI PIN in your UPI app")
+                items.add(NoticeItem("lock", "Payment request sent to $vpa. Open your UPI app and enter your UPI PIN to finish — Cairn never sees or types your PIN."))
+                return (if (payHit != null) "Tapped \"$payHit\". A collect request was sent to the user's UPI app; they must approve it with their UPI PIN. Tell the user and wait (ask_user) for them to say done, then read_page to confirm the order." else "UPI ID entered but the Pay button wasn't found — use read_page.") + observe(t)
             }
             "show_products" -> {
                 val idx = a.optJSONArray("indices") ?: JSONArray()
@@ -621,7 +815,7 @@ HOW TO WORK
                 val t = tab(); val w = web()
                 val loc = PageJs.obj(w, "locate(${a.optInt("id")})") ?: return "Element ${a.optInt("id")} not found — call read_page again."
                 val label = loc.optString("text")
-                guardFinal(label)?.let { return it }
+                guardFinal(label, t.url)?.let { return it }
                 step("click", "Tapping \"${label.take(50).ifBlank { loc.optString("tag") }}\"")
                 val before = t.url
                 touch(t, loc.getDouble("x"), loc.getDouble("y"), label.take(30))
@@ -629,9 +823,15 @@ HOW TO WORK
             }
             "click_text" -> {
                 val t = tab(); val w = web()
-                val loc = PageJs.obj(w, "findByText(${PageJs.q(a.optString("text"))})") ?: return "No visible element with text \"${a.optString("text")}\". Use read_page."
+                val loc = PageJs.obj(w, "findByText(${PageJs.q(a.optString("text"))})")
+                if (loc == null) {
+                    guardFinal(a.optString("text"), t.url)?.let { return it }
+                    val before = t.url
+                    val hit = smartClick(t, listOf(a.optString("text"))) ?: return "No element with text \"${a.optString("text")}\" (DOM, OCR and vision all missed it). Use read_page."
+                    return "Clicked \"${hit.take(80)}\" (found on screen).${if (t.url != before) " Navigated to ${t.url}." else ""}" + observe(t)
+                }
                 val label = loc.optString("text")
-                guardFinal(label)?.let { return it }
+                guardFinal(label, t.url)?.let { return it }
                 step("click", "Tapping \"${label.take(50)}\"")
                 val before = t.url
                 touch(t, loc.getDouble("x"), loc.getDouble("y"), label.take(30))
@@ -736,13 +936,25 @@ HOW TO WORK
             }
             "request_approval" -> {
                 val t = tab()
+                // UPI autopay: within the user's per-payment and daily limits the agent may approve itself.
+                val amt = rupees(a.optString("amount")) ?: t.web?.let { w -> PageJs.call(w, "orderTotal()")?.toDoubleOrNull() }
+                if (Prefs.autopay && Prefs.upiId.isNotBlank() && amt != null && amt > 0 && a.optString("kind", "payment") == "payment" &&
+                    amt <= Prefs.payLimit && spentToday() + amt <= Prefs.payDailyLimit) {
+                    val day = today(); if (Prefs.paySpentDay != day) { Prefs.paySpentDay = day; Prefs.paySpent = 0 }
+                    Prefs.paySpent = Prefs.paySpent + kotlin.math.ceil(amt).toInt()
+                    approvedOnce = true
+                    step("ok", "Auto-approved ₹${"%,.0f".format(amt)} — within your ₹${Prefs.payLimit} autopay limit")
+                    items.add(NoticeItem("lock", "Auto-approved ₹${"%,.0f".format(amt)} at ${a.optString("merchant").ifBlank { t.host }} (limit ₹${Prefs.payLimit}/payment, ₹${spentLeft()} left today). Change this in Settings → Agent payments."))
+                    return "APPROVED automatically (within the user's UPI autopay limit). Now call pay_upi."
+                }
+                if (Prefs.autopay && amt != null && amt > Prefs.payLimit) step("lock", "₹${"%,.0f".format(amt)} is above your ₹${Prefs.payLimit} autopay limit → asking you")
                 val ap = ApprovalItem(a.optString("kind", "payment"), a.optString("title"), a.optString("amount"), a.optString("merchant"), a.optString("item"), t.host)
                 step("lock", "Waiting for your approval: ${ap.title}")
                 items.add(ap); openRequests++
                 val ok = ap.result.await()
                 approvedOnce = ok
                 step(if (ok) "ok" else "stop", if (ok) "Approved" else "Not approved")
-                return if (ok) "APPROVED. You may now perform the single final click (place order / pay)." else "NOT APPROVED (denied). Do not pay. Tell the user and stop."
+                return if (ok) "APPROVED. ${if (Prefs.upiId.isNotBlank()) "Call pay_upi, or" else "You may now"} perform the single final click (place order / pay)." else "NOT APPROVED (denied). Do not pay. Tell the user and stop."
             }
             "fill_login" -> {
                 val t = tab(); val w = web(); controlling = t

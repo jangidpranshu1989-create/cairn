@@ -725,13 +725,51 @@ fun AiSettings() {
             Toggle(Ic.PanTool, "Ask before every click", "Slower, but you confirm each action", Prefs.agentConfirmEach) { Prefs.agentConfirmEach = it }; Divider()
             Toggle(Ic.Pip, "Live preview of background work", "A small floating window shows the pages Cairn is working on", Prefs.agentLivePreview) { Prefs.agentLivePreview = it }
         }
+        SectionLabel("Agent payments (UPI)")
+        var auto by remember { mutableStateOf(Prefs.autopay) }
+        var upi by remember { mutableStateOf(Prefs.upiId) }
+        var lim by remember { mutableStateOf(Prefs.payLimit.toString()) }
+        var daily by remember { mutableStateOf(Prefs.payDailyLimit.toString()) }
+        val spent = if (Prefs.paySpentDay == java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())) Prefs.paySpent else 0
+        Group {
+            Toggle(Ic.Payments, "Let the agent pay up to my limit", if (auto) "On · up to ₹${Prefs.payLimit} per payment, ₹${Prefs.payDailyLimit} a day (₹$spent used today)" else "Off · every payment asks for your fingerprint", auto) { on ->
+                scope.launch {
+                    // Turning autopay on is itself protected by the device lock.
+                    if (!on || Browser.activity.authenticate("Allow Cairn to pay for you", "Payments up to ₹${Prefs.payLimit} will be approved without asking")) { Prefs.autopay = on; auto = on }
+                }
+            }
+            Divider()
+            OutlinedTextField(upi, { upi = it.trim(); Prefs.upiId = upi }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(), label = { Text("Your UPI ID") }, placeholder = { Text("name@okaxis") },
+                singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp), isError = upi.isNotBlank() && !Regex("^[\\w.\\-]{2,}@[a-zA-Z]{2,}$").matches(upi))
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(lim, { v -> lim = v.filter { it.isDigit() }.take(6); lim.toIntOrNull()?.let { Prefs.payLimit = it } }, Modifier.weight(1f), label = { Text("Per payment ₹") },
+                    singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(daily, { v -> daily = v.filter { it.isDigit() }.take(6); daily.toIntOrNull()?.let { Prefs.payDailyLimit = it } }, Modifier.weight(1f), label = { Text("Per day ₹") },
+                    singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            }
+            Text("Within these limits the agent approves the payment itself, chooses UPI, enters your UPI ID and taps Pay. Your bank then sends a request to your UPI app — you finish it with your UPI PIN (NPCI rules: no app can enter the PIN for you). Above the limit, Cairn always asks first.",
+                color = C.faint, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp))
+        }
+        SectionLabel("Your own AI key (optional)")
+        var kp by remember { mutableStateOf(Prefs.aiKeyProvider) }
+        var key by remember { mutableStateOf(Prefs.aiKey) }
+        Group {
+            Choice("Provider", listOf("none" to "None (use Cairn's free AI)", "groq" to "Groq (free key)", "gemini" to "Google Gemini (free key)", "openrouter" to "OpenRouter"), kp, { kp = it; Prefs.aiKeyProvider = it }, Ic.Key)
+            if (kp != "none") {
+                Divider()
+                OutlinedTextField(key, { key = it.trim(); Prefs.aiKey = key }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(), label = { Text("API key") },
+                    singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp), visualTransformation = PasswordVisualTransformation())
+            }
+            Text("Used directly from your phone as a backup when Cairn's AI is busy, so replies never stop at an error. Stored encrypted on this device only.",
+                color = C.faint, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp))
+        }
         SectionLabel("Read aloud")
         Group {
             Choice("Speed", listOf(75, 100, 125, 150, 175, 200).map { it.toString() to "${it / 100f}×" }, Prefs.ttsRate.toString(), { ReadAloud.setRate(it.toInt()) }, Ic.Speed); Divider()
             val voices = remember { ReadAloud.voices() }
             Choice("Voice", listOf("" to "Automatic (matches the page language)") + voices.map { it to it }, Prefs.ttsVoice, { Prefs.ttsVoice = it }, Ic.RecordVoiceOver)
         }
-        Text("Payments and purchases always need your approval with your fingerprint, face or PIN. The assistant can't change that.", color = C.faint, fontSize = 12.5.sp, lineHeight = 18.sp, modifier = Modifier.padding(20.dp))
+        Text("Payments always need your approval (fingerprint, face or PIN) unless you turned on agent payments above — and then only within your limits. The assistant can't change these settings.", color = C.faint, fontSize = 12.5.sp, lineHeight = 18.sp, modifier = Modifier.padding(20.dp))
     }
 }
 

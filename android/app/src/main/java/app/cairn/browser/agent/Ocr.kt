@@ -41,4 +41,26 @@ object Ocr {
         val best = if (dn > 20 && dn > l.count { it.isLetter() } / 4) d else l
         return best.replace(Regex("[ \\t]+"), " ").replace(Regex("\\n{3,}"), "\n\n").trim()
     }
+
+    /**
+     * Self-healing click target: finds on-screen text matching one of [labels] (e.g. "Add to Cart") and returns the centre of
+     * its box in bitmap pixels. Used when a site's DOM hides the button (canvas, shadow DOM, obfuscated markup).
+     */
+    suspend fun locate(bmp: Bitmap, labels: List<String>): Triple<Float, Float, String>? {
+        val img = InputImage.fromBitmap(bmp, 0)
+        val res = withTimeoutOrNull(15_000) { suspendCancellableCoroutine<com.google.mlkit.vision.text.Text?> { c ->
+            latin.process(img).addOnSuccessListener { if (c.isActive) c.resume(it) }.addOnFailureListener { if (c.isActive) c.resume(null) }
+        } } ?: return null
+        fun norm(x: String) = x.lowercase().replace(Regex("[^a-z0-9₹ ]"), " ").replace(Regex("\\s+"), " ").trim()
+        val wants = labels.map(::norm).filter { it.isNotEmpty() }
+        var best: Triple<Float, Float, String>? = null; var bestScore = 0
+        for (b in res.textBlocks) for (l in b.lines) {
+            val t = norm(l.text); val box = l.boundingBox ?: continue
+            for ((rank, w) in wants.withIndex()) {
+                val score = when { t == w -> 100; t.startsWith(w) -> 80; t.contains(w) && t.length <= w.length + 12 -> 60; else -> 0 } - rank
+                if (score > bestScore) { bestScore = score; best = Triple(box.exactCenterX(), box.exactCenterY(), l.text) }
+            }
+        }
+        return best
+    }
 }

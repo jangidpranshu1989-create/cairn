@@ -676,7 +676,7 @@ app.whenReady().then(async () => {
   store.init();
   { const st = store.get().settings; if (app.isPackaged && /pplx\.app/.test(st.data.serverUrl || '')) { st.data.serverUrl = 'https://cairn-cloud.onrender.com'; st.save(); } }
   applySecureDns();
-  tabsMod = require('./tabs'); cloud = require('./cloud'); llm = require('./llm'); passwords = require('./passwords'); pageTools = require('./page-tools');
+  tabsMod = require('./tabs'); cloud = require('./cloud'); llm = require('./llm'); llm.warm(); passwords = require('./passwords'); pageTools = require('./page-tools');
   AgentCls = require('./agent/agent').Agent;
   registerProtocol();
   registerIpc();

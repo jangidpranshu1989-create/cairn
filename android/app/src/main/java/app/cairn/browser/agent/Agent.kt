@@ -397,6 +397,7 @@ HOW TO WORK
 
     private fun launch(block: suspend () -> Unit) {
         running = true; status = "Thinking…"; steps = null
+        Llm.warm(); Llm.onStatus = { status = it }
         productsThisTurn = false; cartTried = false; checkoutTried = false; payTried = false; lastTotal = ""; aiDown = null
         runCatching { app.cairn.browser.service.AgentService.start(Browser.activity) }
         job = scope.launch {
@@ -404,6 +405,14 @@ HOW TO WORK
             catch (e: CancellationException) { items.add(AiMsg("Stopped.")) }
             catch (e: NoAiException) {
                 val why = (e as? AiUnavailableException)?.summary
+                // Shopping still works with no AI at all: pull the product out of the request on-device ("mere liye
+                // iphone 17 find kr flipkart and add to cart kr de" → "iphone 17"), compare the stores (which also adds
+                // the best / named-store pick to the cart when asked), then continue to checkout below.
+                val offlineProduct = if (!productsThisTurn && attachmentsThisTurn == 0 && (buyIntent || Intents.FIND.containsMatchIn(userText))) Intents.product(userText) else null
+                if (offlineProduct != null) {
+                    status = "Comparing stores on-device…"
+                    runCatching { exec("compare_prices", JSONObject().put("product", offlineProduct)) }.onFailure { if (it is CancellationException) throw it }
+                }
                 // Never a blank "Not found": if the stores were already compared, answer from those results on-device.
                 val cartDone = runCatching { offlineCart() }.getOrElse { if (it is CancellationException) throw it; null }
                 val local = if (productsThisTurn && lastProducts.isNotEmpty()) localShoppingSummary(why) else null
@@ -419,7 +428,7 @@ HOW TO WORK
                 withContext(NonCancellable) {
                     steps?.done = true; steps = null
                     controlling?.web?.let { w -> runCatching { PageJs.call(w, "overlay('remove')") } }
-                    controlling = null; running = false; status = ""; pendingAsk = null
+                    controlling = null; running = false; status = ""; pendingAsk = null; Llm.onStatus = null
                     items.filterIsInstance<ApprovalItem>().filter { it.state == "pending" }.forEach { it.state = "expired"; it.result.cancel() }
                     persist()
                 }

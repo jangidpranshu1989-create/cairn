@@ -133,6 +133,7 @@ class BrowserActivity : FragmentActivity() {
         if (Prefs.isPaired) SyncService.start(this, SyncService.ACTION_SYNC)
         runCatching { app.cairn.browser.data.ServerConfig.migrate() }
         Thread { runCatching { app.cairn.browser.data.ServerConfig.refresh() } }.start()
+        app.cairn.browser.agent.Llm.warm() // wake Cairn Cloud (free tier sleeps when idle) before the first AI request
         if (app.cairn.browser.Crash.consumeRecovered()) toast("Cairn recovered from a problem — your tabs are back")
         app.cairn.browser.vault.Sync.soon(800)
     }

@@ -49,3 +49,22 @@ class FileChooserTest {
     @Test fun mixedFamilies() = assertEquals("*/*", FileChooser.primaryType(listOf("image/png", "application/pdf")))
     @Test fun single() = assertEquals("image/png", FileChooser.primaryType(listOf("image/png")))
 }
+
+class OfflineProductTest {
+    private fun p(s: String) = Intents.product(s)
+    @Test fun hinglishFlipkart() = assertEquals("iphone 17", p("mere liye iphone 17 find kr flipkart and add to cart kr de"))
+    @Test fun englishFromStore() = assertEquals("samsung galaxy s25 ultra", p("Add Samsung Galaxy S25 Ultra from Amazon to my cart"))
+    @Test fun sabseSasta() = assertEquals("iphone 16", p("iphone 16 sabse sasta cart mein daal do"))
+    @Test fun keepsVariant() = assertEquals("oneplus 13 256gb", p("buy the cheapest OnePlus 13 256GB on Croma"))
+    @Test fun nothingLeft() = assertEquals(null, p("add to cart kar do"))
+    @Test fun storeNamed() {
+        assertEquals("flipkart", Intents.store("iphone 17 flipkart pe cart me daal"))
+        assertEquals("vijaysales", Intents.store("from Vijay Sales"))
+        assertEquals(null, Intents.store("iphone 17 sabse sasta"))
+    }
+    @Test fun findIntent() {
+        assertTrue(Intents.FIND.containsMatchIn("mere liye iphone 17 find kr"))
+        assertTrue(Intents.FIND.containsMatchIn("iphone 17 ka sabse sasta price"))
+        assertFalse(Intents.FIND.containsMatchIn("summarize this page"))
+    }
+}

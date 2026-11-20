@@ -42,8 +42,28 @@ object Llm {
         JSONObject().put("messages", messages).put("tier", tier).put("maxTokens", maxTokens).put("temperature", temperature).put("stream", stream).also { b ->
             if (tools != null) b.put("tools", tools); if (json) b.put("json", true) }
 
+    /** Server addresses to try: the configured one first, then the built-in default (covers a stale/mistyped address). */
+    private fun bases(): List<String> {
+        val cur = Prefs.server.trim().trimEnd('/').removeSuffix("/api").trimEnd('/')
+        return listOf(cur, app.cairn.browser.BuildConfig.DEFAULT_SERVER.trimEnd('/')).filter { it.startsWith("http") }.distinct()
+    }
+    /** Anonymous device tokens for servers other than [Prefs.server] (that one lives in Prefs.anonAiToken). */
+    private val altTokens = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private fun altToken(base: String): String? = altTokens[base] ?: runCatching {
+        http.newCall(Request.Builder().url("$base/api/ai/device").post(JSONObject().put("platform", "android").toString().toRequestBody(JSON_T)).build()).execute().use { r ->
+            if (!r.isSuccessful) throw ApiException(r.code, "device token ${r.code}")
+            JSONObject(r.body?.string().orEmpty()).optString("token").takeIf { it.startsWith("anon_") }?.also { altTokens[base] = it }
+        }
+    }.getOrElse { if (it is ApiException) throw it; null }
+
     /** Opens a request to the Cairn server AI with the right credentials (account or anonymous device token). */
-    private fun cloudCall(path: String, build: Request.Builder.() -> Unit): okhttp3.Response {
+    private fun cloudCall(path: String, base: String = Prefs.server.trimEnd('/'), build: Request.Builder.() -> Unit): okhttp3.Response {
+        if (base != Prefs.server.trimEnd('/')) {
+            val t = altToken(base) ?: throw ApiException(503, "Cairn AI is unreachable")
+            val r = http.newCall(Request.Builder().url("$base/api$path").header("Authorization", "Bearer $t").apply(build).build()).execute()
+            if (r.code == 401) altTokens.remove(base)
+            return r
+        }
         if (Prefs.isSignedIn) return try { Api.authed { url(Api.ep(path)); build() } } catch (e: ApiException) { if (e.status == 401) anonCall(path, build) else throw e }
         return anonCall(path, build)
     }
@@ -53,9 +73,36 @@ object Llm {
         if (r.code == 401) { Prefs.anonAiToken = "" }
         return r
     }
+
+    /** Progress line for the UI while Cairn waits for the server to wake ("Waking up Cairn Cloud…"). Set by Agent. */
+    @Volatile var onStatus: ((String) -> Unit)? = null
+    @Volatile private var lastWarm = 0L
+    @Volatile private var lastCloudOk = 0L
+    @Volatile private var downAt = 0L
+    /**
+     * Wakes Cairn Cloud in the background (app start, assistant opened, task started). Render's free tier sleeps
+     * after 15 idle minutes and its edge answers 404 (x-render-routing: no-server) for the ~30-60 s it takes to
+     * wake, so pinging early means the server is up by the time the first real AI request goes out.
+     */
+    fun warm() {
+        val now = System.currentTimeMillis()
+        if (now - lastWarm < 60_000 || now - lastCloudOk < 5 * 60_000) return
+        lastWarm = now
+        Thread {
+            for (b in bases()) runCatching {
+                http.newCall(Request.Builder().url("$b/api/health").header("Cache-Control", "no-cache").build()).execute().use { if (it.isSuccessful) lastCloudOk = System.currentTimeMillis() }
+            }
+        }.apply { isDaemon = true }.start()
+    }
+
     private fun okText(r: okhttp3.Response): String = r.use {
         val t = it.body?.string().orEmpty()
-        if (!it.isSuccessful) throw ApiException(it.code, runCatching { JSONObject(t).optString("error") }.getOrNull()?.ifEmpty { null } ?: "AI error ${it.code}")
+        if (!it.isSuccessful) {
+            val j = runCatching { JSONObject(t) }.getOrNull()
+            val msg = j?.optString("error")?.ifEmpty { null } ?: "AI error ${it.code}"
+            // A daily-quota 429 from Cairn Cloud is not worth waiting for; mark it so the patient retry skips it.
+            throw ApiException(it.code, if (j?.optString("code") == "quota") QUOTA + msg else msg)
+        }
         t
     }
 
@@ -93,7 +140,8 @@ object Llm {
     /** A real cancellation (the user pressed Stop) must propagate; a timeout must fall through to the next provider. */
     private fun cancelled(e: Throwable) = e is java.io.InterruptedIOException && e !is java.net.SocketTimeoutException && e.message != "timeout"
     /** Worth one more try on the server: busy (503), gateway (502/504), cold start (timeout) or a proxy 404 during a redeploy. */
-    private fun transient(e: Throwable) = (e as? ApiException)?.status?.let { it == 404 || it == 408 || it >= 500 } ?: (e is java.net.SocketTimeoutException || e is java.io.IOException)
+    private const val QUOTA = "[quota] "
+    private fun transient(e: Throwable) = e.message?.startsWith(QUOTA) != true && (e as? ApiException)?.status?.let { it == 404 || it == 408 || it == 425 || it == 429 || it >= 500 || it == 0 } ?: (e is java.net.SocketTimeoutException || e is java.io.IOException)
 
     private fun directChat(d: Direct, messages: JSONArray, tools: JSONArray?, tier: String, json: Boolean, maxTokens: Int, temperature: Double): JSONObject {
         val b = JSONObject().put("model", if (tier == "fast") d.fast else d.smart).put("messages", messages).put("temperature", temperature).put("max_tokens", maxTokens)
@@ -111,7 +159,7 @@ object Llm {
                     if (m.optString("content").let { it.isBlank() || it == "null" } && (calls == null || calls.length() == 0)) throw ApiException(204, "empty reply")
                     if (calls != null && calls.length() == 0) m.remove("tool_calls")
                     m.remove("reasoning"); m.remove("reasoning_content")
-                    lastProvider = d.name; return m
+                    lastProvider = d.name; downAt = 0; return m
                 }
                 last = ApiException(r.code, t.take(200))
                 // Short rate limits ("retry in 1 seconds") are waited out on the same provider; anything else moves on.
@@ -128,28 +176,45 @@ object Llm {
         throw last ?: ApiException(0, "failed")
     }
 
-    /** One Cairn Cloud chat call, retried once after a short pause when the server is busy, cold or redeploying. */
-    private fun cloudChat(payload: String): JSONObject {
-        var last: Exception? = null
-        repeat(2) { attempt ->
-            try {
-                val j = JSONObject(okText(cloudCall("/ai/chat") { post(payload.toRequestBody(JSON_T)) }))
-                lastProvider = j.optString("_provider", "cloud"); cloudDownUntil = 0
-                val m = j.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-                m.optJSONArray("tool_calls")?.let { if (it.length() == 0) m.remove("tool_calls") }
-                return m
-            } catch (e: Exception) {
+    /** One Cairn Cloud chat call on [base]. */
+    private fun cloudChat(payload: String, base: String = bases().first()): JSONObject {
+        val j = JSONObject(okText(cloudCall("/ai/chat", base) { post(payload.toRequestBody(JSON_T)) }))
+        lastProvider = j.optString("_provider", "cloud"); cloudDownUntil = 0; lastCloudOk = System.currentTimeMillis(); downAt = 0
+        val m = j.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+        m.optJSONArray("tool_calls")?.let { if (it.length() == 0) m.remove("tool_calls") }
+        return m
+    }
+
+    /** Pauses between patient Cairn Cloud retries: ~45 s in total, enough to ride out a Render cold start or redeploy. */
+    internal val PATIENT_WAITS = longArrayOf(2_000, 3_000, 5_000, 7_000, 10_000, 12_000)
+
+    /**
+     * Keeps retrying Cairn Cloud (alternating the configured and default addresses) while it answers with a
+     * transient status: 404 from Render's edge while the instance wakes, 429/502/503/504, timeouts and network
+     * blips. Gives up early only for a definite error (400/401/403/413) or when the phone is offline for good.
+     */
+    private fun cloudPatient(payload: String, fails: MutableList<String>): JSONObject? {
+        val bs = bases()
+        var lastReason = ""
+        var offline = 0
+        for ((i, wait) in PATIENT_WAITS.withIndex()) {
+            onStatus?.invoke(if (i == 0) "Waking up Cairn Cloud…" else "Waking up Cairn Cloud… (${PATIENT_WAITS.take(i + 1).sum() / 1000}s)")
+            Thread.sleep(wait)
+            val base = bs[i % bs.size]
+            try { return cloudChat(payload, base).also { onStatus?.invoke("Thinking…") } } catch (e: Exception) {
                 if (cancelled(e)) throw e
-                last = e
-                if (attempt == 0 && transient(e) && e !is java.net.UnknownHostException) Thread.sleep(1500) else throw e
+                lastReason = reason(e)
+                if (e is java.net.UnknownHostException || e is java.net.ConnectException) { if (++offline >= 3) break; continue }
+                if (!transient(e)) break
             }
         }
-        throw last ?: ApiException(0, "failed")
+        if (lastReason.isNotEmpty()) fails += "Cairn Cloud $lastReason (after retries)"
+        return null
     }
 
     /**
-     * Provider chain: Cairn Cloud (retried once) → your own key → LLM7 → Cairn Cloud again. Any error on one provider
-     * moves on to the next; only if every route fails is an [AiUnavailableException] thrown with each provider's status.
+     * Provider chain: Cairn Cloud → your own key → LLM7 → Cairn Cloud again with patient retries (~45 s, which covers
+     * a free-tier cold start). Only if every route fails is an [AiUnavailableException] thrown with each status.
      */
     private fun route(messages: JSONArray, tools: JSONArray?, tier: String, json: Boolean, maxTokens: Int, temperature: Double): JSONObject {
         val fails = mutableListOf<String>()
@@ -159,13 +224,16 @@ object Llm {
             if (cancelled(e)) throw e
             fails += "Cairn Cloud ${reason(e)}"
             if (e is java.net.UnknownHostException || e is java.net.ConnectException) cloudDownUntil = System.currentTimeMillis() + 20_000
+            warm()
         }
         for (d in directs()) {
             try { return directChat(d, messages, tools, tier, json, maxTokens, temperature) }
             catch (e: Exception) { if (cancelled(e)) throw e; fails += "${d.name} ${reason(e)}" }
         }
-        // Everything else failed: give the server one last chance (it may have just woken up or freed capacity).
-        try { Thread.sleep(if (tryCloud) 2000 else 0); return cloudChat(payload) } catch (e: Exception) { if (cancelled(e)) throw e; if (!tryCloud) fails += "Cairn Cloud ${reason(e)}" }
+        // Everything else failed: wait for the server patiently (it is usually just waking up) before giving up.
+        // Right after a full outage (e.g. the on-device shopping fallback's helper calls) don't wait again.
+        if (System.currentTimeMillis() - downAt > 30_000) cloudPatient(payload, fails)?.let { return it }
+        downAt = System.currentTimeMillis()
         throw AiUnavailableException(fails)
     }
 

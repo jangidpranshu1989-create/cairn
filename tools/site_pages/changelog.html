@@ -11,6 +11,13 @@ desc: What's new in Cairn for desktop and Cairn for Android.
 
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
+  <article><h2>v3.0.2 <span>Nov 2026</span></h2><ul>
+  <li>Fixed for good: "Cairn's AI is busy right now (Cairn Cloud 404 · LLM7 429)". Cairn now wakes the cloud server as soon as the app opens and, if it is still starting, waits for it patiently (about 45 seconds, with a "Waking up Cairn Cloud…" status) instead of giving up after 2 seconds.</li>
+  <li>Shopping works even with no AI at all: "iphone 17 flipkart pe dhundh ke cart me daal do" now finds the product, compares the stores, adds the pick from the store you named to the cart and opens checkout, all on the device.</li>
+  <li>Cairn also tries its built-in server address if a saved one stops answering.</li>
+  <li>Redesigned home-screen shortcut icons (New tab, Private tab, Ask Cairn) with clearer labels.</li>
+  <li>The dock now shows the full word "Assistant" on every phone size.</li>
+  </ul></article>
   <article><h2>v3.0.1 <span>Nov 2026</span></h2><ul>
   <li>Fixed: "Cairn's AI couldn't be reached" in chat and shopping. The server now retries every AI provider and never passes a retired provider's error to the app.</li>
   <li>Add to cart in one go: after comparing prices Cairn adds the best pick (or the store you named) to the cart straight away, even when the AI is busy.</li>

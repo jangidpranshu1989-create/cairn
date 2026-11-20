@@ -1,6 +1,7 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FF1C1C1F" android:pathData="M12,0a12,12 0 1,0 0.01,0z" />
-    <group android:scaleX="0.6" android:scaleY="0.6" android:translateX="4.8" android:translateY="4.86">
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcut glyph on the 108dp adaptive-icon canvas: 42dp artwork centred in the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:scaleX="2.1" android:scaleY="2.1" android:translateX="28.8" android:translateY="29.4">
         <path android:fillColor="#FFEEEDEA" android:pathData="M4.3 17.4c0-2 3.4-3.3 7.9-3.3 4.4 0 7.5 1.3 7.5 3.3 0 1.8-3 2.9-7.6 2.9-4.7 0-7.8-1.1-7.8-2.9Z"/>
         <path android:fillColor="#FFEEEDEA" android:pathData="M6.6 11c0-1.7 2.3-2.9 5.3-2.9 3 0 4.9 1.1 4.9 2.7 0 1.6-2.1 2.6-5.1 2.6-3 0-5.1-1-5.1-2.4Z"/>
         <path android:fillColor="#FFD9C3A0" android:pathData="M9.3 5.75c0-1.3 1.3-2.3 3.1-2.3 1.7 0 2.7.9 2.7 2.1 0 1.2-1.2 2-2.9 2-1.8 0-2.9-.7-2.9-1.8Z"/>

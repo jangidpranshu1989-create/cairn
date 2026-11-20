@@ -13,12 +13,12 @@
 <meta property="og:description" content="What's new in Cairn for desktop and Cairn for Android.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://jangidpranshu1989-create.github.io/cairn/changelog.html">
-<meta property="og:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.0.3">
-<meta property="og:image:secure_url" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.0.3">
+<meta property="og:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.1.0">
+<meta property="og:image:secure_url" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.1.0">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Cairn 3.0.3: the AI browser that finds, compares and checks out for you">
+<meta property="og:image:alt" content="Cairn 3.1.0: the AI browser that finds, compares and checks out for you">
 <meta property="og:video" content="https://jangidpranshu1989-create.github.io/cairn/assets/media/cairn-demo-shopping-web.mp4">
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="540">
@@ -26,13 +26,13 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Changelog — Cairn">
 <meta name="twitter:description" content="What's new in Cairn for desktop and Cairn for Android.">
-<meta name="twitter:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.0.3">
-<meta name="twitter:image:alt" content="Cairn 3.0.3: the AI browser that finds, compares and checks out for you">
+<meta name="twitter:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.1.0">
+<meta name="twitter:image:alt" content="Cairn 3.1.0: the AI browser that finds, compares and checks out for you">
 <link rel="canonical" href="https://jangidpranshu1989-create.github.io/cairn/changelog.html">
 <link rel="icon" href="favicon.ico" sizes="48x48">
-<link rel="icon" href="assets/favicon.svg?v=3.0.3" type="image/svg+xml">
-<link rel="icon" href="assets/favicon-32.png?v=3.0.3" type="image/png" sizes="32x32">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=3.0.3" sizes="180x180">
+<link rel="icon" href="assets/favicon.svg?v=3.1.0" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png?v=3.1.0" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=3.1.0" sizes="180x180">
 <link rel="manifest" href="site.webmanifest">
 <link rel="preload" href="fonts/InterDisplay-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
@@ -61,6 +61,13 @@
 
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
+  <article><h2>v3.1.0 <span>Nov 2026</span></h2><ul>
+  <li>One-minute setup on first launch (also shown once after this update): your name, mobile and email, delivery address (type the PIN code and the city and state fill in), and a Cairn Account or an account on this phone only. Every step can be skipped.</li>
+  <li>New home screen: a personal greeting, one big composer with a Search / Agent switch, voice and send, a "Delivering to" chip, Continue cards, cleaner shortcuts and an even 2 × 2 "Let Cairn handle it" grid.</li>
+  <li>On-device OCR removed (it was unreliable). Photos, circled areas and buttons the page code can't find are now read by the vision model only. The APK no longer includes Google ML Kit.</li>
+  <li>More reliable AI: if a network answers Cairn Cloud's normal request with 404, the same request is retried as a streamed one (the route chat replies use), tool calls included.</li>
+  <li>Settings → AI → Test AI connection: checks Cairn Cloud and every backup AI from your phone, shows what answered and the exact reason for anything that failed, and copies a report.</li>
+  </ul></article>
   <article><h2>v3.0.3 <span>Nov 2026</span></h2><ul>
   <li>AI that keeps working when Cairn Cloud can't be reached: after your own keys, the phone and desktop now go straight to three keyless backups in turn: Kilo Gateway (free NVIDIA Nemotron), OVHcloud AI Endpoints (gpt-oss-120b, Qwen) and Pollinations. Each one has its own limits, so one being busy no longer stops you.</li>
   <li>LLM7 removed: since November 2026 it needs a token and answered every anonymous request with "429".</li>
@@ -313,7 +320,7 @@
     <div><h4>Company</h4><ul><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li><li><a href="security.html">Security</a></li></ul></div>
     <div><h4>Legal</h4><ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of service</a></li><li><a href="security.html#disclosure">Responsible disclosure</a></li></ul></div>
   </div>
-  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v3.0.3 · Built with Groq &amp; NVIDIA NIM</span></div>
+  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v3.1.0 · Built with Groq &amp; NVIDIA NIM</span></div>
 </div></footer>
 <script src="assets/site.js" defer></script>
 </body>

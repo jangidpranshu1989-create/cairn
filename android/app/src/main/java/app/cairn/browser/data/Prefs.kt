@@ -85,6 +85,10 @@ object Prefs {
     var pullToRefresh by bool("pullToRefresh", true)     // pull down at the very top of a page to reload
     var openLinksInBackground by bool("bgLinks", false)
     var onboarded by bool("onboarded", false)
+    /** First-launch setup (name, delivery address, account) finished or skipped. Shown once, also to people updating. */
+    var setupDone by bool("setupDone", false)
+    /** What Cairn calls you when you haven't signed in to an account. */
+    var nick by str("nick", "")
     var tabsJson by str("tabs", "[]")
 
     // ---- AI & agent ----
@@ -158,6 +162,8 @@ object Prefs {
     private val acct get() = userJson ?: localAccountS.takeIf { localSignedIn && it.isNotEmpty() }
     val userName get() = acct?.let { runCatching { JSONObject(it).optString("name").ifEmpty { JSONObject(it).optString("email") } }.getOrNull() } ?: ""
     val userEmail get() = acct?.let { runCatching { JSONObject(it).optString("email") }.getOrNull() } ?: ""
+    /** Account name, else the name given during setup. */
+    val displayName get() = userName.takeIf { it.isNotBlank() && !it.contains('@') } ?: nick.trim()
     val userPlan get() = acct?.let { runCatching { JSONObject(it).optString("plan", "free") }.getOrNull() } ?: "free"
 
     fun files(): List<SavedFile> = runCatching {

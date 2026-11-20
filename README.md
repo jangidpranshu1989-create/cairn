@@ -19,7 +19,8 @@ Full 30-second demos (1080x1920): [Home and answers](https://github.com/jangidpr
 
 ## What's new in 3.0
 
-- **Bento home** — greeting, voice, camera OCR and Agent mode in one tap, plus your top sites and recent journeys.
+- **Home** — personal greeting, one composer with a Search / Agent switch and voice, delivery address chip, top sites and recent journeys.
+- **One-minute setup** — on first launch: your name, contact, delivery address (PIN code fills city and state) and a Cairn Account, so the agent can check out from the first task.
 - **Exact-match shopping** — "sabse sasta iPhone 16" returns the exact model from trusted stores only. Covers, keypad phones and fake listings are filtered out.
 - **Autonomous checkout with a hard stop** — Cairn adds to cart and fills delivery details, then waits for your fingerprint before any payment or UPI step.
 - **Circle to Ask** — circle anything on a page and ask about it.
@@ -178,7 +179,6 @@ All server settings are in `server/.env.example`. Desktop settings are stored pe
 - **Android background delivery** uses a foreground WebSocket service (`remoteMessaging|dataSync` foreground-service types). For very large user bases switch to Firebase Cloud Messaging for wake-ups.
 - **No API keys are bundled.** Users bring their own Groq/NVIDIA keys, or you set server keys for Cairn Cloud mode.
 - **Domain:** `cairn.app` belongs to someone else. The website lives at https://jangidpranshu1989-create.github.io/cairn (GitHub Pages, `.github/workflows/pages.yml`; `vercel.json` also works). Buy your own domain (e.g. a `.in`) and pass `-PcairnSite=https://your.domain` to the Android build when you do.
-- **ML Kit:** on-device OCR uses Google ML Kit (proprietary), so the APK is not F-Droid main-repo compatible; GitHub Releases, Obtainium, IzzyOnDroid and Indus Appstore are fine.
 - Assumptions to change before launch: Pro price ₹199/month, contact goes to GitHub issues until you have a domain email, governing law (Jaipur, India) in the Terms. Have a lawyer review `privacy.html` and `terms.html`.
 
 ## License

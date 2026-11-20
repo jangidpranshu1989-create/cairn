@@ -45,7 +45,7 @@ fun rememberNow(): Calendar {
     return now
 }
 
-fun firstName(): String = Prefs.userName.let { n -> if (n.contains('@')) "" else n.trim().substringBefore(' ') }.take(18)
+fun firstName(): String = Prefs.displayName.let { n -> if (n.contains('@')) "" else n.trim().substringBefore(' ') }.take(18)
 
 fun greetingFor(c: Calendar): String {
     val g = when (c.get(Calendar.HOUR_OF_DAY)) { in 5..11 -> "Good morning"; in 12..16 -> "Good afternoon"; in 17..20 -> "Good evening"; else -> "Good night" }
@@ -199,9 +199,9 @@ fun ChatHistoryPanel(onClose: () -> Unit) {
 
 @Composable
 fun ProfileAvatar(size: Dp = 34.dp, onClick: () -> Unit) {
-    val name = Prefs.userName
+    val name = Prefs.displayName
     Box(Modifier.size(size + 8.dp).clip(CircleShape).clickable { Haptics.tick(); onClick() }, contentAlignment = Alignment.Center) {
-        if (Prefs.hasAccount && name.isNotBlank())
+        if (name.isNotBlank())
             Box(Modifier.size(size).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFF7C9CFF), Color(0xFF9F7BFF)))), contentAlignment = Alignment.Center) {
                 Text(name.take(1).uppercase(), color = Color.White, fontSize = (size.value * .44f).sp, fontWeight = FontWeight.SemiBold)
             }

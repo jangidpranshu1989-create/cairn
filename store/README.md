@@ -1,4 +1,4 @@
-# Cairn store submission kit (v3.0.3)
+# Cairn store submission kit (v3.1.0)
 
 Everything needed to list Cairn on PhonePe Appstore (formerly Indus Appstore), IzzyOnDroid and Obtainium.
 
@@ -10,7 +10,7 @@ Everything needed to list Cairn on PhonePe Appstore (formerly Indus Appstore), I
 | Promo videos | Release assets `Cairn-Demo-Home.mp4`, `Cairn-Demo-Shopping.mp4` | 1080 × 1920, 30 s |
 | Signed APK | https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk | ~10 MB |
 
-App facts: package `app.cairn.browser` · versionCode 14 · versionName 3.0.3 · minSdk 26 (Android 8.0) · targetSdk 35 · signing cert SHA-256 `03a19f7b65680b8e23d3894b71ebca9ee91cea27fb483505cd14121602376d5b`.
+App facts: package `app.cairn.browser` · versionCode 15 · versionName 3.1.0 · minSdk 26 (Android 8.0) · targetSdk 35 · signing cert SHA-256 `03a19f7b65680b8e23d3894b71ebca9ee91cea27fb483505cd14121602376d5b`.
 
 Links: Website https://jangidpranshu1989-create.github.io/cairn · Privacy https://jangidpranshu1989-create.github.io/cairn/privacy.html · Terms https://jangidpranshu1989-create.github.io/cairn/terms.html · Source https://github.com/jangidpranshu1989-create/cairn
 
@@ -42,7 +42,7 @@ See `fastlane/metadata/android/en-US/full_description.txt` (same text, HTML allo
 Cairn ek fast Android browser hai jisme AI agent built-in hai. Hindi, Hinglish ya English mein poochho — Cairn khud browse karta hai, trusted stores mein price compare karta hai, cart bharta hai aur UPI PIN screen pe ruk jata hai. Control hamesha aapke paas.
 
 Cairn 3.0 mein naya kya hai:
-• Bento Home — greeting, time aur weather, glass Omni-bar (voice, camera OCR, agent mode), clean shortcuts aur "Continue your journey" cards.
+• Naya Home — naam ke saath greeting, bada composer (Search / Agent switch, voice), delivery address chip, Continue cards aur shortcuts.
 • Exact-match shopping — brand, model, storage aur colour match hona zaroori. Covers, chargers, keypad phones aur trust score 70 se kam wale stores gayab.
 • Checkout Magic — Find → Cart → Address → UPI. Saved address khud bharta hai, aapki UPI ID select karta hai, sirf aapki set ki hui limit ke andar. UPI PIN hamesha aap khud daalte ho.
 • Rich answers — comparison tables (best pick highlight), spec cards, code blocks with Copy, callouts, [1] [2] citations aur source cards.
@@ -59,7 +59,7 @@ See `fastlane/metadata/android/en-US/changelogs/11.txt`.
 ### Permission justifications (reviewers ask for these)
 | Permission | Why |
 |---|---|
-| CAMERA | Camera OCR in the Omni-bar and photo questions; only when the user taps the camera button. |
+| CAMERA | Photo questions in the assistant; only when the user taps the camera button. |
 | RECORD_AUDIO | Voice input in the Omni-bar and assistant; only while the mic button is active. |
 | ACCESS_COARSE/FINE_LOCATION | Only when a website asks for location (maps, delivery pincode); requested at runtime, never in the background. The home weather pill uses approximate network location and needs no permission. |
 | USE_BIOMETRIC | Fingerprint approval before any payment. |

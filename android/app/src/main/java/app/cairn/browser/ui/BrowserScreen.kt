@@ -137,7 +137,7 @@ fun App(webHost: FrameLayout, bgHost: FrameLayout) {
             }
             BackHandler { act.exitFullscreen() }
         }
-        if (!Prefs.onboarded) Onboarding()
+        if (!Prefs.setupDone) SetupWizard()
     }
 }
 
@@ -263,7 +263,7 @@ fun NewTabPage(private: Boolean) {
         (top + defaults.filter { d -> top.none { BrowserDb.siteKey(it.second) == BrowserDb.siteKey(d.second) } }).distinctBy { BrowserDb.siteKey(it.second) }.take(8)
     }
     Column(Modifier.fillMaxSize().background(C.bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-        Spacer(Modifier.height(if (private) 72.dp else 56.dp))
+        Spacer(Modifier.height(if (private) 72.dp else 18.dp))
         if (private) {
             Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(C.surface2), contentAlignment = Alignment.Center) { Icon(Ic.VisibilityOff, null, Modifier.size(24.dp), tint = C.text) }
             Spacer(Modifier.height(20.dp))
@@ -284,9 +284,8 @@ fun NewTabPage(private: Boolean) {
         Spacer(Modifier.height(20.dp))
         val motion = android.provider.Settings.Global.getFloat(LocalContext.current.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
         OmniBar(motion, quick)
-        Spacer(Modifier.height(16.dp))
-        ShortcutGrid(sites)
         JourneyRow(v)
+        ShortcutGrid(sites)
         BentoGrid()
         val watching = app.cairn.browser.service.PriceWatch.tracks
         LaunchedEffect(Unit) { app.cairn.browser.service.PriceWatch.load() }

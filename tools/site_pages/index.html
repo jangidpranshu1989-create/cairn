@@ -5,15 +5,17 @@ active: index.html
 <section class="hero">
   <div class="wrap">
     <div class="hero-copy">
-      <span class="chip rv"><b>New</b> Cairn 2.0 — Checkout Magic, Swarm and Circle to act</span>
+      <a class="chip rv" href="changelog.html"><b>New</b> Cairn 3.0 — Bento home, exact-match shopping and rich answers</a>
       <h1 class="rv" style="--d:60ms">Just say it. <span class="em">Cairn</span> gets it done.</h1>
       <p class="lead rv" style="--d:120ms">An agentic browser that does the work for you. Ask in Hindi, Hinglish or any language — Cairn browses, compares prices across stores, fills your cart and stops at payment, so you approve it with your fingerprint on your phone.</p>
-      <div class="btns rv" style="--d:180ms"><a class="btn lg primary" href="download.html" data-os-link><span>Download for <span data-os-name>Windows</span></span> {{arrow}}</a><a class="btn lg" href="#how">See how it works</a></div>
+      <div class="btns rv" style="--d:180ms"><a class="btn lg primary" href="{{RELEASES}}/Cairn-Android.apk" data-dl="android">{{android}}<span>Download Android APK <small class="bsub">v3.0 · 10 MB</small></span></a><a class="btn lg" href="download.html#desktop">{{win}}<span>Download Desktop</span></a></div>
+      <a class="hero-link rv" style="--d:210ms" href="#demo">Watch the 30-second demo {{arrow}}</a>
       <div class="hero-meta rv" style="--d:240ms"><span>{{check}} AI built in — no keys to set up</span><span>{{check}} Windows · macOS · Linux · Android</span><span>{{check}} No ads, no data selling</span></div>
     </div>
     <div class="stage rv" style="--d:200ms">
       <div class="callout c1"><i>{{cart}}</i><div><b>6 stores checked in ~35s</b><small>Amazon, Flipkart, Croma, Reliance…</small></div></div>
       <div class="callout c2"><i>{{shield}}</i><div><b>Trust score on every deal</b><small>Seller, rating, reviews, returns</small></div></div>
+      <div class="phone-demo" aria-hidden="true"><video src="assets/media/cairn-demo-shopping-web.mp4" poster="assets/media/poster-shopping.jpg" autoplay muted loop playsinline preload="metadata"></video></div>
       <div class="frame"><img src="assets/shots/shop.webp" width="1440" height="900" alt="Cairn browser with the assistant panel showing iPhone 16 prices compared across Croma and Reliance Digital, with a best pick at ₹69,900" fetchpriority="high"></div>
     </div>
   </div>
@@ -25,6 +27,17 @@ active: index.html
     <span aria-hidden="true"><em>Mujhe iPhone 16 sabse saste rate me chahiye</em></span><span aria-hidden="true">मुझे सबसे सस्ता iPhone चाहिए</span><span aria-hidden="true"><em>Find me the cheapest iPhone 16</em></span><span aria-hidden="true">আমার জন্য সবচেয়ে সস্তা iPhone খুঁজে দাও</span><span aria-hidden="true"><em>Is article ko padh ke sunao</em></span><span aria-hidden="true">मला सर्वात स्वस्त iPhone शोधून दे</span><span aria-hidden="true"><em>Encuéntrame el iPhone más barato</em></span><span aria-hidden="true">Save this PDF to my phone</span>
   </div>
 </div>
+
+<section class="sec demo" id="demo">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="eyebrow">See it in 30 seconds</span><h2>Two demos. <span class="em">Zero setup.</span></h2><p class="lead">The new bento home, Claude-level comparison answers with live sources, and the full Find → Cart → UPI flow with Circle to Ask.</p></div>
+    <div class="demo-grid">
+      <figure class="rv"><div class="phone-v"><video src="assets/media/cairn-demo-home-web.mp4" poster="assets/media/poster-home.jpg" controls muted loop playsinline preload="none"></video></div><figcaption><b>Home &amp; rich answers</b><span>Bento home, comparison tables, cited sources</span></figcaption></figure>
+      <figure class="rv" style="--d:80ms"><div class="phone-v"><video src="assets/media/cairn-demo-shopping-web.mp4" poster="assets/media/poster-shopping.jpg" controls muted loop playsinline preload="none"></video></div><figcaption><b>Shopping &amp; Circle to Ask</b><span>Exact match, trusted stores, UPI within your limit</span></figcaption></figure>
+    </div>
+    <div class="btns center rv"><a class="btn lg primary" href="{{RELEASES}}/Cairn-Android.apk">{{android}}<span>Get the free APK</span></a><a class="btn lg" href="https://github.com/jangidpranshu1989-create/cairn">Star on GitHub</a></div>
+  </div>
+</section>
 
 <section class="sec" id="how">
   <div class="wrap">

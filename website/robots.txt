@@ -1,3 +1,5 @@
 User-agent: *
 Allow: /
+Disallow: /404.html
+
 Sitemap: https://jangidpranshu1989-create.github.io/cairn/sitemap.xml

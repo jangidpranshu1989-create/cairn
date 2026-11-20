@@ -1,6 +1,32 @@
+<div align="center">
+
+<img src="website/assets/icon-512.png" width="96" alt="Cairn logo">
+
 # Cairn — the agentic browser
 
-> **Just say it. Cairn gets it done.** Ask in English, Hindi, Hinglish or any language — Cairn browses, compares prices across stores, fills your cart and stops at payment so you approve it on your phone.
+**Just say it. Cairn gets it done.** Ask in English, Hindi, Hinglish or any language. Cairn browses, compares prices across trusted stores, fills your cart and stops at payment so you approve it with your fingerprint.
+
+[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.0%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
+[![Download Desktop](https://img.shields.io/badge/Download%20Desktop-Windows%20·%20macOS%20·%20Linux-EEEDEA?style=for-the-badge&logo=googlechrome&logoColor=161618&labelColor=D9C3A0)](https://jangidpranshu1989-create.github.io/cairn/download.html#desktop)
+
+[Website](https://jangidpranshu1989-create.github.io/cairn/) · [Get it on Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jangidpranshu1989-create/cairn) · [Changelog](https://jangidpranshu1989-create.github.io/cairn/changelog.html) · [Release v3.0.0](https://github.com/jangidpranshu1989-create/cairn/releases/tag/v3.0.0)
+
+<img src="docs/media/gif-home.gif" width="280" alt="Cairn bento home and rich answers"> &nbsp; <img src="docs/media/gif-shop.gif" width="280" alt="Cairn exact-match shopping and payment approval">
+
+Full 30-second demos (1080x1920): [Home and answers](https://github.com/jangidpranshu1989-create/cairn/releases/download/v3.0.0/Cairn-Demo-Home.mp4) · [Shopping and Circle to Ask](https://github.com/jangidpranshu1989-create/cairn/releases/download/v3.0.0/Cairn-Demo-Shopping.mp4)
+
+</div>
+
+## What's new in 3.0
+
+- **Bento home** — greeting, voice, camera OCR and Agent mode in one tap, plus your top sites and recent journeys.
+- **Exact-match shopping** — "sabse sasta iPhone 16" returns the exact model from trusted stores only. Covers, keypad phones and fake listings are filtered out.
+- **Autonomous checkout with a hard stop** — Cairn adds to cart and fills delivery details, then waits for your fingerprint before any payment or UPI step.
+- **Circle to Ask** — circle anything on a page and ask about it.
+- **Rich answers** — tables, comparisons and numbered citations with a sources sheet.
+- **Free and made in India** — no ads, bring your own free Groq key or use Cairn Cloud.
+
+## Inside this repo
 
 This repository contains the complete product:
 

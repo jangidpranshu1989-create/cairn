@@ -88,7 +88,45 @@ object Agent {
         s.steps.add(Step(icon, text))
     }
 
-    fun newChat() { stop(); items.clear(); messages = JSONArray(); lastProducts = emptyList(); lastArticle = null; lastSummary = null; lastFile = null }
+    /** The conversation being shown; saved to [Chats] after every turn (never for private tabs). */
+    var chatId by mutableStateOf(Chats.newId()); private set
+    var chatTitle by mutableStateOf<String?>(null); private set
+    private var chatPrivate = false
+
+    fun newChat() { stop(); items.clear(); messages = JSONArray(); lastProducts = emptyList(); lastArticle = null; lastSummary = null; lastFile = null
+        chatId = Chats.newId(); chatTitle = null; chatPrivate = false }
+
+    /** Reopens an old chat exactly as it was; the next message continues it with its context. */
+    fun openChat(id: String): Boolean {
+        val (title, old) = Chats.load(id) ?: return false
+        stop(); items.clear(); items.addAll(old)
+        messages = Chats.contextOf(old)
+        lastProducts = emptyList(); lastArticle = null; lastFile = null; lastSummary = old.lastOrNull { it is SummaryItem } as? SummaryItem
+        chatId = id; chatTitle = title; chatPrivate = false
+        return true
+    }
+
+    fun deleteChat(id: String) { Chats.delete(id); if (id == chatId) newChat() }
+    fun renameChat(id: String, title: String) { Chats.rename(id, title); if (id == chatId) chatTitle = Chats.list.firstOrNull { it.id == id }?.title }
+
+    private fun persist() {
+        if (chatPrivate || Browser.current?.incognito == true) { chatPrivate = true; return }
+        if (items.none { it is UserMsg || it is LassoItem }) return
+        val id = chatId
+        val firstTurn = chatTitle == null
+        if (firstTurn) chatTitle = Chats.defaultTitle(items.firstNotNullOfOrNull { (it as? UserMsg)?.text ?: (it as? LassoItem)?.text }.orEmpty())
+        runCatching { Chats.save(id, items.toList(), chatTitle) }
+        if (firstTurn) scope.launch {
+            // A short AI title, like ChatGPT. Falls back to the first message if the model is unavailable.
+            val ask = items.firstNotNullOfOrNull { (it as? UserMsg)?.text ?: (it as? LassoItem)?.text }.orEmpty()
+            val ans = (items.lastOrNull { it is AiMsg && !it.error } as? AiMsg)?.markdown.orEmpty()
+            if (ask.isBlank()) return@launch
+            val t = runCatching { Llm.complete("Write a 2-6 word title for this chat in the user's language. No quotes, no punctuation at the end, no emojis. Reply with the title only.",
+                "User: ${ask.take(600)}\nAssistant: ${ans.take(600)}", tier = "fast", maxTokens = 24) }.getOrNull()
+                ?.lineSequence()?.firstOrNull()?.trim()?.trim('"', '\'', '*', '.', ' ')?.take(60)
+            if (!t.isNullOrBlank() && chatId == id) { chatTitle = t; Chats.rename(id, t) }
+        }
+    }
     fun stop() { job?.cancel(); pendingAsk?.result?.cancel(); pendingAsk = null }
 
     /** Answer to an ask_user question typed in the composer. */
@@ -219,23 +257,45 @@ HOW TO WORK
         }
     }
 
-    /** Turns an attachment into text the agent can reason over: extracted document text, or a vision read of an image. */
+    /**
+     * Turns an attachment into text the agent can reason over. Images (and scanned PDF pages) are read twice:
+     * on-device OCR transcribes every word (works offline, never fails on a book page), and a cloud vision model —
+     * when the server has one — describes diagrams, photos and layout. Either alone is enough to answer.
+     */
     private suspend fun attachmentContext(f: Attachment, question: String): String {
         if (!f.ready) { step("file", "Reading ${f.name.take(40)}"); var w = 0; while (!f.ready && w < 200) { delay(100); w++ } }
         if (f.isImage || f.scanned.isNotEmpty()) {
             step("lasso", if (f.isImage) "Looking at ${if (f.name == "Photo") "your photo" else f.name.take(40)}" else "Reading scanned pages of ${f.name.take(40)}")
-            val imgs = if (f.isImage) listOf(f.jpegB64()) else f.scanned.map { b -> java.io.ByteArrayOutputStream().also { o -> b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, o) }.let { android.util.Base64.encodeToString(it.toByteArray(), android.util.Base64.NO_WRAP) } }
-            val desc = imgs.mapIndexed { i, b64 ->
-                Llm.vision("You are the eyes of Cairn, a browser assistant. Describe this ${if (f.isImage) "image" else "document page"} for another AI that cannot see it. " +
-                    "Transcribe ALL visible text exactly (OCR), list products/brands/prices/people/places/UI elements, and note anything relevant to the user's request: \"${question.ifBlank { "What is this?" }.take(400)}\". Be thorough but compact. Write in English.", b64, 1400)
-                    .let { if (imgs.size > 1) "--- Page ${i + 1} ---\n$it" else it }
-            }.joinToString("\n")
-            return "\n\n[Attached ${if (f.isImage) "image" else "scanned PDF"} \"${f.name}\" — what it shows:]\n$desc"
+            val bitmaps = if (f.isImage) listOfNotNull(f.bitmap) else f.scanned
+            val parts = bitmaps.mapIndexed { i, bmp ->
+                val text = withContext(Dispatchers.Default) { Ocr.read(bmp) }
+                if (text.length > 30) step("file", "Read ${text.split(Regex("\\s+")).size} words${if (bitmaps.size > 1) " on page ${i + 1}" else ""}")
+                val b64 = jpeg(bmp, 1600)
+                val seen = runCatching {
+                    Llm.vision("You are the eyes of Cairn, a browser assistant. Describe this ${if (f.isImage) "image" else "document page"} for another AI that cannot see it. " +
+                        "Transcribe ALL visible text exactly (OCR), describe diagrams, tables, equations, products/brands/prices/people/places, and note anything relevant to the user's request: \"${question.ifBlank { "What is this?" }.take(400)}\". Be thorough but compact. Write in English.", b64, 1600)
+                }.getOrElse { e -> if (e is CancellationException) throw e; "" }
+                if (text.isBlank() && seen.isBlank()) return@mapIndexed ""
+                val sb = StringBuilder()
+                if (bitmaps.size > 1) sb.append("--- Page ${i + 1} ---\n")
+                if (text.isNotBlank()) sb.append("Text in the picture (exact, on-device OCR):\n").append(text.take(12000)).append('\n')
+                if (seen.isNotBlank()) sb.append("What it shows (vision):\n").append(seen).append('\n')
+                sb.toString()
+            }.filter { it.isNotBlank() }
+            if (parts.isEmpty()) return "\n\n[Attached ${if (f.isImage) "image" else "scanned PDF"} \"${f.name}\": no readable text was found in it and image understanding is unavailable right now. Tell the user plainly, and suggest a sharper, well-lit photo held straight over the page.]"
+            return "\n\n[Attached ${if (f.isImage) "image" else "scanned PDF"} \"${f.name}\" — read for you. If it is a textbook or notes page, explain it like a good teacher: summary, key points, and answers to any questions on it:]\n${parts.joinToString("\n")}"
         }
         val t = f.text
         if (t.isNullOrBlank()) return "\n\n[Attached file \"${f.name}\" could not be read: ${f.error ?: "no text"}]"
         val pages = if (f.pages > 0) ", ${f.pages} pages" else ""
         return "\n\n[Attached ${f.kindLabel} \"${f.name}\"$pages, ${t.length} chars${if (t.length > 14000) " — first part shown" else ""}:]\n${t.take(14000)}"
+    }
+
+    private fun jpeg(b: android.graphics.Bitmap, maxSide: Int): String {
+        val sc = minOf(1f, maxSide.toFloat() / maxOf(b.width, b.height))
+        val x = if (sc < 1f) android.graphics.Bitmap.createScaledBitmap(b, (b.width * sc).toInt().coerceAtLeast(1), (b.height * sc).toInt().coerceAtLeast(1), true) else b
+        val o = java.io.ByteArrayOutputStream(); x.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, o)
+        return android.util.Base64.encodeToString(o.toByteArray(), android.util.Base64.NO_WRAP)
     }
 
     /** Re-asks the last question (the "Retry" action). */
@@ -274,10 +334,12 @@ HOW TO WORK
                 Llm.vision("You are the eyes of Cairn, a browser assistant. The user circled this part of a web page and asked: \"${q.take(300)}\". " +
                     "Describe exactly what is in the image for another AI: transcribe all text, name products/brands/models/prices/people/places, describe charts or UI. Be compact. English.", b64, 900)
             }.getOrElse { e -> if (e is CancellationException) throw e; "" }
-            if (seen.isBlank() && domText.isBlank()) throw Exception("Couldn't read your selection. Try circling a slightly bigger area.")
+            // On-device OCR of the circled pixels: works for text inside images, videos and canvases, and offline.
+            val ocr = if (domText.length < 40) withContext(Dispatchers.Default) { runCatching { Ocr.read(bmp) }.getOrDefault("") } else ""
+            if (seen.isBlank() && domText.isBlank() && ocr.isBlank()) throw Exception("Couldn't read your selection. Try circling a slightly bigger area, or one with text in it.")
             // 2) Answer it, with live web search when useful — as a normal agent turn, so sources and follow-ups work.
             messages.put(JSONObject().put("role", "user").put("content",
-                "[I circled part of the page]\n$pageCtx\n${if (seen.isNotBlank()) "What the selection shows: $seen\n" else ""}\n$q\n\n(${Llm.langInstruction(q)} Search the web if facts, prices or where-to-buy matter; cite sources.)"))
+                "[I circled part of the page]\n$pageCtx\n${if (ocr.isNotBlank()) "Text recognised in the selection (OCR): ${ocr.take(4000)}\n" else ""}${if (seen.isNotBlank()) "What the selection shows: $seen\n" else ""}\n$q\n\n(${Llm.langInstruction(q)} Search the web if facts, prices or where-to-buy matter; cite sources.)"))
             loop()
         }
     }
@@ -324,6 +386,7 @@ HOW TO WORK
                     controlling?.web?.let { w -> runCatching { PageJs.call(w, "overlay('remove')") } }
                     controlling = null; running = false; status = ""; pendingAsk = null
                     items.filterIsInstance<ApprovalItem>().filter { it.state == "pending" }.forEach { it.state = "expired"; it.result.cancel() }
+                    persist()
                 }
             }
         }

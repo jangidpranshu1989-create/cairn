@@ -121,6 +121,7 @@ fun App(webHost: FrameLayout, bgHost: FrameLayout) {
         AnimatedVisibility(Ui.tabSwitcher, enter = fadeIn(tween(160)) + scaleIn(cairnSpring(), initialScale = .96f), exit = fadeOut(tween(140)) + scaleOut(targetScale = .97f)) { TabSwitcher() }
         AnimatedVisibility(Ui.omnibox, enter = fadeIn(tween(140)) + slideInVertically(cairnSpring()) { it / 14 }, exit = fadeOut(tween(110))) { Omnibox() }
         AssistantSheet()
+        if (Ui.profile) ProfileSheet { Ui.profile = false }
         // Live preview of background agent pages floats above everything except dialogs
         Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) { LivePreview(Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 12.dp)) }
         if (Ui.menu) MainMenu()
@@ -171,18 +172,28 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
                 AgentStatus(Modifier)
             }
         }
-        Column(Modifier.fillMaxWidth().background(C.chrome).then(if (imeVisible) Modifier else Modifier.navigationBarsPadding())
-            .animateContentSize(spring(dampingRatio = .86f, stiffness = 520f)), horizontalAlignment = Alignment.CenterHorizontally) {
+        // No animateContentSize here: animating this height resized the WebView on every frame, which made pages
+        // re-layout continuously (sticky headers jumping, videos stuttering). The bar swaps in one step instead.
+        Column(Modifier.fillMaxWidth().background(C.chrome).then(if (imeVisible) Modifier else Modifier.navigationBarsPadding()),
+            horizontalAlignment = Alignment.CenterHorizontally) {
             VaultBar(tab)
             AutofillBar(tab)
             AnimatedVisibility(Ui.find && tab != null, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { tab?.let { Floating { FindBar(it) } } }
             AnimatedVisibility(ReadAloud.active && !Ui.find, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { Floating { ReadAloudBar() } }
             if (!imeVisible && !Ui.find) {
                 if (hidden) tab?.let { MiniBar(it) }
-                else Dock(tab, Modifier.padding(top = 6.dp, bottom = 6.dp))
+                else Box(Modifier.animateEnterFade()) { Dock(tab, Modifier.padding(top = 6.dp, bottom = 6.dp)) }
             }
         }
     }
+}
+
+/** Fades/slides content in once when it first appears (no layout animation, so the page above never resizes twice). */
+@Composable
+private fun Modifier.animateEnterFade(): Modifier {
+    val a = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { a.animateTo(1f, spring(dampingRatio = .9f, stiffness = 700f)) }
+    return this.graphicsLayer { alpha = a.value; translationY = (1f - a.value) * 18f }
 }
 
 /** Shown in place of the dock while reading (Safari-style): just the site, tap to bring the dock back. */
@@ -231,7 +242,6 @@ private val ideas = listOf(
     Idea(Ic.AccountTree, "Map a topic", "Make a mind map of how GPUs work"),
 )
 
-private fun greeting(): String = when (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) { in 5..11 -> "Good morning"; in 12..16 -> "Good afternoon"; in 17..21 -> "Good evening"; else -> "Hello" }
 
 @Composable
 fun NewTabPage(private: Boolean) {
@@ -258,12 +268,16 @@ fun NewTabPage(private: Boolean) {
             Spacer(Modifier.height(120.dp))
             return@Column
         }
+        val now = rememberNow()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Logo(30.dp); Spacer(Modifier.width(12.dp))
-            Column {
-                Text("Cairn", color = C.text, fontSize = 24.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp)
-                Text(greeting(), color = C.faint, fontSize = 13.sp)
+            Column(Modifier.weight(1f)) {
+                AnimatedContent(greetingFor(now), label = "greet", transitionSpec = { fadeIn(tween(400)) togetherWith fadeOut(tween(200)) }) { g ->
+                    Text(g, color = C.text, fontSize = 22.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text(clockLine(now), color = C.faint, fontSize = 13.sp)
             }
+            ProfileAvatar(34.dp) { Ui.profile = true }
         }
         Spacer(Modifier.height(24.dp))
         // Search / ask
@@ -758,6 +772,7 @@ fun MainMenu() {
             HorizontalDivider(color = C.line, modifier = Modifier.padding(vertical = 6.dp))
             MenuRow(Ic.Add, "New tab") { close(); Browser.newTab(); Ui.omnibox = true }
             MenuRow(Ic.VisibilityOff, "New private tab") { close(); Browser.newTab(NTP, incognito = true) }
+            MenuRow(Ic.QuestionAnswer, "Chats with Cairn") { close(); Ui.chats = true; Ui.assistant = true }
             MenuRow(Ic.History, "History") { Ui.go("history") }
             MenuRow(Ic.Download, "Downloads") { Ui.go("downloads") }
             MenuRow(Ic.CloudOff, "Offline pages") { Ui.go("offline") }

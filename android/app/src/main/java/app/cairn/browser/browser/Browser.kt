@@ -55,6 +55,12 @@ class Tab(val id: Long, val incognito: Boolean, initialUrl: String = "") {
     var translated by mutableStateOf<String?>(null)
     var lastActive = System.currentTimeMillis()
     var opener: Tab? = null
+    /**
+     * True while the content under the finger can still scroll up. Many sites (YouTube, Instagram, web apps) scroll an
+     * inner element instead of the page, so WebView.scrollY stays 0 there — the page script reports the real state.
+     */
+    @Volatile var jsCanScrollUp = false
+    @Volatile var jsScrollY = 0
     /** Root view for this tab: SwipeRefreshLayout wrapping the WebView. */
     var view: SwipeRefreshLayout? = null
     var web: WebView? = null
@@ -307,8 +313,13 @@ object Browser {
             setOnRefreshListener { reload(t); postDelayed({ isRefreshing = false }, 900) }
             setColorSchemeColors(0xFFB89A6A.toInt())
             setProgressBackgroundColorSchemeColor(if (app.cairn.browser.ui.C.dark) 0xFF2B2B2F.toInt() else 0xFFFFFFFF.toInt())
-            setOnChildScrollUpCallback { _, _ -> w.scrollY > 0 }
+            // Pull-to-refresh only when the page is genuinely at the top — for the document *and* any inner scroller.
+            setOnChildScrollUpCallback { _, _ -> !Prefs.pullToRefresh || w.scrollY > 0 || t.jsCanScrollUp || w.canScrollVertically(-1) }
+            setDistanceToTriggerSync((resources.displayMetrics.density * 110).toInt())
         }
+        w.addJavascriptInterface(ScrollBridge(t), "CairnScroll")
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT))
+            runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, SCROLL_JS, setOf("*")) }
         w.setOnScrollChangeListener { _, _, y, _, oldY -> activity.onPageScrolled(t, y - oldY, y) }
         w.webViewClient = Client(t)
         w.webChromeClient = Chrome(t)
@@ -316,6 +327,25 @@ object Browser {
         w.setOnLongClickListener { activity.onLongPress(t, w) }
         w.setFindListener { active, total, done -> if (done) t.findMatches = (if (total == 0) 0 else active + 1) to total }
         t.web = w; t.view = swipe
+    }
+
+    /** Reports touch-time and live scroll state of the element actually scrolling (document or inner container). */
+    private const val SCROLL_JS = """(function(){if(window.__cairnScroll||!window.CairnScroll)return;window.__cairnScroll=1;
+function up(t){if((window.scrollY||document.documentElement.scrollTop||document.body&&document.body.scrollTop||0)>0)return true;
+for(var e=t;e&&e.nodeType===1&&e!==document.documentElement;e=e.parentElement||(e.getRootNode&&e.getRootNode().host)){
+if(e.scrollTop>0&&e.scrollHeight>e.clientHeight+4){var o=getComputedStyle(e).overflowY;if(o=='auto'||o=='scroll'||o=='overlay')return true}}return false}
+addEventListener('touchstart',function(ev){try{CairnScroll.touch(up(ev.target))}catch(x){}},{capture:true,passive:true});
+var lt=0;addEventListener('scroll',function(ev){var t=ev.target,d=(t===document||t===document.documentElement||t===document.body);
+if(!d&&!(t.clientHeight>innerHeight*0.5))return;var y=d?(window.scrollY||0):(t.scrollTop||0);var n=Date.now();
+if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePixelRatio||1)),y>0)}catch(x){}},{capture:true,passive:true});})();"""
+
+    private class ScrollBridge(val t: Tab) {
+        @android.webkit.JavascriptInterface fun touch(canUp: Boolean) { t.jsCanScrollUp = canUp }
+        @android.webkit.JavascriptInterface fun scroll(y: Int, canUp: Boolean) {
+            val dy = y - t.jsScrollY; t.jsScrollY = y; t.jsCanScrollUp = canUp
+            // Inner-scroller sites never move WebView.scrollY, so drive the dock from the page's own scroll too.
+            t.web?.let { w -> if (w.scrollY == 0) w.post { activity.onPageScrolled(t, dy, y) } }
+        }
     }
 
     private class Client(val t: Tab) : WebViewClient() {
@@ -351,6 +381,8 @@ object Browser {
             view.postDelayed({ if (current == t && !t.loading) capture(t) }, 2200)
             if (url.startsWith("http")) {
                 flushCookies()
+                t.jsCanScrollUp = false; t.jsScrollY = 0
+                if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) view.evaluateJavascript(SCROLL_JS, null)
                 view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nreturn JSON.stringify(window.${app.cairn.browser.agent.PageJs.ns}.guard())})()") { r ->
                     t.sensitive = runCatching { JSONObject(org.json.JSONTokener(r).nextValue() as String).optBoolean("sensitive") }.getOrDefault(false)
                 }

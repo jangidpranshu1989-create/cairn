@@ -128,8 +128,9 @@ fun AssistantSheet() {
         val spring = spring<Float>(dampingRatio = .84f, stiffness = 420f)
         LaunchedEffect(Ui.assistant) {
             if (Ui.assistant) { visible = true; Haptics.tick(); y.animateTo(if (Agent.items.isEmpty() && !ime) half else top, spring) }
-            else { y.animateTo(h, spring(1f, 600f)); visible = false }
+            else { y.animateTo(h, spring(1f, 600f)); visible = false; Ui.chats = false }
         }
+        LaunchedEffect(Ui.chats) { if (Ui.chats && Ui.assistant) y.animateTo(top, spring) }
         LaunchedEffect(ime, Agent.items.size) { if (Ui.assistant && (ime || Agent.items.size > 2) && y.value > top + 1) y.animateTo(top, spring) }
         if (!visible) return@BoxWithConstraints
         BackHandler { Ui.assistant = false }
@@ -153,10 +154,15 @@ fun AssistantSheet() {
             Column(Modifier.fillMaxWidth().draggable(drag, Orientation.Vertical, onDragStopped = { v -> settle(v) })) {
                 Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 9.dp).size(36.dp, 4.dp).clip(CircleShape).background(C.line2))
                 Row(Modifier.fillMaxWidth().height(50.dp).padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconBtn(Ic.History, "Chat history", tint = C.muted, size = 40.dp) { Haptics.tick(); Ui.chats = true; scope.launch { y.animateTo(top, spring) } }
                     Logo(18.dp, lift = if (Agent.running) 1f else 0f); Spacer(Modifier.width(9.dp))
-                    Text("Cairn", color = C.text, fontSize = 16.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold)
+                    val ct = Agent.chatTitle
+                    if (ct != null && Agent.items.isNotEmpty()) AnimatedContent(ct, label = "title", transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(160)) }) { tt ->
+                        Text(tt, color = C.text, fontSize = 15.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
+                    }
+                    else Text("Cairn", color = C.text, fontSize = 16.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold)
                     val t = Browser.current
-                    if (t != null && !t.isNtp) {
+                    if (t != null && !t.isNtp && (ct == null || Agent.items.isEmpty())) {
                         Spacer(Modifier.width(10.dp))
                         Row(Modifier.weight(1f, false).clip(RoundedCornerShape(10.dp)).background(C.surface).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Favicon(t.url, t.icon, 12.dp, 3.dp); Spacer(Modifier.width(6.dp))
@@ -174,12 +180,19 @@ fun AssistantSheet() {
             if (Agent.items.isEmpty()) EmptyAssistant(Modifier.weight(1f))
             else LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(Agent.items, key = { it.key }) { Box(Modifier.animateItem(fadeInSpec = tween(220), placementSpec = spring(stiffness = 500f))) { ItemView(it) } }
-                if (Agent.running) item(key = "working") { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                if (Agent.running) item(key = "working") { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp).animateItem()) {
                     AgentDots(); Spacer(Modifier.width(10.dp))
-                    Text(Agent.status.ifBlank { "Thinking…" }, color = C.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    AnimatedContent(Agent.status.ifBlank { "Thinking…" }, label = "status", transitionSpec = { (fadeIn(tween(220)) + slideInVertically { it / 2 }) togetherWith fadeOut(tween(140)) }) { st ->
+                        ShimmerText(st)
+                    }
                 } }
             }
             Composer()
+        }
+        AnimatedVisibility(Ui.chats && full, enter = fadeIn(tween(180)) + slideInHorizontally(tween(260)) { -it / 3 }, exit = fadeOut(tween(160)) + slideOutHorizontally(tween(200)) { -it / 3 }) {
+            Box(Modifier.fillMaxSize().padding(top = with(density) { top.toDp() }).clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(C.bg).navigationBarsPadding()) {
+                ChatHistoryPanel { Ui.chats = false }
+            }
         }
     }
 }
@@ -191,6 +204,15 @@ private fun EmptyAssistant(modifier: Modifier) {
     Column(modifier.fillMaxWidth().clipToBounds().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.Bottom) {
         Spacer(Modifier.height(8.dp))
         val att = Ui.attachments.isNotEmpty()
+        val now = rememberNow()
+        var shown by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { shown = true }
+        AnimatedVisibility(!att, enter = fadeIn(tween(500)) + scaleIn(tween(600, easing = FastOutSlowInEasing), .6f)) {
+            Box(Modifier.fillMaxWidth().padding(bottom = 4.dp), contentAlignment = Alignment.CenterStart) { AuroraOrb(48.dp, Agent.running) }
+        }
+        if (!att) AnimatedVisibility(shown, enter = fadeIn(tween(420, 120)) + slideInVertically(tween(420, 120)) { it / 3 }) {
+            Text(greetingFor(now), color = C.muted, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 2.dp))
+        }
         Text(if (att) "Ask about ${if (Ui.attachments.size == 1) "your attachment" else "your attachments"}" else if (onPage) "How can I help with this page?" else "What can I do for you?", color = C.text, fontSize = if (att) 20.sp else 24.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 30.sp)
         Spacer(Modifier.height(if (att) 12.dp else 6.dp))
         if (!att) { Text("Ask in any language. Cairn browses, compares, reads aloud and acts for you — and always stops before you pay.", color = C.muted, fontSize = 14.sp, lineHeight = 20.sp); Spacer(Modifier.height(18.dp)) }
@@ -249,8 +271,16 @@ private fun Composer() {
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(6)) { uris ->
         tray = false; scope.launch { uris.forEach { u -> add(kotlinx.coroutines.withContext(Dispatchers.IO) { Attachment.fromImage(ctx, u) }) } }
     }
-    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { b -> tray = false; if (b != null) add(Attachment.fromCamera(b)) }
-    val camPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) runCatching { camera.launch(null) } else act.toast("Camera permission is needed to take a photo") }
+    // Full-resolution photo (TakePicturePreview only returns a thumbnail, too small to read a book page).
+    var camUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        tray = false; val u = camUri
+        if (ok && u != null) scope.launch { add(kotlinx.coroutines.withContext(Dispatchers.IO) { Attachment.fromCameraFile(ctx, u) }) }
+    }
+    val camPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) runCatching { Attachment.newCameraUri(ctx).also { camUri = it }.let { camera.launch(it) } }.onFailure { act.toast("Couldn't open the camera") }
+        else act.toast("Camera permission is needed to take a photo")
+    }
     val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         tray = false; scope.launch { uris.take(6).forEach { u -> add(kotlinx.coroutines.withContext(Dispatchers.IO) { Attachment.fromDocument(ctx, u) }) } }
     }
@@ -310,8 +340,10 @@ private fun Composer() {
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(26.dp)).background(C.surface)
-            .border(1.dp, if (ask != null) C.agent.copy(alpha = .6f) else C.line2, RoundedCornerShape(26.dp)).padding(start = 6.dp, end = 6.dp),
+        val glow = Agent.running && ask == null
+        val phase = rememberGlowPhase(glow)
+        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).glowBorder(glow, phase, 26.dp).clip(RoundedCornerShape(26.dp)).background(C.surface)
+            .border(1.dp, if (ask != null) C.agent.copy(alpha = .6f) else if (glow) Color.Transparent else C.line2, RoundedCornerShape(26.dp)).padding(start = 6.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconBtn(if (tray) Ic.Close else Ic.Plus, if (tray) "Close" else "Add photos or files", tint = if (tray) C.text else C.muted, size = 40.dp, enabled = ask == null) { Haptics.tick(); tray = !tray }
             IconBtn(Ic.At, "Mention a tab", tint = C.muted, size = 36.dp) {
@@ -368,7 +400,7 @@ private fun ItemView(it: Item) {
             Row(Modifier.padding(top = 8.dp)) {
                 SmallAct(Ic.Headphones, "Listen") { app.cairn.browser.service.ReadAloud.speak(it.title, it.markdown.replace(Regex("[*#_`>]"), "")) }
                 SmallAct(Ic.ContentCopy, "Copy") { copyText(ctx, "Summary", it.markdown) }
-                SmallAct(Ic.Share, "Share") { shareText(ctx, "${it.title}\n\n${it.markdown}\n\n${it.url}") }
+                SmallAct(Ic.Share, "Share") { shareText(ctx, "${it.title}\n\n${it.markdown}\n\n${it.url}" + foundVia()) }
             }
         }
         is MindmapItem -> Card {
@@ -400,6 +432,9 @@ private fun ItemView(it: Item) {
         }
     }
 }
+
+/** Viral loop: every shared answer carries a small, honest attribution with the download link. */
+fun foundVia() = "\n\n— Found via Cairn AI Browser · ${app.cairn.browser.BuildConfig.SITE}/download"
 
 private fun openSource(url: String) { Haptics.tick(); Ui.assistant = false; Browser.newTab(url, Browser.current?.incognito == true) }
 
@@ -464,7 +499,7 @@ private fun AnswerView(m: AiMsg) {
                     IconBtn(Ic.Copy, "Copy", tint = C.faint, size = 36.dp) {
                         copyText(ctx, "Cairn", m.markdown + if (m.sources.isEmpty()) "" else "\n\nSources:\n" + m.sources.joinToString("\n") { "[${it.n}] ${it.title} — ${it.url}" })
                     }
-                    IconBtn(Ic.Share, "Share", tint = C.faint, size = 36.dp) { shareText(ctx, plain() + if (m.sources.isEmpty()) "" else "\n\n" + m.sources.take(5).joinToString("\n") { it.url }) }
+                    IconBtn(Ic.Share, "Share", tint = C.faint, size = 36.dp) { shareText(ctx, plain() + (if (m.sources.isEmpty()) "" else "\n\n" + m.sources.take(5).joinToString("\n") { it.url }) + foundVia()) }
                     IconBtn(Ic.Volume, "Listen", tint = C.faint, size = 36.dp) { app.cairn.browser.service.ReadAloud.speak("Cairn", plain()) }
                     if (m.prompt.isNotBlank()) IconBtn(Ic.Replay, "Retry", tint = C.faint, size = 36.dp, enabled = !Agent.running) { Haptics.tick(); Agent.retry() }
                     Spacer(Modifier.weight(1f))

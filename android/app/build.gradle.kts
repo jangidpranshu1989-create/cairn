@@ -25,11 +25,11 @@ android {
         applicationId = "app.cairn.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "2.3.0"
+        versionCode = 6
+        versionName = "2.4.0"
         // Default Cairn Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
-        buildConfigField("String", "DEFAULT_SERVER", "\"https://cairn-browser.pplx.app/port/8787\"")
-        buildConfigField("String", "SITE", "\"https://cairn.app\"")
+        buildConfigField("String", "DEFAULT_SERVER", "\"${(project.findProperty("cairnServer") as String?) ?: "https://cairn-browser.pplx.app/port/8787"}\"")
+        buildConfigField("String", "SITE", "\"${(project.findProperty("cairnSite") as String?) ?: "https://jangidpranshu1989-create.github.io/cairn"}\"")
     }
 
     signingConfigs {
@@ -83,4 +83,7 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    // On-device OCR (bundled models: offline, no Play services) for photos of books, notes, bills and signs
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
 }

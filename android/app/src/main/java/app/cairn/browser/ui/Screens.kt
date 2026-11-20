@@ -478,6 +478,7 @@ fun GeneralSettings() {
             Choice("Theme", listOf("system" to "System default", "dark" to "Dark", "light" to "Light"), Prefs.theme, { Prefs.theme = it }, Ic.DarkMode); Divider()
             Toggle(Ic.Contrast, "Dark web pages", "Darken sites that don't have a dark theme", Prefs.darkPages) { Prefs.darkPages = it; Browser.applySettings() }; Divider()
             Toggle(Ic.UnfoldLess, "Hide the dock while reading", "Scroll down to hide it, up to bring it back", Prefs.compactBar) { Prefs.compactBar = it; if (!it) Ui.collapsed = false }; Divider()
+            Toggle(Ic.Refresh, "Pull to refresh", "Pull down at the very top of a page to reload it", Prefs.pullToRefresh) { Prefs.pullToRefresh = it }; Divider()
             Toggle(Ic.TouchApp, "Haptic feedback", "Subtle vibrations for taps, gestures and agent actions", Prefs.haptics) { Prefs.haptics = it; if (it) Haptics.confirm() }
             Row2(Ic.FormatSize, "Text size", "${Prefs.textZoom}%")
             Slider(Prefs.textZoom.toFloat(), { Prefs.textZoom = (it / 5).toInt() * 5 }, Modifier.padding(start = 56.dp, end = 20.dp), valueRange = 50f..200f,

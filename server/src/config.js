@@ -45,10 +45,18 @@ export const config = {
   groqFastModel: process.env.GROQ_FAST_MODEL || 'openai/gpt-oss-20b',
   nvidiaModel: process.env.NVIDIA_MODEL || 'nvidia/nemotron-3.5-super-vl-120b-a12b',
   nvidiaFastModel: process.env.NVIDIA_FAST_MODEL || 'nvidia/nemotron-3.5-bolt-e4b',
+  // Image understanding needs multimodal models (the text models above reject images).
+  groqVisionModel: process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct',
+  nvidiaVisionModel: process.env.NVIDIA_VISION_MODEL || 'nvidia/nemotron-3.5-super-vl-120b-a12b',
+  // Optional: Google Gemini (free tier key from aistudio.google.com) as another vision + chat provider.
+  geminiKey: process.env.GEMINI_API_KEY || '',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   sttModel: process.env.STT_MODEL || 'whisper-large-v3-turbo',
   // Mail (password reset / verification)
   smtpUrl: process.env.SMTP_URL || '',
-  mailFrom: process.env.MAIL_FROM || 'Cairn <no-reply@cairn.app>',
+  tursoUrl: process.env.TURSO_DATABASE_URL || '',
+  tursoToken: process.env.TURSO_AUTH_TOKEN || '',
+  mailFrom: process.env.MAIL_FROM || 'Cairn <no-reply@example.com>',
   // Limits
   maxTransferBytes: Number(process.env.MAX_TRANSFER_MB || 100) * 1024 * 1024,
   transferTtlHours: Number(process.env.TRANSFER_TTL_HOURS || 24),

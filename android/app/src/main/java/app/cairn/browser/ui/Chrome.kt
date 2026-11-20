@@ -417,8 +417,9 @@ fun LassoOverlay() {
                 select(Rect(path.minOf { it.x }, path.minOf { it.y }, path.maxOf { it.x }, path.maxOf { it.y }))
             }) { c, _ -> c.consume(); path.add(c.position) }
         }) {
-            // Frozen page, slightly zoomed out on entry, under a soft veil; the selection is cut out at full brightness.
-            val sc = 1f - .03f * appear.value
+            // Frozen page settles from a slight zoom to exactly 1:1 (so what you circle is exactly what gets cropped),
+            // under a soft veil; the selection is cut out at full brightness.
+            val sc = 1.04f - .04f * appear.value
             drawContext.transform.scale(sc, sc, Offset(size.width / 2, size.height / 2))
             drawImage(img, IntOffset(off.x.roundToInt(), off.y.roundToInt()))
             drawContext.transform.scale(1 / sc, 1 / sc, Offset(size.width / 2, size.height / 2))

@@ -631,7 +631,7 @@ function buildMenu() {
       ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ label: `Tab ${n}`, accelerator: `CmdOrCtrl+${n}`, click: tabAt(n), visible: false })),
     ] },
     { role: 'windowMenu' },
-    { label: 'Help', submenu: [{ label: 'About Cairn', click: () => t().create('cairn://about') }, { label: 'Privacy Policy', click: () => t().create('https://cairn.app/privacy.html') }] },
+    { label: 'Help', submenu: [{ label: 'About Cairn', click: () => t().create('cairn://about') }, { label: 'Privacy Policy', click: () => t().create('https://jangidpranshu1989-create.github.io/cairn/privacy.html') }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -666,7 +666,7 @@ async function discoverServer() {
   const url = String((await r.json()).server || '').trim().replace(/\/$/, '');
   if (!/^https:\/\//.test(url) || url === s.data.serverUrl) return;
   const signedIn = cloud.isSignedIn ? cloud.isSignedIn() : !!store.get().vault.data.cloud?.refreshToken;
-  if (signedIn && s.data.serverUrl !== 'https://api.cairn.app') return;
+  if (signedIn && s.data.serverUrl !== 'https://cairn-browser.pplx.app/port/8787') return;
   s.data.serverUrl = url; s.save();
   cloud.connect();
 }

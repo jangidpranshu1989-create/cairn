@@ -6,9 +6,27 @@ import { config } from './config.js';
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(path.join(config.dataDir, 'transfers'), { recursive: true });
 
-export const db = new Database(path.join(config.dataDir, 'cairn.db'));
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+/**
+ * Storage. Default: a local SQLite file in DATA_DIR (needs a persistent disk — free hosts like Render/Koyeb wipe it on
+ * restart). Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN to keep everything in Turso instead (free tier): the server then
+ * keeps an embedded replica that syncs with Turso, so data survives restarts and redeploys. Same SQL, same API.
+ */
+async function open() {
+  if (config.tursoUrl) {
+    const { default: Libsql } = await import('libsql');
+    const d = new Libsql(path.join(config.dataDir, 'cairn-replica.db'), { syncUrl: config.tursoUrl, authToken: config.tursoToken });
+    try { d.sync(); } catch (e) { console.error('[db] Turso initial sync failed:', e.message); }
+    setInterval(() => { try { d.sync(); } catch {} }, 30_000).unref();
+    console.log('[db] using Turso', config.tursoUrl.replace(/\?.*$/, ''));
+    d.exec('PRAGMA foreign_keys = ON');
+    return d;
+  }
+  const d = new Database(path.join(config.dataDir, 'cairn.db'));
+  d.pragma('journal_mode = WAL');
+  d.pragma('foreign_keys = ON');
+  return d;
+}
+export const db = await open();
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (

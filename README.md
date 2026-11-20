@@ -43,6 +43,18 @@ This repository contains the complete product:
  └─────────────────────────────────────────┘
 ```
 
+## Free deploy (₹0)
+
+| Piece | Where | How |
+|---|---|---|
+| Cairn Cloud (server) | Render (`render.yaml`) or Koyeb | See [`deploy/koyeb.md`](deploy/koyeb.md). Add an UptimeRobot 5-minute ping on `/api/health` for Render. |
+| Database | Turso free tier | Set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`; otherwise local SQLite (wiped on free-host restarts). |
+| AI keys | Groq (free), Gemini (free) | `GROQ_API_KEY` is needed for camera/photo understanding; `GEMINI_API_KEY` is a vision fallback. |
+| Website | GitHub Pages / Vercel / Cloudflare Pages | `pages.yml` deploys `website/` on every push to `main`. |
+| APK | GitHub Releases | Tag `vX.Y.Z`; CI builds a signed `Cairn-Android.apk`. Obtainium/IzzyOnDroid read the release. |
+
+Build the APK against your own server with `./gradlew assembleRelease -PcairnServer=https://your-server`.
+
 ## Quick start (local)
 
 Requirements: Node 22+, (for Android) JDK 17 + Android SDK 35.
@@ -139,7 +151,9 @@ All server settings are in `server/.env.example`. Desktop settings are stored pe
 - **Passkeys inside Electron** rely on the OS authenticator: they work best on Windows (Windows Hello) and macOS; most Linux desktops have no platform authenticator, so use email + password there.
 - **Android background delivery** uses a foreground WebSocket service (`remoteMessaging|dataSync` foreground-service types). For very large user bases switch to Firebase Cloud Messaging for wake-ups.
 - **No API keys are bundled.** Users bring their own Groq/NVIDIA keys, or you set server keys for Cairn Cloud mode.
-- Assumptions to change before launch: domains `cairn.app` / `api.cairn.app`, GitHub repo `cairn-app/cairn`, Pro price ₹199/month, emails `hello@ / privacy@ / security@ / legal@cairn.app`, governing law (Jaipur, India) in the Terms. Have a lawyer review `privacy.html` and `terms.html`.
+- **Domain:** `cairn.app` belongs to someone else. The website lives at https://jangidpranshu1989-create.github.io/cairn (GitHub Pages, `.github/workflows/pages.yml`; `vercel.json` also works). Buy your own domain (e.g. a `.in`) and pass `-PcairnSite=https://your.domain` to the Android build when you do.
+- **ML Kit:** on-device OCR uses Google ML Kit (proprietary), so the APK is not F-Droid main-repo compatible; GitHub Releases, Obtainium, IzzyOnDroid and Indus Appstore are fine.
+- Assumptions to change before launch: Pro price ₹199/month, contact goes to GitHub issues until you have a domain email, governing law (Jaipur, India) in the Terms. Have a lawyer review `privacy.html` and `terms.html`.
 
 ## License
 

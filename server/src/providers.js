@@ -6,19 +6,22 @@ export const PROVIDERS = {
   nvidia: { base: 'https://integrate.api.nvidia.com/v1', label: 'NVIDIA NIM' },
   // Keyless community endpoint (OpenAI-compatible, supports tools + streaming). Built-in last resort so Cairn's
   // assistant works out of the box with zero setup. Disable with AI_FREE_FALLBACK=0.
+  gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', label: 'Gemini' },
   free: { base: 'https://text.pollinations.ai', path: '/openai', label: 'Cairn Free AI', keyless: true },
 };
-const keyFor = (p, cfg) => (p === 'groq' ? cfg.groqKey : p === 'nvidia' ? cfg.nvidiaKey : '');
+const keyFor = (p, cfg) => (p === 'groq' ? cfg.groqKey : p === 'nvidia' ? cfg.nvidiaKey : p === 'gemini' ? cfg.geminiKey : '');
 
 export function modelFor(provider, tier, cfg) {
   if (provider === 'free') return cfg.freeModel || 'openai';
+  if (provider === 'gemini') return cfg.geminiModel;
+  if (tier === 'vision') return provider === 'groq' ? cfg.groqVisionModel : cfg.nvidiaVisionModel;
   if (provider === 'groq') return tier === 'fast' ? cfg.groqFastModel : cfg.groqModel;
   return tier === 'fast' ? cfg.nvidiaFastModel : cfg.nvidiaModel;
 }
 
 /** Order providers by preference; skip ones without keys. Vision prefers NVIDIA (multimodal Nemotron). */
 export function providerOrder(cfg, tier, preferred) {
-  let order = tier === 'vision' ? ['nvidia', 'groq'] : ['groq', 'nvidia'];
+  let order = tier === 'vision' ? ['groq', 'gemini', 'nvidia'] : ['groq', 'nvidia', 'gemini'];
   if (preferred && order.includes(preferred)) order = [preferred, ...order.filter(p => p !== preferred)];
   if (tier !== 'vision' && cfg.freeFallback !== false) order.push('free');
   return order.filter(p => PROVIDERS[p].keyless || keyFor(p, cfg));
@@ -36,7 +39,7 @@ export async function chat(opts, cfg) {
   let lastErr;
   for (const p of order) {
     const body = {
-      model: opts.model && opts.provider === p ? opts.model : modelFor(p, opts.tier === 'vision' ? 'smart' : opts.tier, cfg),
+      model: opts.model && opts.provider === p ? opts.model : modelFor(p, opts.tier, cfg),
       messages: opts.messages,
       temperature: opts.temperature ?? 0.3,
       max_tokens: opts.maxTokens ?? 4096,
@@ -46,6 +49,7 @@ export async function chat(opts, cfg) {
     if (opts.json) body.response_format = { type: 'json_object' };
     if (p === 'nvidia') body.chat_template_kwargs = { enable_thinking: false };
     if (p === 'groq' && /gpt-oss/.test(body.model)) body.reasoning_effort = opts.reasoning || 'low';
+    if (p === 'gemini') delete body.chat_template_kwargs;
     try {
       if (p === 'free') { delete body.chat_template_kwargs; delete body.reasoning_effort; delete body.response_format; }
       const headers = { 'Content-Type': 'application/json' };

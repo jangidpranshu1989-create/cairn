@@ -81,6 +81,7 @@ object Prefs {
     var restoreTabs by bool("restoreTabs", true)
     var httpsUpgrade by bool("httpsUpgrade", true)
     var compactBar by bool("compactBar", true)           // shrink the address bar while scrolling
+    var pullToRefresh by bool("pullToRefresh", true)     // pull down at the very top of a page to reload
     var openLinksInBackground by bool("bgLinks", false)
     var onboarded by bool("onboarded", false)
     var tabsJson by str("tabs", "[]")

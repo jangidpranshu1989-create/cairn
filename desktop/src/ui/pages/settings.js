@@ -77,7 +77,7 @@
     let v = $('#permAdd').value.trim(); if (!v.includes('.')) return toast('Enter a site like example.com');
     try { const o = new URL(/^https?:/.test(v) ? v : 'https://' + v).origin; const sp = { ...(S.sitePermissions || {}) }; sp[o] = sp[o] || {}; await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; $('#permAdd').value = ''; renderPerms(); } catch { toast('That address is not valid'); }
   };
-  api('cloud:base').then(b => { $('#privacyLink').href = 'https://cairn.app/privacy.html'; });
+  api('cloud:base').then(b => { $('#privacyLink').href = 'https://jangidpranshu1989-create.github.io/cairn/privacy.html'; });
 
   // downloads
   const dl = () => $('#dlDir').textContent = S.downloadDir || 'Default Downloads folder (Cairn files go to Downloads/Cairn)';

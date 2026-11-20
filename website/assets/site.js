@@ -1,6 +1,6 @@
 // Cairn website — small, dependency-free interactions.
 (() => {
-  const API = 'https://api.cairn.app'; // Cairn Cloud (server/), handles /api/public/contact
+  const API = 'https://cairn-browser.pplx.app/port/8787'; // Cairn Cloud (server/), handles /api/public/contact
   const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
   document.documentElement.classList.remove('no-js');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -75,7 +75,7 @@
         msg.className = 'form-msg err';
         if (err.user) msg.textContent = err.message;
         else { const sub = encodeURIComponent(f.dataset.api === 'waitlist' ? 'Cairn Pro waitlist' : 'Cairn: ' + (data.topic || 'Hello')); const body = encodeURIComponent(data.message || 'Please add me to the Pro waitlist.');
-          msg.innerHTML = `Could not reach our server. <a class="tlink" href="mailto:hello@cairn.app?subject=${sub}&body=${body}">Email us instead</a>`; }
+          msg.innerHTML = `Could not reach our server. <a class="tlink" href="https://github.com/jangidpranshu1989-create/cairn/issues/new?title=${sub}&body=${body}">Open a GitHub issue instead</a>`; }
       } finally { btn.disabled = false; btn.innerHTML = label; }
     });
   });

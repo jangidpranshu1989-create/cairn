@@ -98,6 +98,9 @@ object Prefs {
     // Optional personal AI key (Groq / Gemini / OpenRouter free tiers). Used when Cairn Cloud is unavailable.
     var aiKeyProvider by str("aiKeyProvider", "none")     // none | groq | gemini | openrouter
     var aiKey by secret("aiKeyV1")
+    // Several free keys at once: when one hits its rate limit (429) the next one answers immediately.
+    var geminiKey by secret("geminiKeyV1")
+    var openrouterKey by secret("openrouterKeyV1")
     // ---- Agent payments (UPI autopay up to a limit) ----
     var autopay by bool("autopay", false)
     var upiId by secret("upiId")

@@ -7,6 +7,7 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { db, now } from './db.js';
+import { supabaseEnabled } from './supabase.js';
 import { authRouter, requireAuth } from './auth.js';
 import { passkeyRouter } from './passkey.js';
 import { devicesRouter } from './devices.js';
@@ -30,7 +31,7 @@ app.use(cors({ credentials: false, origin: (o, cb) => cb(null, !o || config.cors
 app.use(express.json({ limit: '4mb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, time: now(), version: VERSION }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, time: now(), version: VERSION, storage: config.tursoUrl ? 'turso' : supabaseEnabled() ? 'supabase' : 'local' }));
 app.use('/api/auth', authRouter);
 app.use('/api/passkeys', passkeyRouter);
 app.use('/api/devices', devicesRouter);

@@ -70,6 +70,11 @@ export async function chat(opts, cfg) {
       if (!r.ok) {
         const text = await r.text();
         lastErr = Object.assign(new Error(`${PROVIDERS[p].label} ${r.status}: ${text.slice(0, 300)}`), { status: r.status });
+        // Groq free tier: on 429 back off 1.5 s and retry once on the small instant model (higher limits).
+        if (r.status === 429 && p === 'groq' && !opts._small && !opts.stream && opts.tier !== 'vision') {
+          await new Promise(res => setTimeout(res, 1500));
+          try { const j = await chat({ ...opts, _small: true, preferred: 'groq', provider: 'groq', model: cfg.groqSmallModel || 'llama-3.1-8b-instant' }, { ...cfg, freeFallback: false, nvidiaKey: '', geminiKey: '', openrouterKey: '' }); return j; } catch (e2) { lastErr = e2; }
+        }
         if (retriable(r.status)) continue; // try next provider
         throw lastErr;
       }

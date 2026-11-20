@@ -282,6 +282,9 @@ object Browser {
             setGeolocationEnabled(true)
         }
         applyUa(w, desktop)
+        // Chrome-style resilience: the visible tab's renderer is kept at "important" so Android doesn't kill it under
+        // memory pressure; background tabs drop to normal priority automatically (waived when not visible).
+        runCatching { w.setRendererPriorityPolicy(android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT, true) }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING))
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(w.settings, Prefs.darkPages)
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION))

@@ -18,7 +18,18 @@ function snapshotFn(maxText) {
     const da = Math.abs(a.getBoundingClientRect().top - vh / 3), db = Math.abs(b.getBoundingClientRect().top - vh / 3);
     return da - db;
   });
-  const picked = all.slice(0, 220);
+  // Compact for the AI: only labelled interactive elements, duplicates removed (saves most of the tokens on store pages).
+  const seen = new Set();
+  const useful = all.filter(el => {
+    const tg = el.tagName;
+    if (tg === 'INPUT' || tg === 'TEXTAREA' || tg === 'SELECT') return true;
+    const l = clean(el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('title') || el.getAttribute('alt') || el.querySelector?.('img')?.alt || '', 60).toLowerCase();
+    if (!l) return false;
+    const k = tg + '|' + l;
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+  const picked = useful.slice(0, 140);
   picked.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
   const lines = [];
   picked.forEach((el, i) => {
@@ -26,7 +37,7 @@ function snapshotFn(maxText) {
     el.setAttribute('data-cairn-id', String(id));
     const tag = el.tagName.toLowerCase();
     const role = el.getAttribute('role');
-    const label = clean(el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('title') || el.getAttribute('alt') || el.querySelector?.('img')?.alt || '');
+    const label = clean(el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('title') || el.getAttribute('alt') || el.querySelector?.('img')?.alt || '', 60);
     const r = el.getBoundingClientRect();
     const where = r.bottom < 0 ? ' (above)' : r.top > vh ? ' (below)' : '';
     if (tag === 'input' || tag === 'textarea' || tag === 'select') {
@@ -40,17 +51,18 @@ function snapshotFn(maxText) {
       lines.push(`[${id}] ${tag} type=${type}${ph ? ` "${ph}"` : ''}${val ? ` value="${val}"` : ''}${extra}${el.disabled ? ' disabled' : ''}${where}`);
     } else if (tag === 'a') {
       let href = el.getAttribute('href') || '';
-      try { href = new URL(href, location.href).pathname.slice(0, 60); } catch {}
+      try { href = new URL(href, location.href).pathname.slice(0, 40); } catch {}
       lines.push(`[${id}] link "${label}" -> ${href}${where}`);
     } else {
       lines.push(`[${id}] ${role || tag} "${label}"${el.disabled || el.getAttribute('aria-disabled') === 'true' ? ' disabled' : ''}${where}`);
     }
   });
   const text = clean(document.body?.innerText || '', maxText);
+  const prices = [...new Set(((document.body?.innerText || '').match(/(?:₹|Rs\.?|\$|£|€)\s?\d[\d,]*(?:\.\d{1,2})?/g) || []))].slice(0, 12);
   return {
     url: location.href, title: document.title,
     scroll: { y: Math.round(scrollY), max: Math.max(0, document.documentElement.scrollHeight - innerHeight) },
-    elements: lines.join('\n'), text,
+    elements: lines.join('\n'), text, prices,
   };
 }
 function locateFn(id) {
@@ -60,12 +72,42 @@ function locateFn(id) {
   const r = el.getBoundingClientRect();
   return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), text: (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 120), tag: el.tagName.toLowerCase(), type: el.type || '' };
 }
+// Store buy buttons ("Add to cart", "Buy now", "Go to cart"), including fixed bottom bars on Flipkart / Amazon mobile web.
+// Only real controls (button / a / role=button / submit) whose own text or aria-label is the phrase are accepted.
+function buyButtonFn(phrases) {
+  const want = (phrases && phrases.length ? phrases : ['add to cart', 'add to bag', 'add to basket', 'go to cart', 'buy now']).map(p => p.toLowerCase());
+  const norm = s => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const els = [...document.querySelectorAll('button,a,[role=button],input[type=submit],input[type=button],[onclick]')];
+  const cands = [];
+  for (const e of els) {
+    const s = norm(e.innerText || e.value || '') , a = norm(e.getAttribute('aria-label') || e.getAttribute('title') || '');
+    for (let i = 0; i < want.length; i++) {
+      const w = want[i];
+      const hit = s === w || a === w || (s.startsWith(w) && s.length <= w.length + 14) || (a.includes(w) && a.length <= w.length + 30);
+      if (!hit) continue;
+      const r = e.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8) continue;
+      const st = getComputedStyle(e);
+      if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) < 0.1 || e.disabled || e.getAttribute('aria-disabled') === 'true') continue;
+      const onScreen = r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
+      cands.push({ e, i, onScreen, s: s || a, fixed: /fixed|sticky/.test(st.position) || /fixed|sticky/.test(getComputedStyle(e.parentElement || e).position) });
+      break;
+    }
+  }
+  if (!cands.length) return null;
+  cands.sort((x, y) => x.i - y.i || (y.onScreen - x.onScreen) || (y.fixed - x.fixed));
+  const c = cands[0];
+  if (!c.onScreen) c.e.scrollIntoView({ block: 'center', behavior: 'instant' });
+  const r = c.e.getBoundingClientRect();
+  if (r.bottom <= 0 || r.top >= innerHeight) return null;
+  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), text: c.s.slice(0, 80), phrase: want[c.i] };
+}
 function findByTextFn(text) {
   const t = text.toLowerCase().trim();
   const cands = [...document.querySelectorAll('button,a,[role=button],input[type=submit],input[type=button],[role=link],[role=menuitem],[role=tab],label,span,div')]
     .filter(e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; })
     .map(e => ({ e, s: (e.innerText || e.value || e.getAttribute('aria-label') || '').toLowerCase().replace(/\s+/g, ' ').trim() }))
-    .filter(o => o.s && o.s.length < 200 && o.s.includes(t) && visibleEl(o.e));
+    .filter(o => o.s && o.s.length < 200 && (t.length > 4 ? o.s.includes(t) : (o.s === t || (o.s.split(/[^a-z0-9]+/).includes(t) && o.s.length < t.length + 20))) && visibleEl(o.e));
   const ctl = e => /^(button|a|input)$/i.test(e.tagName) || e.getAttribute('role') === 'button' ? -1 : 0;
   cands.sort((a, b) => (a.s === t ? -1 : 0) - (b.s === t ? -1 : 0) || ctl(a.e) - ctl(b.e) || a.s.length - b.s.length);
   const el = cands[0]?.e;
@@ -503,7 +545,7 @@ function orderTotalFn() {
   return 0;
 }
 
-  const api = { snapshot: snapshotFn, locate: locateFn, findByText: findByTextFn, focus: focusFn, select: selectFn, scroll: scrollFn,
+  const api = { snapshot: snapshotFn, locate: locateFn, findByText: findByTextFn, buyButton: buyButtonFn, focus: focusFn, select: selectFn, scroll: scrollFn,
     article: articleFn, overlay: overlayFn, pageState: pageStateFn, listings: extractListingsFn, type: typeFn, key: keyFn,
     countLinks: countLinksFn, blocked: blockedFn, metrics: metricsFn, hideFixed: hideFixedFn,
     clickEl: clickElFn, fillProfile: fillProfileFn, offers: offersFn, applyCoupon: applyCouponFn, guard: guardFn, region: regionFn,

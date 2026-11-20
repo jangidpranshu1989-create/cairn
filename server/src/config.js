@@ -5,6 +5,23 @@ import path from 'node:path';
 
 const isProd = process.env.NODE_ENV === 'production';
 
+// Supabase permanent storage: bring back the small files kept in DATA_DIR (generated secrets, OIDC signing key) before
+// anything below reads them, so tokens and logins stay valid after a restart on a host with a temporary disk.
+if (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY)) {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+  const dir = process.env.DATA_DIR || './data'; fs.mkdirSync(dir, { recursive: true });
+  try {
+    const r = await fetch(`${process.env.SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/${process.env.SUPABASE_BUCKET || 'cairn'}/files.json`,
+      { headers: { Authorization: `Bearer ${key}`, apikey: key }, signal: AbortSignal.timeout(30_000) });
+    if (r.ok) {
+      const files = await r.json();
+      for (const [name, b64] of Object.entries(files)) {
+        if (/^[\w.-]+$/.test(name) && !fs.existsSync(path.join(dir, name))) fs.writeFileSync(path.join(dir, name), Buffer.from(b64, 'base64'), { mode: 0o600 });
+      }
+    }
+  } catch (e) { console.error('[supabase] could not restore DATA_DIR files:', e.message); }
+}
+
 // Secrets that must survive restarts: env var if set, otherwise generated once and kept in DATA_DIR (0600).
 function persistedSecret(name, file) {
   if (process.env[name]) return process.env[name];
@@ -57,6 +74,12 @@ export const config = {
   // Mail (password reset / verification)
   smtpUrl: process.env.SMTP_URL || '',
   tursoUrl: process.env.TURSO_DATABASE_URL || '',
+  // Supabase (free): permanent copy of the database in a private Storage bucket.
+  supabaseUrl: process.env.SUPABASE_URL || '',
+  supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '',
+  supabaseBucket: process.env.SUPABASE_BUCKET || 'cairn',
+  supabaseRequired: process.env.SUPABASE_REQUIRED === '1',
+  snapshotSeconds: Number(process.env.SNAPSHOT_SECONDS || 15),
   tursoToken: process.env.TURSO_AUTH_TOKEN || '',
   mailFrom: process.env.MAIL_FROM || 'Cairn <no-reply@example.com>',
   // Limits

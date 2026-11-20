@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
+import { restore, startSnapshots } from './supabase.js';
 
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(path.join(config.dataDir, 'transfers'), { recursive: true });
@@ -10,6 +11,8 @@ fs.mkdirSync(path.join(config.dataDir, 'transfers'), { recursive: true });
  * Storage. Default: a local SQLite file in DATA_DIR (needs a persistent disk — free hosts like Render/Koyeb wipe it on
  * restart). Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN to keep everything in Turso instead (free tier): the server then
  * keeps an embedded replica that syncs with Turso, so data survives restarts and redeploys. Same SQL, same API.
+ * Or set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY: the SQLite file is restored from / snapshotted to Supabase Storage
+ * (see supabase.js), which also survives restarts on free hosts.
  */
 async function open() {
   if (config.tursoUrl) {
@@ -21,9 +24,13 @@ async function open() {
     d.exec('PRAGMA foreign_keys = ON');
     return d;
   }
-  const d = new Database(path.join(config.dataDir, 'cairn.db'));
+  // Supabase: pull the last saved copy first, so a fresh container starts with all accounts, sync data and devices.
+  const file = path.join(config.dataDir, 'cairn.db');
+  await restore(file);
+  const d = new Database(file);
   d.pragma('journal_mode = WAL');
   d.pragma('foreign_keys = ON');
+  startSnapshots(d);
   return d;
 }
 export const db = await open();

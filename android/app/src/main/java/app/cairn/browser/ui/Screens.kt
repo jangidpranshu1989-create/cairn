@@ -750,18 +750,14 @@ fun AiSettings() {
             Text("Within these limits the agent approves the payment itself, chooses UPI, enters your UPI ID and taps Pay. Your bank then sends a request to your UPI app — you finish it with your UPI PIN (NPCI rules: no app can enter the PIN for you). Above the limit, Cairn always asks first.",
                 color = C.faint, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp))
         }
-        SectionLabel("Your own AI key (optional)")
-        var kp by remember { mutableStateOf(Prefs.aiKeyProvider) }
-        var key by remember { mutableStateOf(Prefs.aiKey) }
+        SectionLabel("Your free AI keys (optional)")
         Group {
-            Choice("Provider", listOf("none" to "None (use Cairn's free AI)", "groq" to "Groq (free key)", "gemini" to "Google Gemini (free key)", "openrouter" to "OpenRouter"), kp, { kp = it; Prefs.aiKeyProvider = it }, Ic.Key)
-            if (kp != "none") {
-                Divider()
-                OutlinedTextField(key, { key = it.trim(); Prefs.aiKey = key }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(), label = { Text("API key") },
-                    singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp), visualTransformation = PasswordVisualTransformation())
-            }
-            Text("Used directly from your phone as a backup when Cairn's AI is busy, so replies never stop at an error. Stored encrypted on this device only.",
-                color = C.faint, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp))
+            Text("Add one or more free keys. Cairn rotates between them: if one hits its limit (429), the next answers instantly. Keys stay encrypted on this phone.",
+                color = C.faint, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp))
+            KeyField("Groq key", "console.groq.com/keys", Prefs.groqKey.ifEmpty { if (Prefs.aiKeyProvider == "groq") Prefs.aiKey else "" }) { Prefs.groqKey = it; if (Prefs.aiKeyProvider == "groq") Prefs.aiKey = "" }
+            KeyField("Gemini key", "aistudio.google.com/apikey", Prefs.geminiKey.ifEmpty { if (Prefs.aiKeyProvider == "gemini") Prefs.aiKey else "" }) { Prefs.geminiKey = it; if (Prefs.aiKeyProvider == "gemini") Prefs.aiKey = "" }
+            KeyField("OpenRouter key", "openrouter.ai/keys", Prefs.openrouterKey.ifEmpty { if (Prefs.aiKeyProvider == "openrouter") Prefs.aiKey else "" }) { Prefs.openrouterKey = it; if (Prefs.aiKeyProvider == "openrouter") Prefs.aiKey = "" }
+            Spacer(Modifier.height(10.dp))
         }
         SectionLabel("Read aloud")
         Group {
@@ -771,6 +767,14 @@ fun AiSettings() {
         }
         Text("Payments always need your approval (fingerprint, face or PIN) unless you turned on agent payments above — and then only within your limits. The assistant can't change these settings.", color = C.faint, fontSize = 12.5.sp, lineHeight = 18.sp, modifier = Modifier.padding(20.dp))
     }
+}
+
+@Composable
+private fun KeyField(label: String, hint: String, initial: String, onSave: (String) -> Unit) {
+    var v by remember { mutableStateOf(initial) }
+    OutlinedTextField(v, { v = it.trim(); onSave(v) }, Modifier.padding(horizontal = 16.dp, vertical = 5.dp).fillMaxWidth(), label = { Text(label) }, placeholder = { Text(hint) },
+        singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp), visualTransformation = PasswordVisualTransformation(),
+        trailingIcon = { if (v.isNotEmpty()) Icon(Ic.CheckCircle, "Saved", Modifier.size(18.dp), tint = C.agent) })
 }
 
 // ---------------------------------------------------------------- Account

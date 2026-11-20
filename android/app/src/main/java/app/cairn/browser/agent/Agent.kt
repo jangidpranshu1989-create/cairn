@@ -524,12 +524,19 @@ HOW TO WORK
     private fun trim(all: JSONArray): JSONArray {
         val list = (0 until all.length()).map { all.getJSONObject(it) }
         val sys = list.first(); var rest = list.drop(1)
-        if (rest.size > 30) { rest = rest.takeLast(30); while (rest.isNotEmpty() && rest.first().optString("role") == "tool") rest = rest.drop(1) }
+        if (rest.size > 24) { rest = rest.takeLast(24); while (rest.isNotEmpty() && rest.first().optString("role") == "tool") rest = rest.drop(1) }
         val lastTool = rest.indexOfLast { it.optString("role") == "tool" }
         val out = JSONArray().put(sys)
         rest.forEachIndexed { i, m ->
             val c = m.optString("content")
-            out.put(if (m.optString("role") == "tool" && i < lastTool - 2 && c.length > 1200) JSONObject(m.toString()).put("content", c.take(600) + "\n…[older output trimmed]") else m)
+            // Only the latest page view matters: older PAGE NOW / Elements dumps are cut, which keeps each request small
+            // enough for free-tier token-per-minute limits (Groq 429).
+            val old = m.optString("role") == "tool" && i < lastTool
+            out.put(when {
+                old && c.contains("\n\nPAGE NOW:") -> JSONObject(m.toString()).put("content", c.substringBefore("\n\nPAGE NOW:").take(500) + "\n…[old page view removed]")
+                old && c.length > 900 -> JSONObject(m.toString()).put("content", c.take(450) + "\n…[older output trimmed]")
+                else -> m
+            })
         }
         return out
     }
@@ -556,11 +563,11 @@ HOW TO WORK
     /** Compact snapshot appended to action results, so the model sees the new page without an extra read_page round trip. */
     private suspend fun observe(t: Tab): String {
         val w = t.web ?: return ""
-        val s = runCatching { PageJs.obj(w, "snapshot(1600)") }.getOrNull() ?: return ""
+        val s = runCatching { PageJs.obj(w, "snapshot(700)") }.getOrNull() ?: return ""
         val st = runCatching { PageJs.obj(w, "pageState()") }.getOrNull()
         val flags = listOfNotNull("CAPTCHA shown".takeIf { st?.optBoolean("captcha") == true }, "OTP requested".takeIf { st?.optBoolean("otp") == true },
             "login form".takeIf { st?.optBoolean("hasPassword") == true }, "checkout/payment step".takeIf { st?.optBoolean("payment") == true })
-        return "\n\nPAGE NOW: ${s.optString("url")} — \"${s.optString("title")}\"${if (flags.isNotEmpty()) " [${flags.joinToString()}]" else ""}\nElements:\n${s.optString("elements").take(5000)}\nText: ${s.optString("text").take(1600)}"
+        return "\n\nPAGE NOW: ${s.optString("url")} — \"${s.optString("title")}\"${if (flags.isNotEmpty()) " [${flags.joinToString()}]" else ""}${s.optJSONArray("prices")?.takeIf { it.length() > 0 }?.let { a -> "\nPrices: " + (0 until a.length()).joinToString(" ") { a.optString(it) } } ?: ""}\nElements:\n${s.optString("elements").take(3000)}\nText: ${s.optString("text").take(700)}"
     }
 
     private suspend fun touch(t: Tab, x: Double, y: Double, label: String) {
@@ -643,6 +650,26 @@ HOW TO WORK
         return null
     }
 
+    /**
+     * Store buy buttons via the DOM (button / a / role=button text or aria-label, including fixed bottom bars). If none is
+     * on screen, scroll 400px once and look again before falling back to OCR / vision.
+     */
+    private suspend fun buyClick(t: Tab, phrases: List<String>): String? {
+        val w = t.web ?: return null
+        val arr = JSONArray(phrases).toString()
+        for (pass in 0..1) {
+            val loc = PageJs.obj(w, "buyButton($arr)")
+            if (loc != null && loc.has("x")) {
+                val label = loc.optString("text")
+                step("click", "Tapping \"${label.take(40)}\"")
+                touch(t, loc.getDouble("x"), loc.getDouble("y"), label.take(30))
+                return label
+            }
+            if (pass == 0) { withContext(Dispatchers.Main) { w.evaluateJavascript("window.scrollBy(0,400)", null) }; delay(700) }
+        }
+        return null
+    }
+
     private val http = OkHttpClient.Builder().callTimeout(12, TimeUnit.SECONDS).build()
     suspend fun search(q: String) = webSearch(q)
     private suspend fun webSearch(q: String): List<Triple<String, String, String>> = withContext(Dispatchers.IO) {
@@ -719,7 +746,8 @@ HOW TO WORK
                 if (st0?.optBoolean("outOfStock") == true) return "This listing is OUT OF STOCK. Tell the user and try the next cheapest trustworthy index." + observe(t)
                 if (st0?.optBoolean("goToCart") == true) { step("ok", "Already in your cart"); return "The product is already in the cart. Next: go_to_checkout." }
                 step("think", "Looking for the Add to Cart button")
-                val hit = smartClick(t, listOf("Add to Cart", "Add to Bag", "Add to basket", "ADD TO CART", "Add")) ?: return "Couldn't find an Add to Cart button (DOM, OCR and vision tried). Use read_page and click it, or try the next store." + observe(t)
+                val hit = buyClick(t, listOf("add to cart", "add to bag", "add to basket", "go to cart"))
+                    ?: smartClick(t, listOf("Add to Cart", "Add to Bag", "Add to basket", "Go to Cart")) ?: return "Couldn't find an Add to Cart button (DOM, OCR and vision tried). Use read_page and click it, or try the next store." + observe(t)
                 settle(t, 5000); PageJs.call(w, "dismiss()")
                 val st = PageJs.obj(w, "cartState()")
                 val ok = st?.optBoolean("added") == true || CART_URL.containsMatchIn(t.url)
@@ -739,11 +767,12 @@ HOW TO WORK
                         else -> null
                     }
                     if (cart != null) { Browser.load(t, cart); settle(t, 9000) }
-                    else smartClick(t, listOf("Go to Cart", "View Cart", "Cart", "Go to Bag"))?.let { settle(t, 6000) }
+                    else (buyClick(t, listOf("go to cart", "view cart", "go to bag")) ?: smartClick(t, listOf("Go to Cart", "View Cart", "Go to Bag")))?.let { settle(t, 6000) }
                 }
                 PageJs.call(t.web ?: w, "dismiss()")
                 step("think", "In the cart → proceeding to checkout")
-                val hit = smartClick(t, listOf("Place Order", "Proceed to Buy", "Proceed to checkout", "Checkout", "Check out", "Continue"), allowFinal = CART_URL.containsMatchIn(t.url))
+                val hit = (if (CART_URL.containsMatchIn(t.url)) buyClick(t, listOf("place order", "proceed to buy", "proceed to checkout", "checkout")) else null)
+                    ?: smartClick(t, listOf("Place Order", "Proceed to Buy", "Proceed to checkout", "Checkout", "Check out", "Continue"), allowFinal = CART_URL.containsMatchIn(t.url))
                     ?: return "Couldn't find the checkout button on ${t.url}. Use read_page." + observe(t)
                 settle(t, 9000)
                 step("ok", "Checkout opened")
@@ -787,7 +816,7 @@ HOW TO WORK
             "read_page" -> {
                 val t = tab(); val w = web()
                 step("read", "Reading ${t.host.ifBlank { "the page" }}")
-                val s = PageJs.obj(w, "snapshot(3500)") ?: return "This page can't be read (it may still be loading). Try wait then read_page."
+                val s = PageJs.obj(w, "snapshot(2500)") ?: return "This page can't be read (it may still be loading). Try wait then read_page."
                 val st = PageJs.obj(w, "pageState()") ?: JSONObject()
                 val notes = listOfNotNull(
                     "NOTE: a CAPTCHA/human check is shown — use ask_user so the user can solve it.".takeIf { st.optBoolean("captcha") },

@@ -45,6 +45,8 @@ I = {
   'android': '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.2 8.6h9.6c.6 0 1 .4 1 1V17c0 .6-.4 1-1 1h-.9v2.6a1.3 1.3 0 0 1-2.6 0V18h-2.6v2.6a1.3 1.3 0 0 1-2.6 0V18h-.9c-.6 0-1-.4-1-1V9.6c0-.6.4-1 1-1ZM4.6 8.6c.7 0 1.3.6 1.3 1.3v5.2a1.3 1.3 0 0 1-2.6 0V9.9c0-.7.6-1.3 1.3-1.3Zm14.8 0c.7 0 1.3.6 1.3 1.3v5.2a1.3 1.3 0 0 1-2.6 0V9.9c0-.7.6-1.3 1.3-1.3ZM15.4 3.1l1-1.6c.1-.2 0-.4-.1-.5-.2-.1-.4 0-.5.1l-1 1.7a6.4 6.4 0 0 0-5.6 0l-1-1.7c-.1-.1-.3-.2-.5-.1-.1.1-.2.3-.1.5l1 1.6A5.3 5.3 0 0 0 6.2 7.6h11.6a5.3 5.3 0 0 0-2.4-4.5ZM9.6 5.8a.6.6 0 1 1 0-1.2.6.6 0 0 1 0 1.2Zm4.8 0a.6.6 0 1 1 0-1.2.6.6 0 0 1 0 1.2Z"/></svg>',
 }
 
+LDJSON = '''<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Cairn","applicationCategory":"BrowserApplication","operatingSystem":"Android, Windows, macOS, Linux","softwareVersion":"%s","description":"An AI browser that understands Hindi, Hinglish and English. It compares prices across trusted stores, fills your cart and stops at UPI payment for your approval.","url":"%s/","downloadUrl":"%s/Cairn-Android.apk","fileSize":"10MB","image":"%s/assets/og.png","offers":{"@type":"Offer","price":"0","priceCurrency":"INR"},"author":{"@type":"Person","name":"Pranshu Jangid","url":"https://github.com/jangidpranshu1989-create"}}</script>''' % (VERSION, SITE, RELEASES, SITE)
+
 NAV = [('features.html', 'Features'), ('download.html', 'Download'), ('pricing.html', 'Pricing'), ('security.html', 'Security'), ('about.html', 'About')]
 
 def header(active):
@@ -82,14 +84,31 @@ def page(fname, title, desc, body, active=None):
 <title>{title}</title>
 <meta name="description" content="{desc}">
 <meta name="theme-color" content="#0F0F0F">
+<meta name="robots" content="{"noindex" if fname == "404.html" else "index, follow, max-image-preview:large"}">
+<meta property="og:site_name" content="Cairn">
+<meta property="og:locale" content="en_IN">
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{desc}">
 <meta property="og:type" content="website">
-<meta property="og:image" content="{SITE}/assets/og.png">
 <meta property="og:url" content="{SITE}/{"" if fname == "index.html" else fname}">
-<link rel="canonical" href="{SITE}/{"" if fname == "index.html" else fname}">
+<meta property="og:image" content="{SITE}/assets/og.png?v={VERSION}">
+<meta property="og:image:secure_url" content="{SITE}/assets/og.png?v={VERSION}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Cairn {VERSION}: the AI browser that finds, compares and checks out for you">
+<meta property="og:video" content="{SITE}/assets/media/cairn-demo-shopping-web.mp4">
+<meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="540">
+<meta property="og:video:height" content="960">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<meta name="twitter:title" content="{title}">
+<meta name="twitter:description" content="{desc}">
+<meta name="twitter:image" content="{SITE}/assets/og.png?v={VERSION}">
+<meta name="twitter:image:alt" content="Cairn {VERSION}: the AI browser that finds, compares and checks out for you">
+<link rel="canonical" href="{SITE}/{"" if fname == "index.html" else fname}">
+<link rel="apple-touch-icon" href="assets/icon-512.png">
+{LDJSON if fname == "index.html" else ""}<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/InterDisplay-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/site.css">
@@ -120,4 +139,9 @@ if __name__ == '__main__':
         title, desc, active = m.group(1).strip(), m.group(2).strip(), (m.group(3) or '').strip() or None
         page(f.name, title, desc, render(raw[m.end():]), active)
         print('built', f.name)
+    today = datetime.date.today().isoformat()
+    urls = ''.join(f'  <url><loc>{SITE}/{"" if f.name == "index.html" else f.name}</loc><lastmod>{today}</lastmod><priority>{"1.0" if f.name == "index.html" else "0.8" if f.name in ("download.html", "features.html") else "0.5"}</priority></url>\n'
+                   for f in sorted(PAGES.glob('*.html')) if f.name != '404.html')
+    (ROOT / 'sitemap.xml').write_text(f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}</urlset>\n')
+    (ROOT / 'robots.txt').write_text(f'User-agent: *\nAllow: /\nDisallow: /404.html\n\nSitemap: {SITE}/sitemap.xml\n')
     (ROOT / 'assets' / 'favicon.svg').write_text(LOGO.replace('currentColor', '#EDEDEB').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))

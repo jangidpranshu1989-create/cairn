@@ -79,6 +79,8 @@ object Agent {
     /** Autonomous shopping chain state for the current turn. */
     /** Store + whether the last add_to_cart this turn was confirmed, so the no-AI reply can say what happened. */
     private var lastCart: Pair<String, Boolean>? = null
+    /** "cart" | "checkout" | "pay" | "none" — see [Intents.goal]. */
+    private var goal = "none"
     private var buyIntent = false; private var productsThisTurn = false; private var cartTried = false; private var checkoutTried = false; private var payTried = false; private var lastTotal = ""
     private var aiDown: String? = null
     private val PAY_INTENT = Regex("(?i)(pay|payment|upi|checkout|order (kar|kr|place)|place (the |an )?order|khareed|kharid|buy)")
@@ -158,7 +160,8 @@ HOW TO WORK
 - LIVE SOURCES: for any question about facts, news, people, places, products, prices, sports, weather, how-to or anything that may have changed, call web_search FIRST — even if you think you know. Tool results label sources [1], [2]…; cite them inline right after each claim, like "… 48 MP camera [2]." or "[1][3]". Use only numbers that appear in tool results, never make up sources, and do not add your own list of sources or links at the end — Cairn shows the sources under your reply. Small talk, maths and writing tasks need no search.
 - [Attached …] blocks in the user's message are photos or files the user uploaded (already read for you). Answer about them directly; search the web if the user asks about what they show (e.g. "where can I buy this", "what is this").
 - Shopping ("sabse sasta", cheapest, best price): call compare_prices with a precise product name (include storage/size if given). Product cards are shown automatically. Then recommend the cheapest TRUSTWORTHY option (trust ≥ 70, not flagged) with price, store and link, plus 1-2 alternatives. Mention flags honestly.
-- AUTONOMOUS BUYING: when the user asks to add to cart / buy / checkout / "cart mein daal ke checkout tak le jao", chain it without stopping or asking: compare_prices → add_to_cart(index of the best trustworthy pick; it opens the page, closes popups, enters the delivery PIN, picks the variant, taps Add to Cart with DOM + on-screen OCR + vision fallback and verifies) → go_to_checkout (opens the cart and taps Place Order / Proceed to Buy) → fill_profile on address steps → reach the order summary / payment page. Before each tool call write ONE short line of what you found and what you'll do next (e.g. "Lowest trusted: ₹20,999 on Flipkart → adding to cart"); it is shown live to the user.
+- AUTONOMOUS BUYING: when the user asks to add to cart / buy / checkout / "cart mein daal ke checkout tak le jao", chain it without stopping or asking: compare_prices → add_to_cart(index of the best trustworthy pick; it opens the page, closes popups, enters the delivery PIN, picks the variant, taps Add to Cart with DOM + vision fallback and verifies) → go_to_checkout (opens the cart and taps Place Order / Proceed to Buy) → fill_profile on address steps → reach the order summary / payment page. Before each tool call write ONE short line of what you found and what you'll do next (e.g. "Lowest trusted: ₹20,999 on Flipkart → adding to cart"); it is shown live to the user.
+- STOP WHERE THE USER ASKED: "add to cart" / "cart mein daal do" → stop after add_to_cart and report it's in the cart (no checkout, no approval, no payment). "checkout tak" → stop on the payment page. Only "buy / order / pay / kharid lo" goes on to request_approval and pay_upi. Never tap "Buy now" for an add-to-cart request.
 - If a button can't be found by id, use click_text — it heals itself with vision when the DOM selector fails.
 - Checkout: if login/OTP/CAPTCHA appears, use ask_user (the user handles it on screen, then replies "done"). On every address / contact step call fill_profile FIRST. Before paying, call find_offers and apply_coupon when a code is available.
 - PAYING: at the payment step call request_approval with the exact total (amount like "₹20,999"), merchant and item. Cairn may auto-approve it when it is within the user's UPI autopay limit; otherwise the user approves with fingerprint. Only if APPROVED: call pay_upi (selects UPI, enters the user's saved UPI ID and taps Pay — the user then enters the UPI PIN in their UPI app; you can never enter it) or, if the user prefers another method, click the final Pay button once. Never type card numbers, CVV, UPI PIN or OTPs yourself.
@@ -228,7 +231,7 @@ HOW TO WORK
         fn("parallel_tasks", "Run 2-5 independent sub-tasks AT THE SAME TIME, each by its own background sub-agent (e.g. flights, hotels, cabs). Returns each sub-agent's findings.", p("goal" to s("the overall goal"), "tasks" to JSONObject().put("type", "array").put("items", JSONObject().put("type", "object").put("properties", p("title" to s("2-3 word label, e.g. Flights"), "task" to s("precise instruction"))).put("required", JSONArray(listOf("title", "task"))))), listOf("goal", "tasks")),
         fn("recall_history", "Search the full text of pages the user visited before (on-device memory). Returns matching pages with snippets.", p("query" to s("what the page was about")), listOf("query")),
         fn("translate_page", "Translate the current page in place into a language.", p("language" to s("target language, e.g. English, Hindi, French")), listOf("language")),
-        fn("add_to_cart", "Autonomously add a product to the cart: opens the product page in the visible tab, closes popups, enters the delivery PIN from the profile, picks the requested variant, taps Add to Cart (DOM → on-screen OCR → vision fallback) and verifies. Use the index from compare_prices, or a url.", p("index" to n("index from the last compare_prices results"), "url" to s("product URL when not from compare_prices"), "variant" to s("e.g. \"8GB 256GB Black\" (optional)"))),
+        fn("add_to_cart", "Autonomously add a product to the cart: opens the product page in the visible tab, closes popups, enters the delivery PIN from the profile, picks the requested variant, taps Add to Cart (DOM → vision fallback) and verifies. Use the index from compare_prices, or a url.", p("index" to n("index from the last compare_prices results"), "url" to s("product URL when not from compare_prices"), "variant" to s("e.g. \"8GB 256GB Black\" (optional)"))),
         fn("go_to_checkout", "From the current store: open the cart and tap Place Order / Proceed to Buy / Checkout, returning the next page (login, address or order summary)."),
         fn("pay_upi", "On the payment page, AFTER request_approval returned APPROVED: choose UPI, enter the user's saved UPI ID and tap Pay. The user confirms with their UPI PIN in their UPI app."),
         fn("show_products", "Display product cards for indices from the last compare_prices results (best first).", p("indices" to JSONObject().put("type", "array").put("items", JSONObject().put("type", "number")), "headline" to s("one-line headline")), listOf("indices")),
@@ -265,6 +268,7 @@ HOW TO WORK
         items.add(UserMsg(text.ifBlank { if (attachments.size == 1) "Look at this" else "Look at these" }, page, mentions.map { it.title.ifBlank { it.host } }, attachments))
         userText = text; attachmentsThisTurn = attachments.size + mentions.size
         buyIntent = BUY_INTENT.containsMatchIn(text)
+        goal = Intents.goal(text).let { if (it == "none" && buyIntent) "cart" else it }
         if (messages.length() == 0) messages.put(JSONObject().put("role", "system").put("content", systemPrompt()))
         else messages.put(0, JSONObject().put("role", "system").put("content", systemPrompt()))
         val note = tab?.takeIf { !it.isNtp }?.let { "\n\n[Current tab: \"${it.title}\" ${it.url}]" } ?: ""
@@ -540,8 +544,9 @@ HOW TO WORK
             if (calls != null && calls.length() > 0 && content.isNotBlank()) Llm.stripThinking(content).lineSequence().firstOrNull { it.isNotBlank() }?.let { step("think", it.trim().take(160)) }
             if (calls == null || calls.length() == 0) {
                 // The user asked for cart/checkout but the model stopped at the comparison: chain the next step automatically.
-                val wantsPay = Prefs.upiId.isNotBlank() && PAY_INTENT.containsMatchIn(userText)
-                if (buyIntent && productsThisTurn && nudges < 4 && i < max - 2 && (!cartTried || !checkoutTried || (wantsPay && !payTried))) {
+                val wantsPay = Prefs.upiId.isNotBlank() && goal == "pay"
+                val wantsCheckout = goal == "pay" || goal == "checkout"
+                if (buyIntent && productsThisTurn && nudges < 4 && i < max - 2 && (!cartTried || (wantsCheckout && !checkoutTried) || (wantsPay && !payTried))) {
                     nudges++
                     val next = when {
                         !cartTried -> "add_to_cart with the index of the best trustworthy option"
@@ -671,8 +676,17 @@ HOW TO WORK
         // "Place Order" on a cart page only moves to checkout (address / summary) — nothing is paid yet.
         if (CART_URL.containsMatchIn(url) && !Regex("(?i)pay").containsMatchIn(label)) return null
         if (approvedOnce) { approvedOnce = false; return null }
+        if (goal != "pay") return "BLOCKED: \"$label\" would place an order or pay, and the user didn't ask for that. Don't click it; tell them where things stand."
         return "BLOCKED: \"$label\" looks like placing an order or paying. Call request_approval first (with amount, merchant, item), then retry this click only if approved."
     }
+
+    /** "Buy now" skips the cart and jumps to checkout — wrong when the user only asked to add to cart. */
+    private fun buyNowGuard(label: String): String? =
+        if ((goal == "cart" || goal == "none") && Regex("(?i)\\bbuy\\s*now\\b|\\bbuy this now\\b").containsMatchIn(label))
+            "NOT DONE: \"Buy now\" skips the cart and goes to checkout, but the user only asked to add to cart. Use add_to_cart (or click \"Add to cart\") instead." else null
+
+    /** A tidy one-line label for the live steps ("256 GB" instead of "256 GB\n11%\n8\n99,900\n89,100"). */
+    private fun short(label: String): String = label.lineSequence().map { it.trim() }.firstOrNull { it.length > 1 } ?.take(40) ?: label.trim().take(40)
 
     private val CART_URL = Regex("(?i)/viewcart|/cart(/|\\?|$)|/gp/cart|/checkout/cart|/basket")
 
@@ -686,7 +700,7 @@ HOW TO WORK
             val loc = PageJs.obj(w, "findByText(${PageJs.q(l)})") ?: continue
             val label = loc.optString("text")
             if (!allowFinal && guardFinal(label, t.url) != null) continue
-            step("click", "Tapping \"${label.take(50)}\"")
+            step("click", "Tapping \"${short(label)}\"")
             touch(t, loc.getDouble("x"), loc.getDouble("y"), label.take(30))
             return label
         }
@@ -723,7 +737,7 @@ HOW TO WORK
             val loc = PageJs.obj(w, "buyButton($arr)")
             if (loc != null && loc.has("x")) {
                 val label = loc.optString("text")
-                step("click", "Tapping \"${label.take(40)}\"")
+                step("click", "Tapping \"${short(label)}\"")
                 touch(t, loc.getDouble("x"), loc.getDouble("y"), label.take(30))
                 return label
             }
@@ -815,7 +829,8 @@ HOW TO WORK
                 if (v.isNotBlank()) PageJs.obj(w, "variant(${PageJs.q(v)})")?.optJSONArray("picked")?.takeIf { it.length() > 0 }?.let { step("click", "Picked variant ${(0 until it.length()).joinToString { i -> it.optString(i) }}"); settle(t, 3000) }
                 val st0 = PageJs.obj(w, "cartState()")
                 if (st0?.optBoolean("outOfStock") == true) return "This listing is OUT OF STOCK. Tell the user and try the next cheapest trustworthy index." + observe(t)
-                if (st0?.optBoolean("goToCart") == true) { step("ok", "Already in your cart"); return "The product is already in the cart. Next: go_to_checkout." }
+                if (st0?.optBoolean("goToCart") == true) { step("ok", "Already in your cart"); lastCart = (p?.store ?: t.host.removePrefix("www.")) to true
+                    return if (goal == "cart" || goal == "none") "The product is already in the cart. The user only asked to add it to the cart: stop and tell them." else "The product is already in the cart. Next: go_to_checkout." }
                 step("think", "Looking for the Add to Cart button")
                 val hit = buyClick(t, listOf("add to cart", "add to bag", "add to basket", "go to cart"))
                     ?: smartClick(t, listOf("Add to Cart", "Add to Bag", "Add to basket", "Go to Cart")) ?: return "Couldn't find an Add to Cart button (DOM and vision tried). Use read_page and click it, or try the next store." + observe(t)
@@ -824,9 +839,11 @@ HOW TO WORK
                 val ok = st?.optBoolean("added") == true || CART_URL.containsMatchIn(t.url)
                 step(if (ok) "ok" else "think", if (ok) "Added to cart${p?.let { " · ${it.store}" } ?: ""}" else "Tapped \"${hit.take(30)}\" — checking the result")
                 lastCart = (p?.store ?: t.host.removePrefix("www.")) to ok
-                return (if (ok) "ADDED to cart (tapped \"$hit\"). Next: call go_to_checkout." else "Tapped \"$hit\" but couldn't confirm it was added — check PAGE NOW (a size/variant may be required) and continue.") + observe(t)
+                val nextStep = if (goal == "cart" || goal == "none") "The user only asked to ADD TO CART: stop now and tell them it is in their cart (with price and store). Do NOT open checkout, request approval or pay." else "Next: call go_to_checkout."
+                return (if (ok) "ADDED to cart (tapped \"$hit\"). $nextStep" else "Tapped \"$hit\" but couldn't confirm it was added — check PAGE NOW (a size/variant may be required) and continue.") + observe(t)
             }
             "go_to_checkout" -> {
+                if (goal == "cart" || goal == "none") return "NOT DONE: the user only asked to add to cart, not to check out. Stop and tell them the item is in their cart; they can say \"checkout kar do\" next."
                 checkoutTried = true
                 val t = tab(); val w = web(); controlling = t
                 if (!CART_URL.containsMatchIn(t.url)) {
@@ -932,13 +949,15 @@ HOW TO WORK
                 val loc = PageJs.obj(w, "locate(${a.optInt("id")})") ?: return "Element ${a.optInt("id")} not found — call read_page again."
                 val label = loc.optString("text")
                 guardFinal(label, t.url)?.let { return it }
-                step("click", "Tapping \"${label.take(50).ifBlank { loc.optString("tag") }}\"")
+                buyNowGuard(label)?.let { return it }
+                step("click", "Tapping \"${short(label).ifBlank { loc.optString("tag") }}\"")
                 val before = t.url
                 touch(t, loc.getDouble("x"), loc.getDouble("y"), label.take(30))
                 return "Clicked [${a.optInt("id")}] \"${label.take(80)}\".${if (t.url != before) " Navigated to ${t.url}." else ""}" + observe(t)
             }
             "click_text" -> {
                 val t = tab(); val w = web()
+                buyNowGuard(a.optString("text"))?.let { return it }
                 val loc = PageJs.obj(w, "findByText(${PageJs.q(a.optString("text"))})")
                 if (loc == null) {
                     guardFinal(a.optString("text"), t.url)?.let { return it }
@@ -948,7 +967,7 @@ HOW TO WORK
                 }
                 val label = loc.optString("text")
                 guardFinal(label, t.url)?.let { return it }
-                step("click", "Tapping \"${label.take(50)}\"")
+                step("click", "Tapping \"${short(label)}\"")
                 val before = t.url
                 touch(t, loc.getDouble("x"), loc.getDouble("y"), label.take(30))
                 return "Clicked \"${label.take(80)}\".${if (t.url != before) " Navigated to ${t.url}." else ""}" + observe(t)
@@ -1052,6 +1071,10 @@ HOW TO WORK
             }
             "request_approval" -> {
                 val t = tab()
+                val kind0 = a.optString("kind", "payment")
+                // A payment card only when the user asked to buy / order / pay, and only once the checkout is actually open.
+                if (kind0 != "sensitive" && goal != "pay") return "NOT SHOWN: the user didn't ask to pay or place an order (they asked to ${if (goal == "checkout") "go to checkout" else "add to cart"}). Stop at this step and tell them; don't pay."
+                if (kind0 != "sensitive" && !checkoutTried && !CART_URL.containsMatchIn(t.url) && t.web?.let { paymentPage(it) } != true) return "NOT YET: you're not at the checkout / payment step. Call go_to_checkout first, then request_approval with the total shown there."
                 // UPI autopay: within the user's per-payment and daily limits the agent may approve itself — but only for the
                 // total read from the page itself, and only when it matches what the AI claims (see PayGate).
                 val pageAmt = t.web?.let { w -> PageJs.call(w, "orderTotal()")?.toDoubleOrNull() }
@@ -1069,8 +1092,14 @@ HOW TO WORK
                 }
                 val why = (verdict as PayGate.Verdict.Ask)
                 if (Prefs.autopay && Prefs.upiId.isNotBlank()) step("lock", "Autopay skipped: ${why.reason} → asking you")
-                val shownAmt = why.amount?.let { "₹${PayGate.fmt(it)}" } ?: a.optString("amount")
-                val ap = ApprovalItem(a.optString("kind", "payment"), a.optString("title"), shownAmt, a.optString("merchant"), a.optString("item"), t.host)
+                // One amount everywhere: the total read from the page when available, else the AI's figure — and the title is built
+                // from that same amount, so the card can never say "₹91,636" on top and "Pay ₹89,100" below.
+                val shownAmt = why.amount?.let { "₹${PayGate.fmt(it)}" } ?: aiAmt?.let { "₹${PayGate.fmt(it)}" } ?: a.optString("amount")
+                val merchant = a.optString("merchant").ifBlank { t.host.removePrefix("www.").substringBefore('.').replaceFirstChar { it.uppercase() } }
+                val item = a.optString("item")
+                val title = if (kind0 == "sensitive") a.optString("title") else "Pay $shownAmt to $merchant${if (item.isNotBlank()) " for ${item.take(60)}" else ""}"
+                if (pageAmt != null && aiAmt != null && kotlin.math.abs(pageAmt - aiAmt) > 1) step("think", "The page total is ₹${PayGate.fmt(pageAmt)} (incl. fees/delivery), not ₹${PayGate.fmt(aiAmt)} — showing the page total")
+                val ap = ApprovalItem(kind0, title, shownAmt, merchant, item, t.host)
                 step("lock", "Waiting for your approval: ${ap.title}")
                 items.add(ap); openRequests++
                 val ok = ap.result.await()

@@ -6,6 +6,37 @@ object Intents {
     // "buy the cheapest", "checkout tak le jao". The words may be far apart, so match the cart/buy words themselves.
     val BUY = Regex("(?i)(\\bto (the |my |your )?(cart|bag|basket|trolley)\\b|\\b(cart|bag|basket)\\s*(me|mein|mai|m|par|pe)?\\s*(add|daal|dal|daalo|dalo|daal ?do|dal ?do|rakh|rakho|kar|kr|karo|kro)\\b|\\badd (kar|kr|karo|kro|kardo|krdo|kar ?do)\\b|\\badd (it|this|that|these|them)\\b|cart tak|\\bcheck ?out\\b|\\bbuy (it|now|this|that|these|them|the|me|a|an|one|kar|kr|karo)\\b|\\border (kar|kr|karo|kro|it|this|that|place|now|de|do)\\b|place (the |an |my )?order|kh(a)?r(ee|i)d (lo|do|le|de|ke|kar|kr|karo|kro|dena|lena)\\b|kh(a)?r(ee|i)do\\b|\\bpurchase\\b|le (aao|ao|jao|ja|lo)\\b|\\bmanga (do|lo|de)\\b|pay (kar|kr|for|it)|payment (kar|kr))")
 
+    private val PAY = Regex("(?i)(\\bpay\\b|\\bpayment\\b|\\bupi\\b|\\bbuy\\b|\\bpurchase\\b|\\border\\b|kh(a)?r(ee|i)d|\\bmanga\\w*)")
+    private val CHECKOUT = Regex("(?i)(check ?out|payment (page|step) tak|pay(ment)? se pehle|address (tak|bhar))")
+
+    /**
+     * How far the user wants the agent to go, strongest word wins: "pay" (buy / order / pay / kharid — up to the payment,
+     * with approval), "checkout" (stop on the payment page), "cart" (add to cart only), or "none".
+     * "add to cart" alone must never lead to checkout or a payment card.
+     */
+    fun goal(text: String): String = when {
+        PAY.containsMatchIn(text) && !Regex("(?i)\\b(don'?t|do not|mat|nahi|nhi|without) (pay|buy|order|payment)").containsMatchIn(text) -> "pay"
+        CHECKOUT.containsMatchIn(text) -> "checkout"
+        BUY.containsMatchIn(text) -> "cart"
+        else -> "none"
+    }
+
+    /** Spoken text that should open as a web address / plain search instead of an agent task: a URL, or 1–2 Latin words. */
+    fun voiceIsSearch(q: String): Boolean {
+        val t = q.trim()
+        if (Regex("^(https?://)?[\\w-]+(\\.[\\w-]+)*\\.[a-z]{2,}(/\\S*)?$", RegexOption.IGNORE_CASE).matches(t)) return true
+        val words = t.split(Regex("\\s+")).filter { it.isNotBlank() }
+        return words.size <= 2 && t.all { it.code < 0x0900 } && !BUY.containsMatchIn(t)
+    }
+
+    /** Whisper returns "." or " Thank you." for silence; drop punctuation-only and well-known silence hallucinations. */
+    fun cleanTranscript(raw: String): String {
+        val t = raw.trim().trim('"').trim()
+        if (t.none { it.isLetterOrDigit() }) return ""
+        if (Regex("(?i)^(thank you|thanks for watching!?|you|bye)\\.?$").matches(t)) return ""
+        return t.removeSuffix(".").trim()
+    }
+
     // "find / compare / dhundh / price of …" — shopping requests that don't say "cart".
     val FIND = Regex("(?i)\\b(find|search|look ?up|compare|dhund\\w*|dhoond\\w*|khoj\\w*|price|prices|daam|kimat|keemat|cheapest|sasta|sabse sasta|best deal|lowest)\\b")
 

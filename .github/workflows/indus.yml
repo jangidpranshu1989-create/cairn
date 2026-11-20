@@ -1,0 +1,35 @@
+name: Publish to PhonePe Appstore
+
+# Manual only. Needs the app to be published once by hand in
+# https://developer.indusappstore.com and the repo secret INDUS_APP_STORE_API_TOKEN.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (e.g. v3.2.0)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check token
+        env:
+          TOKEN: ${{ secrets.INDUS_APP_STORE_API_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::error::Add the INDUS_APP_STORE_API_TOKEN secret first (console → Tools & Resources)."; exit 1; fi
+      - name: Download signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" --pattern Cairn-Android.apk
+      - name: Upload to PhonePe Appstore
+        uses: indusappstore/appstore-release@v1
+        with:
+          file_path: ./Cairn-Android.apk
+          file_type: apk
+          package_name: app.cairn.browser
+          api_token: ${{ secrets.INDUS_APP_STORE_API_TOKEN }}
+          release_notes: See https://github.com/${{ github.repository }}/releases/tag/${{ inputs.tag }}

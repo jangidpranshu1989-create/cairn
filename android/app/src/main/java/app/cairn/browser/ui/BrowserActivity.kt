@@ -163,7 +163,7 @@ class BrowserActivity : FragmentActivity() {
             ACTION_PRIVATE_TAB -> { Browser.newTab(NTP, incognito = true); Ui.screen = null }
             ACTION_ASSISTANT -> { Ui.screen = null; Ui.assistant = true }
             ACTION_FOCUS_SEARCH -> { Ui.screen = null; Ui.assistant = false; Browser.current?.takeIf { it.isNtp && !it.incognito } ?: Browser.newTab(); webHost.postDelayed({ Ui.omnibox = true }, if (cold) 420 else 60) }
-            ACTION_VOICE -> { Ui.screen = null; webHost.postDelayed({ listen { t -> if (t.isNotBlank()) { Browser.open(t, Browser.current?.takeIf { it.isNtp } ?: Browser.newTab()) } } }, if (cold) 600 else 150) }
+            ACTION_VOICE -> { Ui.screen = null; webHost.postDelayed({ listen { t -> voiceCommand(t) } }, if (cold) 600 else 150) }
             ACTION_ASK_PHOTO -> { Ui.screen = null; Ui.assistant = true; Ui.attachTray = true }
         }
         refreshContainer()
@@ -329,9 +329,26 @@ class BrowserActivity : FragmentActivity() {
     /** Voice input, recorded and transcribed inside Cairn (see service/Voice.kt). */
     fun listen(onText: (String) -> Unit) {
         Haptics.tick()
+        app.cairn.browser.service.Voice.onError = { m -> toast(m) }
         val go = { app.cairn.browser.service.Voice.start(this, onText); app.cairn.browser.service.Voice.error?.let { toast(it) }; Unit }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) go()
         else runtime(arrayOf(Manifest.permission.RECORD_AUDIO)) { ok -> if (ok) go() else toast("Microphone permission is needed for voice input") }
+    }
+
+    /**
+     * Where spoken words go. Speaking is almost always a command ("mere liye iPhone 17 dhundh ke cart mein daal"), and
+     * Whisper may return it in Devanagari, which the typed-text task detector doesn't recognise — so voice goes to the
+     * agent unless it is clearly a web address or a one/two-word search.
+     */
+    fun voiceCommand(t: String) {
+        val q = t.trim(); if (q.isBlank()) return
+        if (app.cairn.browser.agent.Intents.voiceIsSearch(q)) { Browser.open(q, Browser.current?.takeIf { it.isNtp } ?: Browser.newTab()); return }
+        Ui.omnibox = false; Ui.assistant = true
+        when {
+            app.cairn.browser.agent.Agent.pendingAsk != null -> app.cairn.browser.agent.Agent.answer(q)
+            app.cairn.browser.agent.Agent.running -> { Ui.assistantDraft = q; toast("Cairn is still working — your words are in the box, send when ready") }
+            else -> app.cairn.browser.agent.Agent.run(q, Ui.mentions.toList()).also { Ui.mentions.clear() }
+        }
     }
 
     /** True when a Cairn panel covers the page, so screen-copied tab thumbnails would show it. */

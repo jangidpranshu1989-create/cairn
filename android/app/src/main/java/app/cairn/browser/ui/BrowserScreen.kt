@@ -262,7 +262,12 @@ fun NewTabPage(private: Boolean) {
         val top = runCatching { BrowserDb.topSites(8) }.getOrDefault(emptyList()).map { (it.title.ifBlank { hostOf(it.url) }) to it.url }
         (top + defaults.filter { d -> top.none { BrowserDb.siteKey(it.second) == BrowserDb.siteKey(d.second) } }).distinctBy { BrowserDb.siteKey(it.second) }.take(8)
     }
-    Column(Modifier.fillMaxSize().background(C.bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+    val motion = rememberMotion()
+    val scroll = rememberScrollState()
+    val tilt by rememberTilt(motion && !private)
+    Box(Modifier.fillMaxSize().background(C.bg)) {
+    if (!private) AuroraBackdrop(motion, Modifier.fillMaxWidth().height(380.dp).graphicsLayer { translationY = -scroll.value * .4f; alpha = (1f - scroll.value / 900f).coerceIn(0f, 1f) }, tilt)
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(if (private) 72.dp else 18.dp))
         if (private) {
             Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(C.surface2), contentAlignment = Alignment.Center) { Icon(Ic.VisibilityOff, null, Modifier.size(24.dp), tint = C.text) }
@@ -280,13 +285,12 @@ fun NewTabPage(private: Boolean) {
             Spacer(Modifier.height(120.dp))
             return@Column
         }
-        HomeHeader()
-        Spacer(Modifier.height(20.dp))
-        val motion = android.provider.Settings.Global.getFloat(LocalContext.current.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+        HomeHeader(motion, tilt)
+        Spacer(Modifier.height(22.dp))
         OmniBar(motion, quick)
+        Box(Modifier.enter(5, motion)) { Column { BentoGrid(motion) } }
         JourneyRow(v)
         ShortcutGrid(sites)
-        BentoGrid()
         val watching = app.cairn.browser.service.PriceWatch.tracks
         LaunchedEffect(Unit) { app.cairn.browser.service.PriceWatch.load() }
         if (watching.isNotEmpty()) {
@@ -306,6 +310,7 @@ fun NewTabPage(private: Boolean) {
             Text(if (Prefs.shield && Prefs.shieldTotal > 0) "Shield has blocked ${"%,d".format(Prefs.shieldTotal)} trackers and ads" else "Shield blocks trackers and ads on every site", color = C.faint, fontSize = 12.sp)
         }
         Spacer(Modifier.height(120.dp))
+    }
     }
 }
 
@@ -547,7 +552,7 @@ fun Omnibox() {
                     keyboardActions = KeyboardActions(onGo = { go(tf.text) }),
                     decorationBox = { inner -> if (tf.text.isEmpty()) Text(if (tab?.incognito == true) "Search privately" else if (Ui.omniAgent) "Tell Cairn what to do…" else "Search, ask, or type a URL", color = C.faint, fontSize = 15.5.sp); inner() })
                 if (tf.text.isNotEmpty()) IconBtn(Ic.Cancel, "Clear", tint = C.faint, size = 38.dp) { tf = TextFieldValue("") }
-                else IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 38.dp) { act.listen { go(it) } }
+                else IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 38.dp) { act.listen { act.voiceCommand(it) } }
             }
             TextButton(onClick = { Ui.omnibox = false }) { Text("Cancel", color = C.muted, fontSize = 14.sp) }
         }

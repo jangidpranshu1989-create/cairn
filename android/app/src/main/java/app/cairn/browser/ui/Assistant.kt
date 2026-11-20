@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -361,7 +362,7 @@ private fun Composer() {
                 when (k) {
                     0 -> RoundAction(Ic.Stop, "Stop", C.surface3, C.text) { Haptics.reject(); Agent.stop() }
                     1 -> RoundAction(Ic.ArrowUpward, "Send", C.accent, C.accentInk) { send() }
-                    else -> IconBtn(Ic.Mic, "Speak", tint = C.muted, size = 40.dp) { act.listen { t -> if (Agent.pendingAsk != null) Agent.answer(t) else { Agent.run(t, Ui.mentions.toList()); Ui.mentions.clear() } } }
+                    else -> IconBtn(Ic.Mic, "Speak", tint = C.muted, size = 40.dp) { act.listen { t -> act.voiceCommand(t) } }
                 }
             }
         }
@@ -386,9 +387,7 @@ private fun ItemView(it: Item) {
             if (it.attachments.isNotEmpty()) Row(Modifier.padding(bottom = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 it.attachments.forEach { a -> AttachmentChip(a, onRemove = null) }
             }
-            Box(Modifier.widthIn(max = 310.dp).clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp)).background(C.surface2).padding(horizontal = 15.dp, vertical = 10.dp)) {
-                Text(it.text, color = C.text, fontSize = 15.sp, lineHeight = 21.sp)
-            }
+            UserBubble(it)
         }
         is AiMsg -> AnswerView(it)
         is StepsItem -> Steps(it)
@@ -465,7 +464,10 @@ private fun AnswerView(m: AiMsg) {
             Spacer(Modifier.weight(1f))
             Text("${m.sources.size} live source${if (m.sources.size == 1) "" else "s"}", color = C.faint, fontSize = 11.5.sp)
         }
-        Markdown(if (m.revealed) m.markdown else m.markdown.take(shown), color = if (m.error) C.muted else C.text, cites = m.sources, onCite = { c -> openSource(c.url) }, onLink = { openSource(it) })
+        // Long-press to select and copy any part of the answer.
+        androidx.compose.foundation.text.selection.SelectionContainer {
+            Markdown(if (m.revealed) m.markdown else m.markdown.take(shown), color = if (m.error) C.muted else C.text, cites = m.sources, onCite = { c -> openSource(c.url) }, onLink = { openSource(it) })
+        }
         // Source cards under the answer: favicon, domain, title and the snippet the claim came from.
         if (m.sources.isNotEmpty() && !m.error) {
             Row(Modifier.padding(top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -499,6 +501,10 @@ private fun AnswerView(m: AiMsg) {
         if (m.setup) Row(Modifier.padding(top = 10.dp)) {
             if (!Prefs.isSignedIn) { PrimaryButton("Sign in") { Ui.assistant = false; Ui.go("settings/account") }; Spacer(Modifier.width(8.dp)) }
             SecondaryButton("AI settings") { Ui.assistant = false; Ui.go("settings/ai") }
+        }
+        if (m.error && m.prompt.isNotBlank()) Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconBtn(Ic.Copy, "Copy", tint = C.faint, size = 34.dp) { copyText(ctx, "Cairn", m.markdown) }
+            IconBtn(Ic.Replay, "Retry", tint = C.faint, size = 34.dp, enabled = !Agent.running) { Haptics.tick(); Agent.retry() }
         }
         AnimatedVisibility(m.revealed && !m.error && !m.setup, enter = fadeIn(tween(260))) {
             Column {
@@ -582,6 +588,26 @@ private fun AttachmentChip(a: Attachment, onRemove: (() -> Unit)?) {
 @Composable
 private fun Card(content: @Composable ColumnScope.() -> Unit) =
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(16.dp)).padding(14.dp), content = content)
+
+/** The user's own message: tap or long-press shows Copy · Edit · Resend (the latest one always shows them). */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun UserBubble(m: UserMsg) {
+    val ctx = LocalContext.current
+    val latest = Agent.items.lastOrNull { x -> x is UserMsg } == m
+    var acts by remember(m) { mutableStateOf(false) }
+    Box(Modifier.widthIn(max = 310.dp).clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp)).background(C.surface2)
+        .combinedClickable(onClick = { acts = !acts }, onLongClick = { Haptics.tick(); acts = true }).padding(horizontal = 15.dp, vertical = 10.dp)) {
+        Text(m.text, color = C.text, fontSize = 15.sp, lineHeight = 21.sp)
+    }
+    AnimatedVisibility(acts || (latest && !Agent.running), enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+        Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconBtn(Ic.Copy, "Copy message", tint = C.faint, size = 34.dp) { copyText(ctx, "Message", m.text); acts = false }
+            IconBtn(Ic.Edit, "Edit message", tint = C.faint, size = 34.dp) { Haptics.tick(); Ui.assistantDraft = m.text; acts = false }
+            IconBtn(Ic.Replay, "Send again", tint = C.faint, size = 34.dp, enabled = !Agent.running) { Haptics.tick(); acts = false; Agent.run(m.text) }
+        }
+    }
+}
 
 @Composable
 private fun SmallAct(icon: ImageVector, label: String, onClick: () -> Unit) {

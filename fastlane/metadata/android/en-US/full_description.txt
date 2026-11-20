@@ -1,19 +1,20 @@
 <p><b>Just say it. Cairn gets it done.</b></p>
-<p>Cairn is a fast Android browser with an AI agent built in. Ask in Hindi, Hinglish or English. Cairn browses, compares prices across trusted stores, fills your cart and stops at the UPI PIN screen so you stay in control.</p>
-<p><b>What's new in 3.0</b></p>
+<p>Cairn is a fast, private Android browser with an AI assistant built in. Type or speak in English, Hindi or Hinglish. Cairn searches the web with cited answers, compares prices across trusted stores, adds the right product to your cart and, only when you ask, takes you to checkout. Every payment waits for your fingerprint or screen lock.</p>
+<p><b>What's new in 3.2</b></p>
 <ul>
-<li><b>New home:</b> a personal greeting, one big composer with a Search / Agent switch and voice, your delivery address, clean shortcuts and "Continue your journey" cards.</li>
-<li><b>Exact-match shopping:</b> brand, model, storage and colour must match. Covers, chargers, keypad phones and stores with a trust score below 70 are removed.</li>
-<li><b>Checkout Magic:</b> Find → Cart → Address → UPI. Cairn fills your saved address, selects your UPI ID and pays only within the limit you set. You always enter the UPI PIN yourself.</li>
-<li><b>Rich answers:</b> comparison tables with a highlighted best pick, spec cards, code blocks with one-tap Copy, callouts, numbered citations and source cards.</li>
-<li><b>Circle to Ask:</b> long-press the Cairn stone and circle anything on a page to ask about it.</li>
-<li><b>Faster tabs:</b> WebView pre-warming and shimmer loaders everywhere.</li>
+<li><b>New 3D home:</b> a living aurora background, a 3D Cairn orb that tilts with your phone, a glass composer with Search / Agent modes, and cards that respond to your touch. Turns still when you switch off animations.</li>
+<li><b>Stops where you asked:</b> "add to cart" stops at the cart, "checkout" stops at the payment page, and only "buy" or "pay" asks for payment approval. The amount on the approval card is the total read from the store's own page.</li>
+<li><b>Voice that works:</b> speak a task and it goes straight to the assistant, in any language.</li>
+<li><b>Message actions:</b> copy, edit and resend your messages; copy, share, listen to or retry any answer; long-press to select text.</li>
 </ul>
-<p><b>Also included</b></p>
+<p><b>Everything else</b></p>
 <ul>
-<li>Shield blocks ads and trackers; private tabs; Safe Browsing.</li>
-<li>Read-aloud for articles, mind maps, PDF saving, price-drop alerts.</li>
-<li>Passwords and PINs are masked from the AI. Fingerprint approvals for payments.</li>
+<li>Exact-match shopping: brand, model, storage and colour must match. Accessories and low-trust sellers are filtered out.</li>
+<li>Rich answers with tables, numbered citations and source cards.</li>
+<li>One-minute setup: your name, delivery address and an optional account, so tasks work from the first try.</li>
+<li>Shield blocks ads and trackers. Private tabs. Safe Browsing.</li>
+<li>Read aloud, price-drop alerts, PDF saving, mind maps and Circle to Ask.</li>
+<li>Passwords, PINs, OTPs and card numbers are masked before anything is sent to the AI.</li>
 <li>Sync with Cairn on Windows, macOS and Linux.</li>
 </ul>
-<p>Cairn is free, and its source code is public on GitHub. AI features use the Cairn Cloud service (cairn-cloud.onrender.com) or your own Groq/NVIDIA key.</p>
+<p>Cairn is free, with no ads and no in-app purchases. Its source code is public on GitHub. Privacy policy: https://jangidpranshu1989-create.github.io/cairn/privacy.html</p>

@@ -138,6 +138,8 @@ export async function transcribe(blob, filename, cfg, language) {
   fd.append('model', cfg.sttModel || 'whisper-large-v3-turbo');
   fd.append('response_format', 'json');
   if (language) fd.append('language', language);
+  // Bias Whisper toward romanised Hinglish / English commands (otherwise Hindi speech can come back in Urdu script).
+  fd.append('prompt', 'Voice command for the Cairn browser in English or Hinglish, e.g. "mere liye iPhone 17 dhundh ke Flipkart pe add to cart kar de".');
   const r = await fetch(`${PROVIDERS.groq.base}/audio/transcriptions`, { method: 'POST', headers: { Authorization: `Bearer ${cfg.groqKey}` }, body: fd });
   if (!r.ok) throw Object.assign(new Error(`Transcription failed: ${r.status} ${(await r.text()).slice(0, 200)}`), { status: r.status });
   return (await r.json()).text;

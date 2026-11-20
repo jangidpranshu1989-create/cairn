@@ -199,7 +199,7 @@ private fun AddressPill(tab: Tab?) {
                     tab.translated?.let { Text(it.take(2).uppercase(), color = C.agent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp).border(1.dp, C.agent.copy(alpha = .5f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) }
                 }
             }
-            if (tab == null || tab.isNtp) IconBtn(Ic.Mic, "Voice search", size = 42.dp, tint = C.text) { act.listen { t -> Browser.open(t) } }
+            if (tab == null || tab.isNtp) IconBtn(Ic.Mic, "Voice search", size = 42.dp, tint = C.text) { act.listen { t -> act.voiceCommand(t) } }
             else IconBtn(if (tab.loading) Ic.Close else Ic.Refresh, if (tab.loading) "Stop" else "Reload", size = 42.dp, tint = C.text) { Haptics.tick(); if (tab.loading) Browser.stop(tab) else Browser.reload(tab) }
         }
         val p by animateFloatAsState(if (tab?.loading == true) tab.progress / 100f else 1f, tween(240), label = "p")
@@ -232,7 +232,7 @@ private fun AssistantPill(modifier: Modifier) {
                 maxLines = 1, softWrap = false, overflow = TextOverflow.Visible, modifier = Modifier.weight(1f))
             val vs = if (tight) 32.dp else 38.dp
             if (voice) Box(Modifier.size(vs).clip(CircleShape).background(if (C.dark) Color(0xFFECECEC) else C.text).clickable {
-                Haptics.tick(); act.listen { q -> if (q.isNotBlank()) { Ui.assistant = true; Agent.run(q) } }
+                Haptics.tick(); act.listen { q -> act.voiceCommand(q) }
             }, contentAlignment = Alignment.Center) {
                 Icon(Ic.GraphicEq, "Talk to Cairn", Modifier.size(if (tight) 17.dp else 19.dp), tint = if (C.dark) Color(0xFF1C1C1F) else C.bg)
             }

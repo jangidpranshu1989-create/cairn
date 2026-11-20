@@ -5,8 +5,13 @@
 const store = require('./store');
 const cloud = require('./cloud');
 
-// Keyless OpenAI-compatible fallback (tools supported). text.pollinations.ai was retired (402/404) and is not used.
-const FREE_URL = 'https://api.llm7.io/v1/chat/completions';
+// Keyless OpenAI-compatible fallbacks (tools supported), tried in order when Cairn Cloud can't be reached. Each has
+// its own per-IP limit, so one being busy moves on to the next. LLM7 needs a token since Nov 2026 and is not used.
+const FREE = [
+  { name: 'Kilo', url: 'https://ai-gateway.kilo.ai/api/v1/chat/completions', models: { smart: ['nvidia/nemotron-3.5-lightning:free', 'nvidia/nemotron-3.5-super-vl:free'], fast: ['nvidia/nemotron-3.5-lightning:free'], vision: ['nvidia/nemotron-3.5-super-vl:free'] } },
+  { name: 'OVHcloud', url: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions', json: true, models: { smart: ['gpt-oss-120b', 'Qwen3.8-27B'], fast: ['gpt-oss-20b', 'Qwen3.8-27B'], vision: ['qwen3-vl-30b-a3b'] } },
+  { name: 'Pollinations', url: 'https://text.pollinations.ai/openai', models: { smart: ['openai'], fast: ['openai'] } },
+];
 const base = () => store.get().settings.data.serverUrl.replace(/\/$/, '');
 const timeout = (signal, ms) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms));
 
@@ -44,11 +49,24 @@ async function okJson(r) {
 function status() { return { ready: true, mode: cloud.isSignedIn() ? 'account' : 'builtin', providers: ['cairn'] }; }
 
 async function freeChat(opts) {
-  const body = { model: 'default', messages: opts.messages, temperature: opts.temperature ?? 0.2, max_tokens: opts.maxTokens ?? 4096 };
-  if (opts.tools?.length) { body.tools = opts.tools; body.tool_choice = opts.toolChoice || 'auto'; }
-  const r = await fetch(FREE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: timeout(opts.signal, 120_000) });
-  const j = await okJson(r);
-  return { message: j.choices[0].message, provider: 'free', usage: j.usage };
+  const tier = opts.tier || 'smart';
+  let last;
+  for (const p of FREE) {
+    for (const model of p.models[tier] || []) {
+      const body = { model, messages: opts.messages, temperature: opts.temperature ?? 0.2, max_tokens: opts.maxTokens ?? 4096 };
+      if (opts.tools?.length) { body.tools = opts.tools; body.tool_choice = opts.toolChoice || 'auto'; }
+      if (opts.json && p.json) body.response_format = { type: 'json_object' };
+      try {
+        const j = await okJson(await fetch(p.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: timeout(opts.signal, 90_000) }));
+        const m = j.choices?.[0]?.message;
+        if (!m || (!m.content && !m.tool_calls?.length)) throw Object.assign(new Error('empty reply'), { status: 502 });
+        if (Array.isArray(m.tool_calls) && !m.tool_calls.length) delete m.tool_calls;
+        delete m.reasoning; delete m.reasoning_content;
+        return { message: m, provider: `${p.name} · ${model}`, usage: j.usage };
+      } catch (e) { if (opts.signal?.aborted) throw e; last = e; if (e.cause?.code === 'ENOTFOUND') break; }
+    }
+  }
+  throw last || new Error('NO_AI');
 }
 
 /**
@@ -71,7 +89,7 @@ async function chat(opts) {
       break;
     }
   }
-  if (opts.tier === 'vision' || (cloudErr.status === 429 && /daily/i.test(cloudErr.message))) throw cloudErr;
+  if (cloudErr.status === 429 && /daily/i.test(cloudErr.message)) throw cloudErr;
   let freeErr;
   try { return await freeChat(opts); }
   catch (e) { if (signal?.aborted) throw e; freeErr = e; }

@@ -10,12 +10,20 @@ export const PROVIDERS = {
   openrouter: { base: 'https://openrouter.ai/api/v1', label: 'OpenRouter' },
   // Keyless OpenAI-compatible endpoint (tools + streaming). The old text.pollinations.ai/openai endpoint was retired
   // (it now answers 404 "Model not found" / 402), which surfaced in the app as a bare "Not found".
-  free: { base: 'https://api.llm7.io/v1', label: 'Cairn Free AI', keyless: true },
+  // Keyless public gateways (no account, per-IP limits), used after every keyed provider. LLM7 was dropped: since
+  // November 2026 it needs a token and answered anonymous calls with 429.
+  kilo: { base: 'https://ai-gateway.kilo.ai/api/v1', label: 'Kilo Gateway', keyless: true, noJson: true,
+    models: { smart: 'nvidia/nemotron-3.5-lightning:free', fast: 'nvidia/nemotron-3.5-lightning:free', vision: 'nvidia/nemotron-3.5-super-vl:free' } },
+  ovh: { base: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1', label: 'OVHcloud AI', keyless: true,
+    models: { smart: 'gpt-oss-120b', fast: 'gpt-oss-20b', vision: 'qwen3-vl-30b-a3b' } },
+  pollinations: { base: 'https://text.pollinations.ai', path: '/openai', label: 'Pollinations', keyless: true, noJson: true,
+    models: { smart: 'openai', fast: 'openai' } },
 };
+const KEYLESS = ['kilo', 'ovh', 'pollinations'];
 const keyFor = (p, cfg) => (p === 'groq' ? cfg.groqKey : p === 'nvidia' ? cfg.nvidiaKey : p === 'gemini' ? cfg.geminiKey : p === 'openrouter' ? cfg.openrouterKey : '');
 
 export function modelFor(provider, tier, cfg) {
-  if (provider === 'free') return cfg.freeModel || 'default';
+  if (PROVIDERS[provider]?.models) return PROVIDERS[provider].models[tier] || PROVIDERS[provider].models.smart;
   if (provider === 'openrouter') return cfg.openrouterModel || 'openrouter/free';
   if (provider === 'gemini') return cfg.geminiModel;
   if (tier === 'vision') return provider === 'groq' ? cfg.groqVisionModel : cfg.nvidiaVisionModel;
@@ -29,7 +37,7 @@ export function providerOrder(cfg, tier, preferred) {
   if (preferred && order.includes(preferred)) order = [preferred, ...order.filter(p => p !== preferred)];
   // The retired text.pollinations.ai host is gone from the chain: it only answered 402/404, and its status used to leak
   // to the app as "Cairn Cloud 404".
-  if (tier !== 'vision' && cfg.freeFallback !== false) order.push('free');
+  if (cfg.freeFallback !== false) order.push(...KEYLESS.filter(p => PROVIDERS[p].models[tier]));
   return order.filter(p => PROVIDERS[p].keyless || keyFor(p, cfg));
 }
 
@@ -95,7 +103,7 @@ async function callProvider(p, opts, cfg) {
   if (opts.json) body.response_format = { type: 'json_object' };
   if (p === 'nvidia') body.chat_template_kwargs = { enable_thinking: false };
   if (p === 'groq' && /gpt-oss/.test(body.model)) body.reasoning_effort = opts.reasoning || 'low';
-  if (p === 'free') delete body.response_format;
+  if (PROVIDERS[p].noJson) delete body.response_format;
   const headers = { 'Content-Type': 'application/json' };
   if (keyFor(p, cfg)) headers.Authorization = `Bearer ${keyFor(p, cfg)}`;
   const r = await fetch(`${PROVIDERS[p].base}${PROVIDERS[p].path || '/chat/completions'}`, {

@@ -18,7 +18,7 @@ open class NoAiException(msg: String = "NO_AI") : Exception(msg)
 
 /**
  * Every AI route failed. [attempts] lists each provider with its exact HTTP status / reason (e.g. "Cairn Cloud 404",
- * "LLM7 429"), so the UI can show a real diagnosis instead of a bare "Not found".
+ * "Kilo 429"), so the UI can show a real diagnosis instead of a bare "Not found".
  */
 class AiUnavailableException(val attempts: List<String>) : NoAiException("AI unavailable — " + attempts.joinToString(" · ")) {
     val summary get() = attempts.joinToString(" · ")
@@ -101,36 +101,59 @@ object Llm {
             val j = runCatching { JSONObject(t) }.getOrNull()
             val msg = j?.optString("error")?.ifEmpty { null } ?: "AI error ${it.code}"
             // A daily-quota 429 from Cairn Cloud is not worth waiting for; mark it so the patient retry skips it.
-            throw ApiException(it.code, if (j?.optString("code") == "quota") QUOTA + msg else msg)
+            // Render's edge answers 404 itself (x-render-routing: no-server / suspended) when the instance is asleep,
+            // restarting or suspended; tag it so the error says where the 404 came from.
+            val edge = it.header("x-render-routing")?.takeIf { h -> h.isNotBlank() }
+            throw ApiException(it.code, when { j?.optString("code") == "quota" -> QUOTA + msg; edge != null -> EDGE + edge; j == null && it.code == 404 -> EDGE + "edge"; else -> msg })
         }
         t
     }
 
-    /** A keyless or personal-key OpenAI-compatible endpoint called straight from the phone. */
-    private class Direct(val name: String, val url: String, val key: String?, val smart: String, val fast: String, val json: Boolean, val small: String? = null)
+    /**
+     * An OpenAI-compatible endpoint called straight from the phone. [models] are tried in order (a model that is
+     * rate limited, overloaded or retired moves on to the next one); [visionModels] can read images.
+     */
+    private class Direct(val name: String, val url: String, val key: String?, val models: List<String>, val fastModels: List<String> = models,
+                         val json: Boolean = true, val visionModels: List<String> = emptyList(), val keyless: Boolean = key == null)
     /** Provider → time until which it is skipped after a hard rate limit, so the next request goes straight to another key. */
     private val coolUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /**
-     * Direct fallbacks, best first: a personal key (Settings → AI), then LLM7's keyless gateway (supports tool calls).
+     * Direct fallbacks that work even when Cairn Cloud can't be reached, best first:
+     *  1. your own keys (Settings → AI): Groq, then Gemini, then OpenRouter;
+     *  2. keyless public gateways, each with its own models and per-IP limits: Kilo Gateway (fast free NVIDIA
+     *     Nemotron models, 200 requests/hour per IP), OVHcloud AI Endpoints (gpt-oss-120b / Qwen, 2 requests/min per
+     *     model per IP, so the models rotate), Pollinations Classic (one request at a time).
+     * LLM7 is gone from the chain: since November 2026 it needs a token and answered every anonymous call with 429.
      */
     private fun directs(): List<Direct> = buildList {
         // Legacy single key (2.6.0) counts for its provider if the new per-provider field is empty.
         val legacy = Prefs.aiKey.trim(); val lp = Prefs.aiKeyProvider
         fun keyOf(p: String, v: String): String = v.trim().ifEmpty { if (lp == p) legacy else "" }
         val groq = keyOf("groq", Prefs.groqKey); val gem = keyOf("gemini", Prefs.geminiKey); val orKey = keyOf("openrouter", Prefs.openrouterKey)
-        if (groq.isNotEmpty()) add(Direct("Groq (your key)", "https://api.groq.com/openai/v1/chat/completions", groq, "openai/gpt-oss-120b", "openai/gpt-oss-20b", true, small = "llama-3.1-8b-instant"))
-        if (gem.isNotEmpty()) add(Direct("Gemini (your key)", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", gem, "gemini-flash-latest", "gemini-flash-lite-latest", true, small = "gemini-flash-lite-latest"))
-        if (orKey.isNotEmpty()) add(Direct("OpenRouter (your key)", "https://openrouter.ai/api/v1/chat/completions", orKey, "openrouter/free", "openrouter/free", false))
-        add(Direct("LLM7", "https://api.llm7.io/v1/chat/completions", null, "default", "default", false))
-        // text.pollinations.ai is retired (402 Payment Required / 404); it is no longer called.
+        if (groq.isNotEmpty()) add(Direct("Groq (your key)", "https://api.groq.com/openai/v1/chat/completions", groq,
+            listOf("openai/gpt-oss-120b", "llama-3.1-8b-instant"), listOf("openai/gpt-oss-20b", "llama-3.1-8b-instant"),
+            visionModels = listOf("meta-llama/llama-4-scout-17b-16e-instruct")))
+        if (gem.isNotEmpty()) add(Direct("Gemini (your key)", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", gem,
+            listOf("gemini-flash-latest", "gemini-flash-lite-latest"), listOf("gemini-flash-lite-latest", "gemini-flash-latest"),
+            visionModels = listOf("gemini-flash-latest")))
+        if (orKey.isNotEmpty()) add(Direct("OpenRouter (your key)", "https://openrouter.ai/api/v1/chat/completions", orKey, listOf("openrouter/free"), json = false,
+            visionModels = listOf("openrouter/free")))
+        add(Direct("Kilo", "https://ai-gateway.kilo.ai/api/v1/chat/completions", null,
+            listOf("nvidia/nemotron-3.5-lightning:free", "nvidia/nemotron-3.5-super-vl:free", "openrouter/free"),
+            listOf("nvidia/nemotron-3.5-lightning:free", "nvidia/nemotron-3.5-super-vl:free"), json = false,
+            visionModels = listOf("nvidia/nemotron-3.5-super-vl:free")))
+        add(Direct("OVHcloud", "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions", null,
+            listOf("gpt-oss-120b", "Qwen3.8-27B", "Meta-Llama-3_3-70B-Instruct"), listOf("gpt-oss-20b", "Qwen3.8-27B", "Mistral-Small-3.2-24B-Instruct-2506"),
+            visionModels = listOf("qwen3-vl-30b-a3b", "Qwen2.5-VL-72B-Instruct")))
+        add(Direct("Pollinations", "https://text.pollinations.ai/openai", null, listOf("openai"), json = false))
     }.let { all -> val now = System.currentTimeMillis(); all.filter { (coolUntil[it.name] ?: 0L) < now }.ifEmpty { all } }
 
     /** Skip the server only when the phone can't reach it at all (offline / DNS), and only briefly. */
     @Volatile private var cloudDownUntil = 0L
 
     private fun reason(e: Throwable): String = when (e) {
-        is ApiException -> "${e.status}"
+        is ApiException -> if (e.message?.startsWith(EDGE) == true) "${e.status} (${e.message!!.removePrefix(EDGE)})" else "${e.status}"
         is java.net.UnknownHostException, is java.net.ConnectException -> "offline"
         is java.net.SocketTimeoutException -> "timeout"
         is java.io.InterruptedIOException -> if (e.message == "timeout") "timeout" else "interrupted"
@@ -141,38 +164,44 @@ object Llm {
     private fun cancelled(e: Throwable) = e is java.io.InterruptedIOException && e !is java.net.SocketTimeoutException && e.message != "timeout"
     /** Worth one more try on the server: busy (503), gateway (502/504), cold start (timeout) or a proxy 404 during a redeploy. */
     private const val QUOTA = "[quota] "
+    private const val EDGE = "[edge] "
     private fun transient(e: Throwable) = e.message?.startsWith(QUOTA) != true && (e as? ApiException)?.status?.let { it == 404 || it == 408 || it == 425 || it == 429 || it >= 500 || it == 0 } ?: (e is java.net.SocketTimeoutException || e is java.io.IOException)
 
     private fun directChat(d: Direct, messages: JSONArray, tools: JSONArray?, tier: String, json: Boolean, maxTokens: Int, temperature: Double): JSONObject {
-        val b = JSONObject().put("model", if (tier == "fast") d.fast else d.smart).put("messages", messages).put("temperature", temperature).put("max_tokens", maxTokens)
-        if (tools != null) b.put("tools", tools).put("tool_choice", "auto")
-        if (json && d.json) b.put("response_format", JSONObject().put("type", "json_object"))
+        val models = when (tier) { "vision" -> d.visionModels; "fast" -> d.fastModels; else -> d.models }
+        if (models.isEmpty()) throw ApiException(0, "no model")
         var last: ApiException? = null
-        var usedSmall = false
-        repeat(3) { attempt ->
-            val rq = Request.Builder().url(d.url).post(b.toString().toRequestBody(JSON_T)).apply { d.key?.let { header("Authorization", "Bearer $it") } }.build()
-            http.newCall(rq).execute().use { r ->
-                val t = r.body?.string().orEmpty()
-                if (r.isSuccessful) {
-                    val m = JSONObject(t).getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-                    val calls = m.optJSONArray("tool_calls")
-                    if (m.optString("content").let { it.isBlank() || it == "null" } && (calls == null || calls.length() == 0)) throw ApiException(204, "empty reply")
-                    if (calls != null && calls.length() == 0) m.remove("tool_calls")
-                    m.remove("reasoning"); m.remove("reasoning_content")
-                    lastProvider = d.name; downAt = 0; return m
+        var limited = 0
+        for (model in models) {
+            val b = JSONObject().put("model", model).put("messages", messages).put("temperature", temperature).put("max_tokens", maxTokens)
+            if (tools != null) b.put("tools", tools).put("tool_choice", "auto")
+            if (tools != null && model.startsWith("llama-3.1")) b.put("parallel_tool_calls", false)
+            if (json && d.json) b.put("response_format", JSONObject().put("type", "json_object"))
+            val rq = Request.Builder().url(d.url).post(b.toString().toRequestBody(JSON_T)).header("User-Agent", "Cairn/${app.cairn.browser.BuildConfig.VERSION_NAME} (Android)")
+                .apply { d.key?.let { header("Authorization", "Bearer $it") } }.build()
+            try {
+                http.newCall(rq).execute().use { r ->
+                    val t = r.body?.string().orEmpty()
+                    if (r.isSuccessful) {
+                        val m = JSONObject(t).getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+                        val calls = m.optJSONArray("tool_calls")
+                        if (m.optString("content").let { it.isBlank() || it == "null" } && (calls == null || calls.length() == 0)) throw ApiException(204, "empty reply")
+                        if (calls != null && calls.length() == 0) m.remove("tool_calls")
+                        m.remove("reasoning"); m.remove("reasoning_content")
+                        lastProvider = "${d.name} · $model"; downAt = 0; return m
+                    }
+                    throw ApiException(r.code, t.take(200))
                 }
-                last = ApiException(r.code, t.take(200))
-                // Short rate limits ("retry in 1 seconds") are waited out on the same provider; anything else moves on.
-                val wait = r.header("Retry-After")?.toDoubleOrNull() ?: runCatching { JSONObject(t).optJSONObject("error")?.optDouble("retry_after") }.getOrNull()?.takeIf { !it.isNaN() }
-                if (r.code != 429) throw last!!
-                // Rate limited: back off 1.5 s and retry once on the provider's small, fast model (much higher TPM on
-                // Groq's free tier); if that is limited too, park this key for 45 s and let the next key answer.
-                if (d.small != null && !usedSmall) { usedSmall = true; Thread.sleep(1500); b.put("model", d.small); if (tools != null && d.small.startsWith("llama-3.1")) b.put("parallel_tool_calls", false); return@repeat }
-                if (attempt == 2 || (wait ?: 2.0) > 5) { coolUntil[d.name] = System.currentTimeMillis() + 45_000; throw last!! }
-                Thread.sleep(((wait ?: 1.5) * 1000).toLong().coerceIn(500, 5000))
+            } catch (e: Exception) {
+                if (cancelled(e)) throw e
+                last = e as? ApiException ?: ApiException(0, reason(e))
+                if (e is java.net.UnknownHostException || e is java.net.ConnectException) break // host unreachable: no other model will do better
+                if (last!!.status == 429) { limited++; if (!d.keyless) Thread.sleep(1200) }
+                // 401/403 on a personal key: the key itself is wrong, other models won't help.
+                if (!d.keyless && (last!!.status == 401 || last!!.status == 403)) break
             }
         }
-        if (last?.status == 429) coolUntil[d.name] = System.currentTimeMillis() + 45_000
+        if (limited == models.size) coolUntil[d.name] = System.currentTimeMillis() + 45_000
         throw last ?: ApiException(0, "failed")
     }
 
@@ -213,7 +242,7 @@ object Llm {
     }
 
     /**
-     * Provider chain: Cairn Cloud → your own key → LLM7 → Cairn Cloud again with patient retries (~45 s, which covers
+     * Provider chain: Cairn Cloud → your own key → Kilo → OVHcloud → Pollinations → Cairn Cloud again with patient retries (~45 s, which covers
      * a free-tier cold start). Only if every route fails is an [AiUnavailableException] thrown with each status.
      */
     private fun route(messages: JSONArray, tools: JSONArray?, tier: String, json: Boolean, maxTokens: Int, temperature: Double): JSONObject {
@@ -308,9 +337,13 @@ object Llm {
             stripThinking(j.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content"))
         } catch (e: Exception) {
             if (cancelled(e)) throw e
-            // A personal Gemini or OpenRouter key can see images too.
-            val d = directs().firstOrNull { it.key != null && (it.name.startsWith("Gemini") || it.name.startsWith("OpenRouter")) } ?: throw e
-            stripThinking(directChat(d, msgs, null, "smart", false, maxTokens, 0.2).optString("content"))
+            // Your own key or a keyless gateway with a vision model can see the image too.
+            var last: Exception = e
+            for (d in directs().filter { it.visionModels.isNotEmpty() }) {
+                try { return@runInterruptible stripThinking(directChat(d, msgs, null, "vision", false, maxTokens, 0.2).optString("content")) }
+                catch (x: Exception) { if (cancelled(x)) throw x; last = x }
+            }
+            throw last
         }
     }
 

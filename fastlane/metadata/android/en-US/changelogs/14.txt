@@ -1,0 +1,1 @@
+3.0.3: AI keeps working when Cairn Cloud can't be reached - after your own keys the app tries Kilo Gateway, OVHcloud AI and Pollinations (all free, no key). LLM7 removed (it now needs a token and always said 429). Image questions get free vision fallbacks too, and the reply says whether the item reached your cart.

@@ -63,6 +63,7 @@ const DEFAULT_SETTINGS = {
   askWhereToSave: false,
   voiceName: '',
   speechRate: 1,
+  serverAuto: true,
   serverUrl: process.env.CAIRN_SERVER || (app.isPackaged ? 'https://api.cairn.app' : 'http://localhost:8787'),
   panelWidth: 420,
   restoreTabs: [],

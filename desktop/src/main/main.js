@@ -363,6 +363,7 @@ function registerIpc() {
     const s = store.get().settings; const v = store.get().vault;
     for (const [k, val] of Object.entries(patch || {})) {
       if (k in store.DEFAULT_SETTINGS) s.data[k] = val;
+      if (k === 'serverUrl') s.data.serverAuto = false;
     }
     s.save();
     if ('theme' in patch) applyTheme();
@@ -564,6 +565,20 @@ app.on('second-instance', (_e, argv) => {
 app.on('open-url', (e, url) => { e.preventDefault(); if (url.startsWith('cairn://auth-callback') && cloud?.handleAuthCallback(url)) send('toast', { text: 'Signed in to Cairn' }); });
 
 app.userAgentFallback = chromeUA();
+// The Cairn server address is published in the public repo so every install finds the same account server.
+async function discoverServer() {
+  const s = store.get().settings;
+  if (!app.isPackaged || process.env.CAIRN_SERVER || s.data.serverAuto === false) return;
+  const r = await fetch('https://raw.githubusercontent.com/jangidpranshu1989-create/cairn/main/server.json', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+  if (!r.ok) return;
+  const url = String((await r.json()).server || '').trim().replace(/\/$/, '');
+  if (!/^https:\/\//.test(url) || url === s.data.serverUrl) return;
+  const signedIn = cloud.isSignedIn ? cloud.isSignedIn() : !!store.get().vault.data.cloud?.refreshToken;
+  if (signedIn && s.data.serverUrl !== 'https://api.cairn.app') return;
+  s.data.serverUrl = url; s.save();
+  cloud.connect();
+}
+
 app.whenReady().then(async () => {
   store.init();
   tabsMod = require('./tabs'); cloud = require('./cloud'); llm = require('./llm'); passwords = require('./passwords'); pageTools = require('./page-tools');
@@ -574,6 +589,7 @@ app.whenReady().then(async () => {
   applyTheme();
   setupSession().catch(e => console.error(e));
   cloud.connect();
+  discoverServer().catch(() => {});
   const sync = require('./sync');
   sync.init(cloud, tabs);
   sync.events.on('settings', () => { applyTheme(); send('settings:changed', true); });

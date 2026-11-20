@@ -1,0 +1,37 @@
+# One-click free deploy of Cairn Cloud on Render: https://render.com/deploy?repo=https://github.com/jangidpranshu1989-create/cairn
+# Free web services sleep after 15 min idle — add a free UptimeRobot HTTP monitor on <url>/api/health every 5 min.
+# The free disk is wiped on restart, so set TURSO_DATABASE_URL / TURSO_AUTH_TOKEN (free) to keep accounts and sync data.
+services:
+  - type: web
+    name: cairn-cloud
+    runtime: docker
+    rootDir: server
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /tmp/cairn-data
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_URL
+        sync: false
+      - key: RP_ID
+        sync: false
+      - key: RP_ORIGINS
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

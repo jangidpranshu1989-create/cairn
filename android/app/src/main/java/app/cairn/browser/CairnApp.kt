@@ -13,7 +13,11 @@ class CairnApp : Application() {
         super.onCreate()
         Prefs.init(this)
         app.cairn.browser.data.BrowserDb.init(this)
+        app.cairn.browser.vault.Vault.init(this)
+        app.cairn.browser.service.Downloader.init(this)
+        app.cairn.browser.vault.Sync.init(this)
         app.cairn.browser.browser.Shield.init(this)
+        runCatching { app.cairn.browser.browser.SecureDns.apply() }
         app.cairn.browser.agent.PageJs.init(this)
         app.cairn.browser.service.ReadAloud.init(this)
         val nm = getSystemService(NotificationManager::class.java)
@@ -36,6 +40,18 @@ class CairnApp : Application() {
         nm.createNotificationChannel(NotificationChannel(CH_PRICES, "Price drops & stock alerts", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Tells you when a product you track gets cheaper or comes back in stock"
         })
+        nm.createNotificationChannel(NotificationChannel(CH_AGENT, "Assistant working", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Progress while the assistant finishes a task in the background"; setShowBadge(false)
+        })
+        nm.createNotificationChannel(NotificationChannel(CH_AGENT_DONE, "Assistant results", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Tells you when a background task is done"
+        })
+        nm.createNotificationChannel(NotificationChannel(CH_SITES, "Website notifications", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Notifications from websites you allowed in Site settings"
+        })
+        nm.createNotificationChannel(NotificationChannel(CH_DOWNLOADS, "Downloads", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Download progress, speed and time left"; setShowBadge(false)
+        })
         app.cairn.browser.data.Recall.init(this)
         app.cairn.browser.browser.Favicons.init(this)
         app.cairn.browser.data.CairnSearch.init(this)
@@ -51,5 +67,9 @@ class CairnApp : Application() {
         const val CH_SERVICE = "service"
         const val CH_MEDIA = "media"
         const val CH_PRICES = "prices"
+        const val CH_AGENT = "agent"
+        const val CH_AGENT_DONE = "agent_done"
+        const val CH_SITES = "sites"
+        const val CH_DOWNLOADS = "downloads"
     }
 }

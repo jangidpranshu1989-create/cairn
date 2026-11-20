@@ -71,6 +71,17 @@ class Tabs extends EventEmitter {
     wc.on('did-navigate', (_e, url) => { tab.blocked = 0; upd(); this.recordHistory(tab, url); });
     wc.on('did-navigate-in-page', upd);
     wc.on('did-start-loading', () => { tab.loading = true; this.emitUpdate(); });
+    // Safe Browsing: check every main-frame navigation; dangerous sites are replaced by the red warning page.
+    wc.on('did-start-navigation', (d) => {
+      if (!d.isMainFrame || d.isSameDocument || !/^https?:/.test(d.url)) return;
+      const url = d.url;
+      require('./safety').check(url).then(kind => {
+        if (!kind || wc.isDestroyed()) return;
+        const cur = wc.getURL();
+        if (cur && cur !== url && !wc.isLoading() && !cur.startsWith('about:')) { try { if (new URL(cur).host !== new URL(url).host) return; } catch { return; } }
+        wc.stop(); wc.loadURL(`cairn://unsafe?kind=${kind}&url=${encodeURIComponent(url)}`).catch(() => {});
+      });
+    });
     wc.on('did-stop-loading', () => { tab.loading = false; upd(); this.recordHistory(tab, wc.getURL()); });
     wc.on('page-favicon-updated', (_e, icons) => { tab.favicon = icons[0] || ''; this.emitUpdate(); });
     wc.on('audio-state-changed', (e) => { tab.audible = e.audible; this.emitUpdate(); });
@@ -81,14 +92,23 @@ class Tabs extends EventEmitter {
     });
     wc.on('render-process-gone', () => wc.loadURL(`cairn://error?code=crash&url=${encodeURIComponent(tab.url)}`).catch(() => {}));
     wc.setWindowOpenHandler(({ url, disposition }) => {
+      // Per-site pop-up setting (Site settings): a blocked site can't open new windows.
+      try { const o = new URL(wc.getURL()).origin; if (store.get().settings.data.sitePermissions?.[o]?.popups === false) { this.emit('popup-blocked', tab); return { action: 'deny' }; } } catch {}
       if (/^https?:|^cairn:/.test(url)) this.create(url, { active: disposition !== 'background-tab', openerIndex: this.order.indexOf(tab.id) });
       return { action: 'deny' };
     });
+    // "Continue with Cairn": a signed-in user gets a native one-tap prompt instead of the web consent page.
+    const oneTap = (e, url) => {
+      if (tab.private || tab.oneTapBypass === url || !this.isAuthorizeUrl?.(url)) return false;
+      e.preventDefault(); this.emit('oauth-authorize', url, tab); return true;
+    };
     wc.on('will-navigate', (e, url) => {
-      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); }
+      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); return; }
+      oneTap(e, url);
     });
-    wc.on('will-redirect', (e, url) => {
-      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); }
+    wc.on('will-redirect', (e, url, _inPlace, isMainFrame) => {
+      if (url.startsWith('cairn://auth-callback')) { e.preventDefault(); this.emit('auth-callback', url, tab); return; }
+      if (isMainFrame !== false) oneTap(e, url);
     });
     wc.on('context-menu', (_e, p) => this.contextMenu(tab, p));
     wc.on('before-input-event', (e, input) => this.emit('page-key', e, input, tab));

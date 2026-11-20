@@ -121,7 +121,7 @@ Start with a direct 1–2 sentence answer. Then add short sections or bullets on
 ${lang(q)}`;
         await llm.stream([{ role: 'system', content: sys }, { role: 'user', content: `Search: ${q}\n\nSources:\n${ctx}` }], (d) => ctrl.enqueue(enc.encode(d)), { maxTokens: 900 });
       } catch (e) {
-        ctrl.enqueue(enc.encode('\u0000ERR:' + (e.message === 'NO_AI_KEY' ? "Cairn's AI isn't set up yet. Add a key in Settings → AI." : 'The answer couldn\'t be generated.')));
+        ctrl.enqueue(enc.encode('\u0000ERR:' + (e.message === 'NO_AI' ? "Cairn's AI isn't reachable right now." : 'The answer couldn\'t be generated.')));
       }
       ctrl.close();
     },

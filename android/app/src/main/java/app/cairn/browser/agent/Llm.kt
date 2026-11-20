@@ -17,115 +17,94 @@ import java.util.concurrent.TimeUnit
 class NoAiException : Exception("NO_AI")
 
 /**
- * Chat completions with OpenAI-format tool calling.
- * Cairn Cloud (signed in) proxies Groq → NVIDIA NIM with server-side keys; "Your own keys" calls the providers directly.
+ * Chat completions with OpenAI-format tool calling. Zero setup, no keys on the device (like Comet):
+ *  1. Cairn server AI (your account quota when signed in, otherwise an anonymous per-install token). The server
+ *     holds the provider keys (Groq → NVIDIA NIM → keyless fallback), so they never ship inside the APK.
+ *  2. If the server is unreachable, a keyless OpenAI-compatible endpoint called straight from this phone.
  */
 object Llm {
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).callTimeout(150, TimeUnit.SECONDS).build()
     private val JSON_T = "application/json".toMediaType()
-    private val bases = mapOf("groq" to "https://api.groq.com/openai/v1", "nvidia" to "https://integrate.api.nvidia.com/v1")
-    private val labels = mapOf("groq" to "Groq", "nvidia" to "NVIDIA NIM")
+    private const val FREE_URL = "https://text.pollinations.ai/openai"
 
     var lastProvider = ""; private set
+    /** Always true: Cairn's AI is built in. Kept for callers that check before showing AI features. */
+    val configured get() = true
 
-    /** Keys shipped inside the app (see build.gradle.kts), unmasked on first use. */
-    private fun unmask(b64: String): String = runCatching {
-        if (b64.isEmpty()) return "" 
-        val salt = "cairn-stones-v2".toByteArray()
-        val x = android.util.Base64.decode(b64, android.util.Base64.NO_WRAP)
-        String(ByteArray(x.size) { i -> (x[i].toInt() xor salt[i % salt.size].toInt()).toByte() })
-    }.getOrDefault("")
-    private val builtIn by lazy { mapOf("groq" to unmask(app.cairn.browser.BuildConfig.K_GROQ), "nvidia" to unmask(app.cairn.browser.BuildConfig.K_NVIDIA)) }
-    val hasBuiltIn get() = builtIn.values.any { it.isNotBlank() }
+    private fun body(messages: JSONArray, tools: JSONArray?, tier: String, json: Boolean, maxTokens: Int, temperature: Double, stream: Boolean) =
+        JSONObject().put("messages", messages).put("tier", tier).put("maxTokens", maxTokens).put("temperature", temperature).put("stream", stream).also { b ->
+            if (tools != null) b.put("tools", tools); if (json) b.put("json", true) }
 
-    /** The key used for a provider: the user's own key wins, otherwise the built-in one. */
-    fun keyFor(p: String): String = (if (p == "groq") Prefs.groqKey else Prefs.nvidiaKey).ifBlank { if (Prefs.aiMode == "byok") "" else builtIn[p].orEmpty() }
+    /** Opens a request to the Cairn server AI with the right credentials (account or anonymous device token). */
+    private fun cloudCall(path: String, build: Request.Builder.() -> Unit): okhttp3.Response {
+        if (Prefs.isSignedIn) return try { Api.authed { url(Api.ep(path)); build() } } catch (e: ApiException) { if (e.status == 401) anonCall(path, build) else throw e }
+        return anonCall(path, build)
+    }
+    private fun anonCall(path: String, build: Request.Builder.() -> Unit): okhttp3.Response {
+        val t = Api.anonToken() ?: throw ApiException(503, "Cairn AI is unreachable")
+        val r = http.newCall(Request.Builder().url(Api.ep(path)).header("Authorization", "Bearer $t").apply(build).build()).execute()
+        if (r.code == 401) { Prefs.anonAiToken = "" }
+        return r
+    }
+    private fun okText(r: okhttp3.Response): String = r.use {
+        val t = it.body?.string().orEmpty()
+        if (!it.isSuccessful) throw ApiException(it.code, runCatching { JSONObject(t).optString("error") }.getOrNull()?.ifEmpty { null } ?: "AI error ${it.code}")
+        t
+    }
 
-    val configured get() = Prefs.isSignedIn || hasBuiltIn || Prefs.groqKey.isNotBlank() || Prefs.nvidiaKey.isNotBlank()
-
-    private fun ownProviders(): List<String> {
-        val have = listOf("groq", "nvidia").filter { keyFor(it).isNotBlank() }
-        return have.sortedBy { if (it == Prefs.preferredProvider) 0 else 1 }
+    private fun freeChat(messages: JSONArray, tools: JSONArray?, maxTokens: Int, temperature: Double): JSONObject {
+        val b = JSONObject().put("model", "openai").put("messages", messages).put("temperature", temperature).put("max_tokens", maxTokens)
+        if (tools != null) b.put("tools", tools).put("tool_choice", "auto")
+        val t = okText(http.newCall(Request.Builder().url(FREE_URL).post(b.toString().toRequestBody(JSON_T)).build()).execute())
+        lastProvider = "free"
+        return JSONObject(t).getJSONArray("choices").getJSONObject(0).getJSONObject("message")
     }
 
     suspend fun chat(messages: JSONArray, tools: JSONArray? = null, tier: String = "smart", json: Boolean = false, maxTokens: Int = 3000, temperature: Double = 0.2): JSONObject = runInterruptible(Dispatchers.IO) {
-        val useCloud = Prefs.aiMode == "cloud" && Prefs.isSignedIn
-        if (useCloud) {
-            try {
-                val body = JSONObject().put("messages", messages).put("tier", tier).put("maxTokens", maxTokens).put("temperature", temperature).put("stream", false)
-                if (tools != null) body.put("tools", tools)
-                if (json) body.put("json", true)
-                val j = Api.aiChat(body)
-                lastProvider = j.optString("_provider", "cloud")
-                return@runInterruptible j.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-            } catch (e: ApiException) {
-                // Daily limit or outage: fall back to the user's own keys if they added any
-                if (ownProviders().isEmpty()) throw e
+        val payload = body(messages, tools, tier, json, maxTokens, temperature, false).toString()
+        val cloudErr = try {
+            val j = JSONObject(okText(cloudCall("/ai/chat") { post(payload.toRequestBody(JSON_T)) }))
+            lastProvider = j.optString("_provider", "cloud")
+            return@runInterruptible j.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+        } catch (e: java.io.InterruptedIOException) { throw e } catch (e: Exception) { e }
+        if (cloudErr is ApiException && cloudErr.status == 429 && cloudErr.message?.contains("Daily", true) == true) throw cloudErr
+        try { freeChat(messages, tools, maxTokens, temperature) }
+        catch (e: java.io.InterruptedIOException) { throw e }
+        catch (e: Exception) { throw if (cloudErr is ApiException && cloudErr.status != 503) cloudErr else NoAiException() }
+    }
+
+    private fun readSse(r: okhttp3.Response, onDelta: (String) -> Unit): String {
+        val out = StringBuilder()
+        r.use {
+            if (!it.isSuccessful) throw ApiException(it.code, "AI error ${it.code}")
+            val src = it.body!!.source()
+            while (!src.exhausted()) {
+                val line = src.readUtf8Line() ?: break
+                if (!line.startsWith("data:")) continue
+                val d = line.removePrefix("data:").trim()
+                if (d == "[DONE]") break
+                val delta = runCatching { JSONObject(d).getJSONArray("choices").getJSONObject(0).optJSONObject("delta")?.optString("content").orEmpty() }.getOrDefault("")
+                if (delta.isNotEmpty() && delta != "null") { out.append(delta); onDelta(delta) }
             }
         }
-        val providers = ownProviders()
-        if (providers.isEmpty()) throw NoAiException()
-        var last: Exception? = null
-        for (p in providers) {
-            val model = if (p == "groq") (if (tier == "fast") Prefs.groqFastModel else Prefs.groqModel) else (if (tier == "fast") Prefs.nvidiaFastModel else Prefs.nvidiaModel)
-            val body = JSONObject().put("model", model).put("messages", messages).put("temperature", temperature).put("max_tokens", maxTokens)
-            if (tools != null) body.put("tools", tools).put("tool_choice", "auto")
-            if (json) body.put("response_format", JSONObject().put("type", "json_object"))
-            if (p == "nvidia") body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
-            if (p == "groq" && model.contains("gpt-oss")) body.put("reasoning_effort", "low")
-            try {
-                val req = Request.Builder().url("${bases[p]}/chat/completions").header("Authorization", "Bearer ${keyFor(p)}")
-                    .post(body.toString().toRequestBody(JSON_T)).build()
-                http.newCall(req).execute().use { r ->
-                    val txt = r.body?.string().orEmpty()
-                    if (!r.isSuccessful) {
-                        last = Exception(if (r.code == 401) "${labels[p]} API key is invalid. Update it in Settings → AI." else "${labels[p]} error ${r.code}: ${txt.take(200)}")
-                        return@use
-                    }
-                    lastProvider = p
-                    return@runInterruptible JSONObject(txt).getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-                }
-            } catch (e: java.io.InterruptedIOException) { throw e } catch (e: Exception) { last = e }
-        }
-        throw last ?: Exception("AI request failed")
+        return out.toString()
     }
 
     /**
      * Streams a plain-text completion token by token (Server-Sent Events). Used by Cairn Search answers and chat replies.
-     * Falls back to a single non-streamed call (e.g. Cairn Cloud), delivering the whole text as one chunk.
+     * Falls back to a single non-streamed call, delivering the whole text as one chunk.
      */
     fun streamBlocking(messages: JSONArray, tier: String = "smart", maxTokens: Int = 1600, onDelta: (String) -> Unit): String {
-        val providers = ownProviders()
-        if (providers.isEmpty() || (Prefs.aiMode == "cloud" && Prefs.isSignedIn)) {
-            val t = kotlinx.coroutines.runBlocking { chat(messages, tier = tier, maxTokens = maxTokens) }.optString("content").trim()
-            onDelta(t); return t
-        }
-        var last: Exception? = null
-        for (p in providers) {
-            val model = if (p == "groq") (if (tier == "fast") Prefs.groqFastModel else Prefs.groqModel) else (if (tier == "fast") Prefs.nvidiaFastModel else Prefs.nvidiaModel)
-            val body = JSONObject().put("model", model).put("messages", messages).put("temperature", 0.3).put("max_tokens", maxTokens).put("stream", true)
-            if (p == "nvidia") body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
-            if (p == "groq" && model.contains("gpt-oss")) body.put("reasoning_effort", "low")
-            val out = StringBuilder()
-            try {
-                http.newCall(Request.Builder().url("${bases[p]}/chat/completions").header("Authorization", "Bearer ${keyFor(p)}").header("Accept", "text/event-stream")
-                    .post(body.toString().toRequestBody(JSON_T)).build()).execute().use { r ->
-                    if (!r.isSuccessful) { last = Exception("${labels[p]} error ${r.code}"); return@use }
-                    val src = r.body!!.source()
-                    while (!src.exhausted()) {
-                        val line = src.readUtf8Line() ?: break
-                        if (!line.startsWith("data:")) continue
-                        val d = line.removePrefix("data:").trim()
-                        if (d == "[DONE]") break
-                        val delta = runCatching { JSONObject(d).getJSONArray("choices").getJSONObject(0).optJSONObject("delta")?.optString("content").orEmpty() }.getOrDefault("")
-                        if (delta.isNotEmpty() && delta != "null") { out.append(delta); onDelta(delta) }
-                    }
-                    lastProvider = p
-                }
-                if (out.isNotEmpty()) return out.toString()
-            } catch (e: java.io.InterruptedIOException) { if (out.isNotEmpty()) return out.toString(); last = e } catch (e: Exception) { if (out.isNotEmpty()) return out.toString(); last = e }
-        }
-        throw last ?: Exception("AI request failed")
+        val partial = StringBuilder()
+        val track: (String) -> Unit = { partial.append(it); onDelta(it) }
+        try {
+            val payload = body(messages, null, tier, false, maxTokens, 0.3, true).toString()
+            val t = readSse(cloudCall("/ai/chat") { header("Accept", "text/event-stream"); post(payload.toRequestBody(JSON_T)) }, track)
+            if (t.isNotEmpty()) { lastProvider = "cloud"; return t }
+        } catch (e: java.io.InterruptedIOException) { if (partial.isNotEmpty()) return partial.toString(); throw e
+        } catch (e: Exception) { if (partial.isNotEmpty()) return partial.toString() }
+        val t = kotlinx.coroutines.runBlocking { chat(messages, tier = tier, maxTokens = maxTokens) }.optString("content").trim()
+        onDelta(t); return t
     }
 
     suspend fun complete(system: String, user: String, tier: String = "smart", maxTokens: Int = 1500, json: Boolean = false): String {
@@ -138,11 +117,6 @@ object Llm {
         return runCatching { JSONObject(t) }.getOrElse { Regex("\\{[\\s\\S]*\\}").find(t)?.value?.let { JSONObject(it) } ?: throw Exception("The AI returned an invalid response") }
     }
 
-    /** Validates a key by listing models. */
-    suspend fun testKey(provider: String, key: String): Boolean = runInterruptible(Dispatchers.IO) {
-        runCatching { http.newCall(Request.Builder().url("${bases[provider]}/models").header("Authorization", "Bearer $key").build()).execute().use { it.isSuccessful } }.getOrDefault(false)
-    }
-
     /** Strict language mirroring: the reply language is decided here, deterministically, never by the model. */
     fun langInstruction(userText: String?): String = when (Prefs.replyLanguage) {
         "auto" -> Lang.rule(Lang.detect(userText.orEmpty()))
@@ -150,43 +124,26 @@ object Llm {
         else -> Lang.rule(Prefs.replyLanguage)
     }
 
-    /** Image understanding (lasso, "ask about this image"). Tries vision-capable models on whichever providers have keys. */
+    /** Removes hidden reasoning some open models print before the answer. */
+    fun stripThinking(t: String) = t.replace(Regex("(?s)<think>.*?</think>"), "").replace(Regex("(?s)^.*?</think>"), "").trim()
+
+    /** Image understanding (lasso, "ask about this image") through the Cairn server's multimodal models. */
     suspend fun vision(prompt: String, jpegB64: String, maxTokens: Int = 1200): String = runInterruptible(Dispatchers.IO) {
         val content = JSONArray().put(JSONObject().put("type", "text").put("text", prompt))
             .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$jpegB64")))
         val msgs = JSONArray().put(JSONObject().put("role", "user").put("content", content))
-        val models = buildList {
-            if (keyFor("nvidia").isNotBlank()) { add("nvidia" to Prefs.nvidiaModel.takeIf { it.contains("vl") || it.contains("vision") }.orEmpty().ifBlank { "nvidia/nemotron-3.5-super-vl-120b-a12b" }); add("nvidia" to "meta/llama-3.2-90b-vision-instruct") }
-            if (keyFor("groq").isNotBlank()) add("groq" to "qwen/qwen3.8-27b")
-        }.distinct()
-        if (models.isEmpty()) throw NoAiException()
-        var last: Exception? = null
-        for ((p, model) in models) {
-            val body = JSONObject().put("model", model).put("messages", msgs).put("max_tokens", maxTokens).put("temperature", 0.2)
-            if (p == "nvidia") body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
-            try {
-                http.newCall(Request.Builder().url("${bases[p]}/chat/completions").header("Authorization", "Bearer ${keyFor(p)}").post(body.toString().toRequestBody(JSON_T)).build()).execute().use { r ->
-                    val txt = r.body?.string().orEmpty()
-                    if (r.isSuccessful) { lastProvider = p; return@runInterruptible JSONObject(txt).getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content").trim() }
-                    last = Exception("${labels[p]} vision error ${r.code}")
-                }
-            } catch (e: java.io.InterruptedIOException) { throw e } catch (e: Exception) { last = e }
-        }
-        throw last ?: Exception("Image analysis failed")
+        val payload = body(msgs, null, "vision", false, maxTokens, 0.2, false).toString()
+        val j = JSONObject(okText(cloudCall("/ai/chat") { post(payload.toRequestBody(JSON_T)) }))
+        lastProvider = j.optString("_provider", "cloud")
+        stripThinking(j.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content"))
     }
 
-    /** Speech to text with Whisper on Groq — fully in-app, no system speech service. */
+    /** Speech to text (Whisper) through the Cairn server. */
     suspend fun transcribe(file: java.io.File, language: String? = null): String = runInterruptible(Dispatchers.IO) {
-        val key = keyFor("groq").ifBlank { throw Exception("Voice input needs the Groq AI service. Add a Groq key in Settings → AI.") }
-        val b = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
-            .addFormDataPart("model", "whisper-large-v3-turbo").addFormDataPart("response_format", "json").addFormDataPart("temperature", "0")
-            .addFormDataPart("file", file.name, file.asRequestBody("audio/mp4".toMediaType()))
-        if (!language.isNullOrBlank()) b.addFormDataPart("language", language)
-        http.newCall(Request.Builder().url("${bases["groq"]}/audio/transcriptions").header("Authorization", "Bearer $key").post(b.build()).build()).execute().use { r ->
-            val t = r.body?.string().orEmpty()
-            if (!r.isSuccessful) throw Exception("Couldn't transcribe (${r.code})")
-            JSONObject(t).optString("text").trim()
-        }
+        fun form() = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
+            .addFormDataPart("audio", file.name, file.asRequestBody("audio/mp4".toMediaType()))
+            .apply { if (!language.isNullOrBlank()) addFormDataPart("language", language) }.build()
+        JSONObject(okText(cloudCall("/ai/stt") { post(form()) })).optString("text").trim()
     }
 }
 

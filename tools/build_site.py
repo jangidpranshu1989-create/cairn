@@ -6,7 +6,9 @@ import pathlib, datetime
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / 'website'
 PAGES = pathlib.Path(__file__).resolve().parent / 'site_pages'
-VERSION = '2.1.0'
+VERSION = '2.4.1'
+# Our own site (GitHub Pages). cairn.app belongs to someone else, so nothing may point there.
+SITE = 'https://jangidpranshu1989-create.github.io/cairn'
 RELEASES = 'https://github.com/jangidpranshu1989-create/cairn/releases/latest/download'
 
 LOGO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.3 17.4c0-2 3.4-3.3 7.9-3.3 4.4 0 7.5 1.3 7.5 3.3 0 1.8-3 2.9-7.6 2.9-4.7 0-7.8-1.1-7.8-2.9Z"/><path fill="currentColor" d="M6.6 11c0-1.7 2.3-2.9 5.3-2.9 3 0 4.9 1.1 4.9 2.7 0 1.6-2.1 2.6-5.1 2.6-3 0-5.1-1-5.1-2.4Z"/><path fill="var(--agent)" d="M9.3 5.75c0-1.3 1.3-2.3 3.1-2.3 1.7 0 2.7.9 2.7 2.1 0 1.2-1.2 2-2.9 2-1.8 0-2.9-.7-2.9-1.8Z"/></svg>'
@@ -83,9 +85,9 @@ def page(fname, title, desc, body, active=None):
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{desc}">
 <meta property="og:type" content="website">
-<meta property="og:image" content="https://cairn.app/assets/og.png">
-<meta property="og:url" content="https://cairn.app/{"" if fname == "index.html" else fname}">
-<link rel="canonical" href="https://cairn.app/{"" if fname == "index.html" else fname}">
+<meta property="og:image" content="{SITE}/assets/og.png">
+<meta property="og:url" content="{SITE}/{"" if fname == "index.html" else fname}">
+<link rel="canonical" href="{SITE}/{"" if fname == "index.html" else fname}">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/InterDisplay-Bold.woff2" as="font" type="font/woff2" crossorigin>
@@ -108,7 +110,7 @@ def render(src):
     t = src
     for k, v in I.items():
         t = t.replace('{{' + k + '}}', v)
-    return t.replace('{{LOGO}}', LOGO).replace('{{VERSION}}', VERSION).replace('{{RELEASES}}', RELEASES).replace('{{DATE}}', datetime.date.today().strftime('%d %B %Y'))
+    return t.replace('{{LOGO}}', LOGO).replace('{{VERSION}}', VERSION).replace('{{RELEASES}}', RELEASES).replace('{{SITE}}', SITE).replace('{{DATE}}', datetime.date.today().strftime('%d %B %Y'))
 
 if __name__ == '__main__':
     import re

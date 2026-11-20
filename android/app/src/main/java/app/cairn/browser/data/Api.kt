@@ -34,7 +34,9 @@ object Api {
     private val JSON = "application/json".toMediaType()
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS)
-        .pingInterval(25, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
+        .pingInterval(25, TimeUnit.SECONDS).retryOnConnectionFailure(true)
+        .dns(object : okhttp3.Dns { override fun lookup(hostname: String) = app.cairn.browser.browser.SecureDns.resolver?.let { r -> runCatching { r.lookup(hostname) }.getOrNull() } ?: okhttp3.Dns.SYSTEM.lookup(hostname) })
+        .build()
     private val refreshLock = Any()
 
     fun ep(path: String) = Prefs.server + "/api" + path
@@ -68,6 +70,7 @@ object Api {
         throw ApiException(it.code, msg?.ifEmpty { null } ?: "Server error ${it.code}") }; it.body!!.string() }
 
     suspend fun completePairing(server: String, code: String): Unit = withContext(Dispatchers.IO) {
+        if (server != Prefs.server) Prefs.serverAuto = false
         Prefs.server = server
         val body = JSONObject().put("code", code).put("name", "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}".take(80))
         val r = exec(Request.Builder().url(ep("/devices/pair/complete")).post(body.toString().toRequestBody(JSON)).build())
@@ -131,6 +134,8 @@ object Api {
         runCatching { exec(Request.Builder().url(ep("/auth/logout")).header("Authorization", "Bearer $at").post("{}".toRequestBody(JSON)).build()).close() }
         Prefs.deviceId = d.getString("deviceId"); Prefs.userJson = d.getJSONObject("user").toString()
         Prefs.accessToken = d.getString("accessToken"); Prefs.refreshToken = d.getString("refreshToken")
+        // Unlock end-to-end encrypted sync with a key derived from the password (never sent anywhere).
+        runCatching { app.cairn.browser.vault.Sync.setupKey(email, password) }.onFailure { app.cairn.browser.vault.Sync.status.value = it.message ?: "Sync is locked" }
         if (rt.isEmpty()) Unit
     }
 
@@ -148,5 +153,43 @@ object Api {
         exec(Request.Builder().url(ep("/auth/forgot")).post(JSONObject().put("email", email.trim()).toString().toRequestBody(JSON)).build()).json()
     }
 
-    fun wsUrl(): String = Prefs.server.replaceFirst("http", "ws") + "/ws?token=" + (Prefs.accessToken ?: "")
+    /** WebSocket URL with a one-time 60-second ticket, so the access token never appears in a URL. */
+    fun wsUrl(): String {
+        val ticket = runCatching { JSONObject(authed { url(ep("/auth/ws-ticket")).post("{}".toRequestBody(JSON)) }.json()).optString("ticket") }.getOrNull()
+        val base = Prefs.server.replaceFirst("http", "ws") + "/ws"
+        return if (!ticket.isNullOrEmpty()) "$base?ticket=$ticket" else "$base?token=" + (Prefs.accessToken ?: "")
+    }
+
+    // ---------- End-to-end encrypted sync (/api/sync/v2) ----------
+    fun syncGet(path: String): JSONObject = JSONObject(authed { url(ep("/sync/v2$path")) }.json())
+    fun syncSend(path: String, method: String, body: JSONObject): Pair<Int, JSONObject> {
+        val r = authed { url(ep("/sync/v2$path")).method(method, body.toString().toRequestBody(JSON)) }
+        return r.use { it.code to (runCatching { JSONObject(it.body?.string().orEmpty()) }.getOrNull() ?: JSONObject()) }
+    }
+
+    /** Built-in AI without an account: a per-install anonymous token with a small daily quota on Cairn Cloud. */
+    fun anonToken(): String? {
+        Prefs.anonAiToken.takeIf { it.isNotEmpty() }?.let { return it }
+        return runCatching {
+            val r = exec(Request.Builder().url(ep("/ai/device")).post(JSONObject().put("platform", "android").toString().toRequestBody(JSON)).build())
+            JSONObject(r.json()).optString("token").takeIf { it.startsWith("anon_") }?.also { Prefs.anonAiToken = it }
+        }.getOrNull()
+    }
+    fun anonChat(body: JSONObject): JSONObject {
+        val t = anonToken() ?: throw ApiException(503, "Cairn Cloud unavailable")
+        val r = exec(Request.Builder().url(ep("/ai/chat")).header("Authorization", "Bearer $t").post(body.toString().toRequestBody(JSON)).build())
+        if (r.code == 401) { Prefs.anonAiToken = "" }
+        return JSONObject(r.json())
+    }
+
+    // ---------- "Continue with Cairn" one-tap (OAuth 2.0 / OIDC) ----------
+    /** Client + scopes for an authorize request, or throws with the server's message. */
+    suspend fun oauthRequest(query: String): JSONObject = withContext(Dispatchers.IO) {
+        JSONObject(exec(Request.Builder().url(ep("/oauth/request?") + query).build()).json())
+    }
+    /** Approve (or deny) and get the redirect URL that carries the authorization code back to the site. */
+    suspend fun oauthApprove(params: JSONObject, approve: Boolean): String = withContext(Dispatchers.IO) {
+        val body = JSONObject(params.toString()).put("approve", approve).put("via", "android")
+        JSONObject(authed { url(ep("/oauth/approve")).post(body.toString().toRequestBody(JSON)) }.json()).getString("redirect")
+    }
 }

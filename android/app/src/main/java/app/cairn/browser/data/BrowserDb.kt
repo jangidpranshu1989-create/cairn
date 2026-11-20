@@ -85,6 +85,21 @@ object BrowserDb {
     }
     fun deleteBookmark(id: Long) { db.delete("bookmarks", "id=?", arrayOf(id.toString())); changed() }
 
+    // ---------- Sync helpers (apply changes that arrived from other devices) ----------
+    fun upsertBookmark(url: String, title: String, folder: String, at: Long) {
+        val v = ContentValues().apply { put("url", url); put("title", title); put("folder", folder.ifBlank { "Mobile bookmarks" }); put("at", at) }
+        if (db.update("bookmarks", v, "url=?", arrayOf(url)) == 0) db.insert("bookmarks", null, v)
+        changed()
+    }
+    fun deleteBookmarkUrl(url: String) { db.delete("bookmarks", "url=?", arrayOf(url)); changed() }
+    fun mergeVisit(url: String, title: String, at: Long, visits: Int) {
+        val n = db.compileStatement("UPDATE history SET title=CASE WHEN ?='' THEN title ELSE ? END, at=MAX(at, ?), visits=MAX(visits, ?) WHERE url=?").apply {
+            bindString(1, title); bindString(2, title); bindLong(3, at); bindLong(4, visits.toLong()); bindString(5, url) }.executeUpdateDelete()
+        if (n == 0) db.insert("history", null, ContentValues().apply { put("url", url); put("title", title); put("at", at); put("visits", visits) })
+        changed()
+    }
+    fun deleteHistoryUrl(url: String) { db.delete("history", "url=?", arrayOf(url)); changed() }
+
     // ---------- Favicons ----------
     private val iconCache = android.util.LruCache<String, Bitmap>(120)
     fun saveIcon(url: String, bmp: Bitmap) {
@@ -110,6 +125,7 @@ object BrowserDb {
     fun downloads(): List<DownloadItem> = db.rawQuery("SELECT id,dm_id,name,url,mime,uri,size,at FROM downloads ORDER BY at DESC LIMIT 500", null).use { c ->
         buildList { while (c.moveToNext()) add(DownloadItem(c.getLong(0), c.getLong(1), c.getString(2) ?: "", c.getString(3) ?: "", c.getString(4) ?: "", c.getString(5) ?: "", c.getLong(6), c.getLong(7))) }
     }
+    fun finishDownload(id: Long, uri: String, size: Long, mime: String) { db.update("downloads", ContentValues().apply { put("uri", uri); put("size", size); put("mime", mime) }, "id=?", arrayOf(id.toString())); changed() }
     fun deleteDownload(id: Long) { db.delete("downloads", "id=?", arrayOf(id.toString())); changed() }
     fun clearDownloads() { db.delete("downloads", null, null); changed() }
 
@@ -121,6 +137,7 @@ object BrowserDb {
     fun perms(): List<Triple<String, String, Boolean>> = db.rawQuery("SELECT origin,perm,allow FROM perms ORDER BY origin", null).use { c ->
         buildList { while (c.moveToNext()) add(Triple(c.getString(0), c.getString(1), c.getInt(2) == 1)) }
     }
+    fun clearPerm(origin: String, perm: String) { db.delete("perms", "origin=? AND perm=?", arrayOf(origin, perm)); changed() }
     fun clearPerms(origin: String? = null) { if (origin == null) db.delete("perms", null, null) else db.delete("perms", "origin=?", arrayOf(origin)); changed() }
 }
 

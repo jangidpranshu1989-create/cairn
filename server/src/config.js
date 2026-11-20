@@ -1,7 +1,19 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const isProd = process.env.NODE_ENV === 'production';
+
+// Secrets that must survive restarts: env var if set, otherwise generated once and kept in DATA_DIR (0600).
+function persistedSecret(name, file) {
+  if (process.env[name]) return process.env[name];
+  const dir = process.env.DATA_DIR || './data'; fs.mkdirSync(dir, { recursive: true });
+  const f = path.join(dir, file);
+  try { return fs.readFileSync(f, 'utf8').trim(); } catch {}
+  const v = crypto.randomBytes(48).toString('base64url');
+  fs.writeFileSync(f, v, { mode: 0o600 }); return v;
+}
 
 function required(name, fallback) {
   const v = process.env[name];
@@ -13,30 +25,43 @@ function required(name, fallback) {
 export const config = {
   isProd,
   port: Number(process.env.PORT || 8787),
-  publicUrl: process.env.PUBLIC_URL || 'http://localhost:8787',
+  publicUrl: (process.env.PUBLIC_URL || 'http://localhost:8787').replace(/\/$/, ''),
   dataDir: process.env.DATA_DIR || './data',
-  jwtSecret: required('JWT_SECRET', isProd ? undefined : crypto.randomBytes(32).toString('hex')),
+  jwtSecret: persistedSecret('JWT_SECRET', 'jwt.secret'),
   accessTtlSec: 15 * 60,
   refreshTtlSec: 60 * 60 * 24 * 30,
   // WebAuthn / passkeys
-  rpId: process.env.RP_ID || 'localhost',
+  rpId: process.env.RP_ID || new URL(process.env.PUBLIC_URL || 'http://localhost:8787').hostname,
   rpName: process.env.RP_NAME || 'Cairn',
-  rpOrigins: (process.env.RP_ORIGINS || 'http://localhost:8787').split(',').map(s => s.trim()),
-  corsOrigins: (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim()),
+  rpOrigins: (process.env.RP_ORIGINS || new URL(process.env.PUBLIC_URL || 'http://localhost:8787').origin).split(',').map(s => s.trim()),
+  // Production defaults to the public site only (desktop pages use cairn:// and native clients send no Origin).
+  corsOrigins: (process.env.CORS_ORIGINS || (isProd ? (process.env.PUBLIC_URL || '') : '*')).split(',').map(s => s.trim()).filter(Boolean),
   // AI providers
   groqKey: process.env.GROQ_API_KEY || '',
   nvidiaKey: process.env.NVIDIA_API_KEY || '',
+  freeFallback: process.env.AI_FREE_FALLBACK !== '0',
+  freeModel: process.env.AI_FREE_MODEL || 'openai',
   groqModel: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
   groqFastModel: process.env.GROQ_FAST_MODEL || 'openai/gpt-oss-20b',
   nvidiaModel: process.env.NVIDIA_MODEL || 'nvidia/nemotron-3.5-super-vl-120b-a12b',
   nvidiaFastModel: process.env.NVIDIA_FAST_MODEL || 'nvidia/nemotron-3.5-bolt-e4b',
+  // Image understanding needs multimodal models (the text models above reject images).
+  groqVisionModel: process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct',
+  nvidiaVisionModel: process.env.NVIDIA_VISION_MODEL || 'nvidia/nemotron-3.5-super-vl-120b-a12b',
+  // Optional: Google Gemini (free tier key from aistudio.google.com) as another vision + chat provider.
+  geminiKey: process.env.GEMINI_API_KEY || '',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   sttModel: process.env.STT_MODEL || 'whisper-large-v3-turbo',
   // Mail (password reset / verification)
   smtpUrl: process.env.SMTP_URL || '',
-  mailFrom: process.env.MAIL_FROM || 'Cairn <no-reply@cairn.app>',
+  tursoUrl: process.env.TURSO_DATABASE_URL || '',
+  tursoToken: process.env.TURSO_AUTH_TOKEN || '',
+  mailFrom: process.env.MAIL_FROM || 'Cairn <no-reply@example.com>',
   // Limits
   maxTransferBytes: Number(process.env.MAX_TRANSFER_MB || 100) * 1024 * 1024,
   transferTtlHours: Number(process.env.TRANSFER_TTL_HOURS || 24),
   approvalTtlSec: Number(process.env.APPROVAL_TTL_SEC || 180),
   dailyAiRequestsFree: Number(process.env.DAILY_AI_FREE || 300),
+  dailyAiRequestsAnon: Number(process.env.DAILY_AI_ANON || 60),
+  dailyAiAnonGlobal: Number(process.env.DAILY_AI_ANON_GLOBAL || 3000),
 };

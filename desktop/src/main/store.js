@@ -50,14 +50,6 @@ const DEFAULT_SETTINGS = {
   startup: 'newtab',             // newtab | restore
   homepage: 'cairn://newtab',
   language: 'auto',              // assistant reply language: auto | en | hi | hinglish | ...
-  aiMode: 'byok',                // cloud (Cairn account) | byok (own keys)
-  groqKey: '',
-  nvidiaKey: '',
-  preferredProvider: 'groq',
-  groqModel: 'openai/gpt-oss-120b',
-  groqFastModel: 'openai/gpt-oss-20b',
-  nvidiaModel: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
-  nvidiaFastModel: 'nvidia/nemotron-3.5-bolt-e4b',
   sitePermissions: {},           // { origin: { geolocation: true, camera: false, ... } }
   agentConfirm: 'purchases',     // purchases | every-action
   agentMaxSteps: 40,
@@ -67,11 +59,16 @@ const DEFAULT_SETTINGS = {
   blockThirdPartyCookies: false,
   offerSavePasswords: true,
   autofillPasswords: true,
+  autofillForms: true,
   downloadDir: '',
   askWhereToSave: false,
   voiceName: '',
   speechRate: 1,
-  serverUrl: process.env.CAIRN_SERVER || (app.isPackaged ? 'https://api.cairn.app' : 'http://localhost:8787'),
+  serverAuto: true,
+  safeBrowsing: true,
+  dohMode: 'off',
+  dohUrl: '',
+  serverUrl: process.env.CAIRN_SERVER || (app.isPackaged ? 'https://cairn-browser.pplx.app/port/8787' : 'http://localhost:8787'),
   panelWidth: 420,
   restoreTabs: [],
 };

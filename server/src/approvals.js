@@ -62,7 +62,8 @@ approvalsRouter.post('/:id/decision', requireAuth, (req, res) => {
   if (!a) return res.status(404).json({ error: 'not found' });
   if (a.status !== 'pending' || a.expires_at < now()) return res.status(409).json({ error: 'This request is no longer pending' });
   // Payment approvals must come from a paired phone after biometric/device-credential verification
-  if (p.data.approve && a.kind === 'payment' && (!req.user.deviceId || !p.data.verified))
+  const phone = req.user.deviceId && db.prepare("SELECT 1 FROM devices WHERE id=? AND user_id=? AND kind='android'").get(req.user.deviceId, req.user.id);
+  if (p.data.approve && (a.kind === 'payment' || a.kind === 'purchase') && (!phone || !p.data.verified))
     return res.status(403).json({ error: 'Payment approval must be confirmed on your paired phone with fingerprint/face/PIN' });
   const status = p.data.approve ? 'approved' : 'denied';
   db.prepare('UPDATE approvals SET status=?, decided_by=?, decided_at=? WHERE id=?').run(status, req.user.deviceId || 'desktop', now(), a.id);

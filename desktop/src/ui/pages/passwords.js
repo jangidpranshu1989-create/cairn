@@ -1,5 +1,12 @@
 (() => {
   const out = $('#out'), q = $('#q');
+  async function loadPk() {
+    const pks = await api('pk:all');
+    $('#pks').innerHTML = pks.length ? '<div class="list">' + pks.map(k => `<div class="row" data-id="${esc(k.credId)}"><img class="fav" src="${fav('https://' + k.rpId)}" alt=""><div class="main"><div>${esc(k.rpId)}</div><small>${esc(k.userName || k.displayName || 'Passkey')} · synced with your Cairn account</small></div><div class="acts"><button class="btn sm" data-pkrm title="Delete">${ICON('trash', 14)}</button></div></div>`).join('') + '</div>'
+      : '<div class="empty">Passkeys you create on any device signed in to your Cairn account appear here and work on this computer too.</div>';
+    $$('[data-pkrm]').forEach(b => b.onclick = async () => { if (confirm('Delete this passkey from all your devices? You may need another way to sign in to this site.')) { await api('pk:remove', b.closest('.row').dataset.id); loadPk(); } });
+  }
+  loadPk();
   async function load() {
     const all = await api('pw:all'); const ql = q.value.trim().toLowerCase();
     const weak = all.filter(p => p.weak).length, reused = all.filter(p => p.reused).length;

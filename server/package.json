@@ -1,6 +1,6 @@
 {
   "name": "cairn-server",
-  "version": "1.0.0",
+  "version": "2.4.0",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -31,5 +31,8 @@
   "type": "module",
   "engines": {
     "node": ">=20"
+  },
+  "optionalDependencies": {
+    "libsql": "^0.5.29"
   }
 }

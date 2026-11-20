@@ -114,10 +114,10 @@ class Agent {
         if (step === maxSteps - 1) emit({ type: 'answer', text: 'I reached the step limit for this task. Tell me how you\'d like to continue.' });
       }
     } catch (e) {
-      const msg = e.message === 'NO_AI_KEY'
-        ? 'AI is not set up yet. Add a free **Groq** or **NVIDIA NIM** API key in Settings — or sign in to use Cairn Cloud.'
+      const msg = e.message === 'NO_AI'
+        ? "Cairn's AI isn't reachable right now. Check your internet connection and try again."
         : e.message === 'Stopped' || e.name === 'AbortError' ? 'Stopped.' : `Something went wrong: ${e.message}`;
-      emit({ type: 'answer', text: msg, error: true, setup: e.message === 'NO_AI_KEY' });
+      emit({ type: 'answer', text: msg, error: true, setup: e.message === 'NO_AI' });
     } finally {
       this.running = false;
       if (usedTools) { try { await dom.overlay(this.hooks.agentTab().webContents, 'remove'); } catch {} }

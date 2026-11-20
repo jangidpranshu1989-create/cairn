@@ -58,7 +58,8 @@ fun ProfileScreen() {
             Text("At checkout, Cairn fills your name, contact and address the moment you sign in, then stops at the payment page for your approval.", color = C.text, fontSize = 13.sp, lineHeight = 19.sp)
         }
         Spacer(Modifier.height(10.dp))
-        Group { Toggle(Ic.Wand, "Fill checkout forms automatically", "Only on shopping and checkout pages", Prefs.autofillProfile) { Prefs.autofillProfile = it } }
+        Group { Toggle(Ic.Wand, "Fill checkout forms automatically", "Only on shopping and checkout pages", Prefs.autofillProfile) { Prefs.autofillProfile = it }; Divider()
+            Toggle(Ic.UserRound, "Use my profile in tasks", "Cairn's agent can use your name, email, phone and address to fill forms for you", Prefs.agentUseProfile) { Prefs.agentUseProfile = it } }
         SectionLabel("Contact", Modifier.padding(start = 4.dp))
         Row { FormField("First name", v["first"]!!, Modifier.weight(1f)) { v["first"] = it }; Spacer(Modifier.width(8.dp)); FormField("Last name", v["last"]!!, Modifier.weight(1f)) { v["last"] = it } }
         Spacer(Modifier.height(8.dp)); FormField("Email", v["email"]!!, Modifier.fillMaxWidth(), KeyboardType.Email, KeyboardCapitalization.None) { v["email"] = it }

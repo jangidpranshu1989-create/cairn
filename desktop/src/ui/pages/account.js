@@ -13,7 +13,7 @@
       <form id="f" novalidate>
         ${mode === 'signup' ? '<label>Name<input class="input" name="name" autocomplete="name" required maxlength="80"></label>' : ''}
         <label>Email<input class="input" name="email" type="email" autocomplete="email" required></label>
-        <label>Password<input class="input" name="password" type="password" autocomplete="${mode === 'signin' ? 'current-password' : 'new-password'}" required minlength="8"></label>
+        <label>Password<input class="input" name="password" type="password" autocomplete="${mode === 'signin' ? 'current-password' : 'new-password'}" required minlength="${mode === 'signup' ? 10 : 8}"></label>
         ${mode === 'signup' ? '<small class="muted" style="margin-top:-6px">At least 8 characters with a letter and a number.</small>' : ''}
         <div class="cap ${mode === 'signup' ? 'on' : ''}" id="cap"><div class="img" id="capImg"></div><input class="input" name="captcha" placeholder="Type the characters" autocomplete="off" style="flex:1"><button type="button" class="btn sm" id="capNew" title="New captcha">↻</button></div>
         <div class="err" id="err" role="alert"></div>
@@ -29,7 +29,14 @@
     $('#pk').onclick = () => api('cloud:passkeyPage');
     const base = (await api('cloud:base')).replace(/\/$/, '');
     $$('[data-link]').forEach(a => a.href = `${base}/${a.dataset.link}.html`);
-    $('#forgot') && ($('#forgot').href = base + '/reset.html');
+    $('#forgot') && ($('#forgot').onclick = async (e) => {
+      e.preventDefault();
+      const email = $('[name=email]').value.trim(); const err = $('#err') || $('.err');
+      const say = (m) => { if (err) err.textContent = m; else alert(m); };
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return say('Enter your email above, then tap Forgot password');
+      try { await fetch(base + '/api/auth/forgot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }) }); say('If that account exists, a reset link is on its way to ' + email); }
+      catch { say("Couldn't reach Cairn Cloud. Check your connection."); }
+    });
     $('#f').onsubmit = submit;
     $('[name=' + (mode === 'signup' ? 'name' : 'email') + ']').focus();
   }
@@ -43,7 +50,7 @@
     err.textContent = '';
     const email = f.email.value.trim(), password = f.password.value;
     if (!/^\S+@\S+\.\S+$/.test(email)) return err.textContent = 'Enter a valid email address';
-    if (mode === 'signup' && (password.length < 10 || !/[a-z]/i.test(password) || !/\d/.test(password))) return err.textContent = 'Password needs 10+ characters with a letter and a number';
+    if (mode === 'signup' && (password.length < 10 || !/\p{L}/u.test(password) || !/\p{N}/u.test(password))) return err.textContent = 'Password needs 10+ characters with a letter and a number';
     if (mode === 'signup' && !f.name.value.trim()) return err.textContent = 'Enter your name';
     const captcha = cap ? { captchaToken: cap.token, captchaAnswer: f.captcha.value.trim() } : {};
     go.disabled = true; go.textContent = 'Please wait…';
@@ -61,7 +68,7 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary" href="cairn://settings#phone">${ICON('phone')} Pair a phone</a><button class="btn" id="pk">${ICON('key')} Manage passkeys</button><button class="btn danger" id="out">Sign out</button></div></div>
       <div class="card" style="margin-top:16px"><h3 style="margin:0 0 6px">Delete account</h3><p class="muted" style="margin:0 0 12px">Permanently deletes your Cairn account, sessions, passkeys, paired devices, pending transfers and synced data from our server. Local browsing data on this computer is not affected.</p>
       <form id="del" style="display:flex;gap:8px;flex-wrap:wrap"><input class="input" type="password" name="pw" placeholder="Confirm with your password" autocomplete="current-password" style="flex:1;min-width:200px"><button class="btn danger" type="submit">Delete permanently</button></form><div class="err" id="delErr" style="margin-top:8px"></div></div>`;
-    $('#pk').onclick = () => api('nav:go', base + '/account.html');
+    $('#pk').onclick = () => api('nav:go', base + '/accounts/');
     $('#out').onclick = async () => { await api('cloud:logout'); toast('Signed out'); render(); };
     $('#del').onsubmit = async (e) => {
       e.preventDefault(); const pw = e.target.pw.value; $('#delErr').textContent = '';

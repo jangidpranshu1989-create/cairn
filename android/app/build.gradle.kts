@@ -1,5 +1,4 @@
 import java.util.Properties
-import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -15,19 +14,7 @@ val ksProps = Properties().apply {
     val f = rootProject.file("keystore.properties"); if (f.exists()) f.inputStream().use { load(it) }
 }
 
-// Built-in AI keys, so Cairn works right after install with no setup. Supplied at build time from
-// env vars / Gradle properties GROQ_API_KEY and NVIDIA_API_KEY (CI: repository secrets) or android/keys.properties
-// (never committed). They are XOR-masked in the APK so they don't show up in a plain `strings` dump.
-val keyProps = Properties().apply {
-    val f = rootProject.file("keys.properties"); if (f.exists()) f.inputStream().use { load(it) }
-}
-fun builtInKey(name: String): String {
-    val v = (System.getenv(name) ?: (project.findProperty(name) as String?) ?: keyProps.getProperty(name) ?: "").trim()
-    if (v.isEmpty()) return ""
-    val salt = "cairn-stones-v2".toByteArray()
-    val x = v.toByteArray().mapIndexed { i, b -> (b.toInt() xor salt[i % salt.size].toInt()).toByte() }.toByteArray()
-    return Base64.getEncoder().encodeToString(x)
-}
+// AI provider keys live only on the Cairn server. Nothing secret is compiled into the APK.
 
 android {
     namespace = "app.cairn.browser"
@@ -38,13 +25,11 @@ android {
         applicationId = "app.cairn.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.1.0"
+        versionCode = 7
+        versionName = "2.4.1"
         // Default Cairn Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
-        buildConfigField("String", "DEFAULT_SERVER", "\"https://api.cairn.app\"")
-        buildConfigField("String", "SITE", "\"https://cairn.app\"")
-        buildConfigField("String", "K_GROQ", "\"${builtInKey("GROQ_API_KEY")}\"")
-        buildConfigField("String", "K_NVIDIA", "\"${builtInKey("NVIDIA_API_KEY")}\"")
+        buildConfigField("String", "DEFAULT_SERVER", "\"${(project.findProperty("cairnServer") as String?) ?: "https://cairn-browser.pplx.app/port/8787"}\"")
+        buildConfigField("String", "SITE", "\"${(project.findProperty("cairnSite") as String?) ?: "https://jangidpranshu1989-create.github.io/cairn"}\"")
     }
 
     signingConfigs {
@@ -61,7 +46,10 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // Never ship a release signed with the public debug key. CI without keystore secrets still builds an
+            // unsigned release APK; set CAIRN_ALLOW_DEBUG_SIGNING=1 only for local test installs.
+            signingConfig = signingConfigs.findByName("release")
+                ?: if (System.getenv("CAIRN_ALLOW_DEBUG_SIGNING") == "1") signingConfigs.getByName("debug") else null
         }
     }
     compileOptions {
@@ -87,6 +75,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("androidx.webkit:webkit:1.12.1")
@@ -94,4 +83,9 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    // On-device OCR (bundled models: offline, no Play services) for photos of books, notes, bills and signs
+    // Unbundled ML Kit OCR: models come from Google Play services (keeps the APK ~45 MB smaller). Without Play services
+    // OCR is skipped and photos go to the vision model instead.
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition-devanagari:16.0.1")
 }

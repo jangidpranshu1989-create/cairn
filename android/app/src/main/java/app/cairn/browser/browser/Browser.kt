@@ -30,6 +30,7 @@ import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicLong
 
 const val NTP = "cairn://newtab"
+fun isBlankUrl(u: String?) = u.isNullOrBlank() || u == "about:blank" || u.startsWith("about:blank#") || u.startsWith("about:blank?")
 
 data class PageError(val url: String, val code: Int, val description: String)
 class SslProblem(val url: String, val error: SslError, val handler: SslErrorHandler)
@@ -48,11 +49,18 @@ class Tab(val id: Long, val incognito: Boolean, initialUrl: String = "") {
     var desktop by mutableStateOf(Prefs.desktopDefault)
     var error by mutableStateOf<PageError?>(null)
     var ssl by mutableStateOf<SslProblem?>(null)
+    var unsafe by mutableStateOf<UnsafeSite?>(null)
     var findMatches by mutableStateOf(0 to 0)       // (active index, total)
     var sensitive by mutableStateOf(false)          // login / OTP / card / checkout page → Guard badge
     var translated by mutableStateOf<String?>(null)
     var lastActive = System.currentTimeMillis()
     var opener: Tab? = null
+    /**
+     * True while the content under the finger can still scroll up. Many sites (YouTube, Instagram, web apps) scroll an
+     * inner element instead of the page, so WebView.scrollY stays 0 there — the page script reports the real state.
+     */
+    @Volatile var jsCanScrollUp = false
+    @Volatile var jsScrollY = 0
     /** Root view for this tab: SwipeRefreshLayout wrapping the WebView. */
     var view: SwipeRefreshLayout? = null
     var web: WebView? = null
@@ -166,7 +174,7 @@ object Browser {
         if (url == NTP) { t.web?.loadUrl("about:blank"); t.url = ""; t.title = ""; return }
         ensureView(t)
         if (t == current) activity.refreshContainer()
-        t.error = null; t.ssl = null
+        t.error = null; t.ssl = null; t.unsafe = null
         t.url = url
         t.web!!.loadUrl(url, headers())
     }
@@ -176,7 +184,14 @@ object Browser {
         val w = t.web
         when {
             t.error != null && w?.canGoBack() == true -> { t.error = null; w.goBack() }
-            w?.canGoBack() == true -> w.goBack()
+            w?.canGoBack() == true -> {
+                // Skip runs of about:blank (NTP) entries so one Back press lands on a real page or the NTP once.
+                val list = w.copyBackForwardList(); var steps = -1
+                while (list.currentIndex + steps > 0 && isBlankUrl(list.getItemAtIndex(list.currentIndex + steps)?.url) &&
+                    isBlankUrl(list.getItemAtIndex(list.currentIndex + steps - 1)?.url)) steps--
+                if (t.isNtp && isBlankUrl(list.getItemAtIndex(list.currentIndex + steps)?.url) && list.currentIndex + steps > 0) steps--
+                w.goBackOrForward(steps)
+            }
             !t.isNtp && t.opener != null -> close(t)
             !t.isNtp -> { load(t, NTP); t.canBack = false }
             else -> return false
@@ -292,13 +307,19 @@ object Browser {
         w.isScrollbarFadingEnabled = true
         w.overScrollMode = View.OVER_SCROLL_NEVER
         w.addJavascriptInterface(Downloads.Bridge(ctx, t), "CairnDownloads")
+        app.cairn.browser.vault.WebBridge.attach(w, t)
         val swipe = SwipeRefreshLayout(ctx).apply {
             addView(w, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             setOnRefreshListener { reload(t); postDelayed({ isRefreshing = false }, 900) }
             setColorSchemeColors(0xFFB89A6A.toInt())
             setProgressBackgroundColorSchemeColor(if (app.cairn.browser.ui.C.dark) 0xFF2B2B2F.toInt() else 0xFFFFFFFF.toInt())
-            setOnChildScrollUpCallback { _, _ -> w.scrollY > 0 }
+            // Pull-to-refresh only when the page is genuinely at the top — for the document *and* any inner scroller.
+            setOnChildScrollUpCallback { _, _ -> !Prefs.pullToRefresh || w.scrollY > 0 || t.jsCanScrollUp || w.canScrollVertically(-1) }
+            setDistanceToTriggerSync((resources.displayMetrics.density * 110).toInt())
         }
+        w.addJavascriptInterface(ScrollBridge(t), "CairnScroll")
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT))
+            runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, SCROLL_JS, setOf("*")) }
         w.setOnScrollChangeListener { _, _, y, _, oldY -> activity.onPageScrolled(t, y - oldY, y) }
         w.webViewClient = Client(t)
         w.webChromeClient = Chrome(t)
@@ -308,9 +329,29 @@ object Browser {
         t.web = w; t.view = swipe
     }
 
+    /** Reports touch-time and live scroll state of the element actually scrolling (document or inner container). */
+    private const val SCROLL_JS = """(function(){if(window.__cairnScroll||!window.CairnScroll)return;window.__cairnScroll=1;
+function up(t){if((window.scrollY||document.documentElement.scrollTop||document.body&&document.body.scrollTop||0)>0)return true;
+for(var e=t;e&&e.nodeType===1&&e!==document.documentElement;e=e.parentElement||(e.getRootNode&&e.getRootNode().host)){
+if(e.scrollTop>0&&e.scrollHeight>e.clientHeight+4){var o=getComputedStyle(e).overflowY;if(o=='auto'||o=='scroll'||o=='overlay')return true}}return false}
+addEventListener('touchstart',function(ev){try{CairnScroll.touch(up(ev.target))}catch(x){}},{capture:true,passive:true});
+var lt=0;addEventListener('scroll',function(ev){var t=ev.target,d=(t===document||t===document.documentElement||t===document.body);
+if(!d&&!(t.clientHeight>innerHeight*0.5))return;var y=d?(window.scrollY||0):(t.scrollTop||0);var n=Date.now();
+if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePixelRatio||1)),y>0)}catch(x){}},{capture:true,passive:true});})();"""
+
+    private class ScrollBridge(val t: Tab) {
+        @android.webkit.JavascriptInterface fun touch(canUp: Boolean) { t.jsCanScrollUp = canUp }
+        @android.webkit.JavascriptInterface fun scroll(y: Int, canUp: Boolean) {
+            val dy = y - t.jsScrollY; t.jsScrollY = y; t.jsCanScrollUp = canUp
+            // Inner-scroller sites never move WebView.scrollY, so drive the dock from the page's own scroll too.
+            t.web?.let { w -> if (w.scrollY == 0) w.post { activity.onPageScrolled(t, dy, y) } }
+        }
+    }
+
     private class Client(val t: Tab) : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
             val u = req.url; val s = u.scheme?.lowercase() ?: return false
+            if ((s == "http" || s == "https") && app.cairn.browser.ui.OneTap.intercept(t, u, req.isForMainFrame)) return true
             if (s == "http" || s == "https" || s == "about" || s == "data" || s == "blob" || s == "javascript") return false
             if (s == "cairn" && u.host == "ask") {
                 // "Ask a follow-up" from a Cairn Search page continues in the assistant, with that page as context.
@@ -322,24 +363,33 @@ object Browser {
             return activity.openExternal(u, req.isForMainFrame && req.hasGesture())
         }
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
+            // about:blank is how a tab shows the New Tab page. Going back onto it must show the NTP, not an empty
+            // white WebView (that looked like a crash).
+            if (isBlankUrl(url)) { t.url = ""; t.title = ""; t.loading = false; t.error = null; t.progress = 100; return }
+            app.cairn.browser.vault.WebBridge.fillOffer.value?.takeIf { it.tab == t }?.let { app.cairn.browser.vault.WebBridge.fillOffer.value = null }
             t.loading = true; t.url = url; t.icon = favicon ?: BrowserDb.icon(url); t.blocked = 0; t.error = null; t.sensitive = false; t.translated = null
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
         }
         override fun onPageFinished(view: WebView, url: String) {
             t.loading = false; t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
-            if (url != "about:blank") { t.url = url; t.title = view.title?.takeIf { it != url } ?: t.title }
+            if (isBlankUrl(url)) { t.url = ""; t.title = ""; return }
+            t.url = url; t.title = view.title?.takeIf { it != url } ?: t.title
             if (!t.incognito && url.startsWith("http")) BrowserDb.addVisit(url, view.title ?: "")
             if (!t.incognito) persist()
             view.postDelayed({ if (current == t) capture(t) }, 450)
             view.postDelayed({ if (current == t && !t.loading) capture(t) }, 2200)
             if (url.startsWith("http")) {
                 flushCookies()
-                view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nreturn JSON.stringify(window.__cairn.guard())})()") { r ->
+                t.jsCanScrollUp = false; t.jsScrollY = 0
+                if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) view.evaluateJavascript(SCROLL_JS, null)
+                view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nreturn JSON.stringify(window.${app.cairn.browser.agent.PageJs.ns}.guard())})()") { r ->
                     t.sensitive = runCatching { JSONObject(org.json.JSONTokener(r).nextValue() as String).optBoolean("sensitive") }.getOrDefault(false)
                 }
                 if (!t.incognito && Prefs.memory) view.postDelayed({
-                    if (t.web != view || view.url != url) return@postDelayed
-                    view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nvar a=window.__cairn.article();return JSON.stringify({t:a.title,x:a.text})})()") { r ->
+                    // Never index login, OTP, card or checkout pages into on-device memory
+                    if (t.web != view || view.url != url || t.sensitive || app.cairn.browser.data.Recall.isPrivateUrl(url)) return@postDelayed
+                    view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nvar a=window.${app.cairn.browser.agent.PageJs.ns}.article();return JSON.stringify({t:a.title,x:a.text})})()") { r ->
                         runCatching { val j = JSONObject(org.json.JSONTokener(r).nextValue() as String); val title = j.optString("t"); val text = j.optString("x")
                             Thread { app.cairn.browser.data.Recall.index(url, title, text) }.start() }
                     }
@@ -347,11 +397,19 @@ object Browser {
             }
         }
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
-            if (url != "about:blank") t.url = url
+            t.url = if (isBlankUrl(url)) "" else url
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
         }
         override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
             if (req.url.host == app.cairn.browser.data.CairnSearch.HOST) return app.cairn.browser.data.CairnSearch.intercept(req, app.cairn.browser.ui.C.dark)
+            if (req.isForMainFrame && (req.url.scheme == "http" || req.url.scheme == "https")) {
+                // Runs on WebView's network thread, so the page never starts loading if it's dangerous.
+                SafeBrowsing.check(req.url.host)?.let { kind ->
+                    val u = req.url.toString()
+                    view.post { t.unsafe = UnsafeSite(u, kind); t.loading = false; t.progress = 100 }
+                    return WebResourceResponse("text/html", "utf-8", java.io.ByteArrayInputStream("<!doctype html><title>Dangerous site</title>".toByteArray()))
+                }
+            }
             if (Prefs.shield && !req.isForMainFrame && Shield.isBlocked(req.url.host)) {
                 view.post { t.blocked++; shieldSession++; Prefs.shieldTotal = Prefs.shieldTotal + 1 }
                 return Shield.empty()
@@ -370,8 +428,12 @@ object Browser {
         }
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             // Recover instead of crashing the whole browser
-            view.post { val url = t.url; (t.view?.parent as? ViewGroup)?.removeView(t.view); t.web = null; t.view = null
-                t.error = PageError(url, -1000, "This page crashed"); activity.refreshContainer() }
+            view.post {
+                val url = t.url; (t.view?.parent as? ViewGroup)?.removeView(t.view); runCatching { view.destroy() }; t.web = null; t.view = null
+                if (t.isNtp) return@post
+                // The visible tab reloads straight away; background tabs reload when they're next shown.
+                if (t == current) { t.error = null; activity.refreshContainer() } else t.error = PageError(url, -1000, "This page was closed to save memory")
+            }
             return true
         }
     }
@@ -386,7 +448,9 @@ object Browser {
             t.icon = icon; if (!t.incognito) view.url?.let { BrowserDb.saveIcon(it, icon); Favicons.offer(it, icon) }
         }
         override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
-            if (!isUserGesture && !Prefs.popups) { activity.toast("Pop-up blocked"); return false }
+            val site = runCatching { Uri.parse(t.url).let { "${it.scheme}://${it.authority}" } }.getOrDefault("")
+            val allowed = BrowserDb.perm(site, "popups") ?: Prefs.popups
+            if (!isUserGesture && !allowed) { activity.toast("Pop-up blocked · allow it in Site settings"); return false }
             val nt = newTab(NTP, t.incognito, foreground = !Prefs.openLinksInBackground || !isUserGesture, opener = t)
             ensureView(nt)
             (resultMsg.obj as WebView.WebViewTransport).webView = nt.web

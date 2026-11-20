@@ -81,6 +81,7 @@ object Prefs {
     var restoreTabs by bool("restoreTabs", true)
     var httpsUpgrade by bool("httpsUpgrade", true)
     var compactBar by bool("compactBar", true)           // shrink the address bar while scrolling
+    var pullToRefresh by bool("pullToRefresh", true)     // pull down at the very top of a page to reload
     var openLinksInBackground by bool("bgLinks", false)
     var onboarded by bool("onboarded", false)
     var tabsJson by str("tabs", "[]")
@@ -96,13 +97,25 @@ object Prefs {
     var nvidiaFastModel by str("nvidiaFastModel", "nvidia/nemotron-3.5-bolt-e4b")
     var replyLanguage by str("replyLanguage", "auto")
     var shoppingCountry by str("shoppingCountry", "IN")
-    var agentMaxSteps by int("agentMaxSteps", 30)
+    var agentMaxSteps by int("agentMaxStepsV2", 45)
+    var agentUseProfile by bool("agentUseProfile", true)
+    var savePasswords by bool("savePasswords", true)
+    var autofillForms by bool("autofillForms", true)      // offer saved cards and addresses on web forms
+    var syncPassphrase by bool("syncPassphrase", false)   // vault key wrapped with a custom passphrase instead of the password
+    var cairnPasskeys by bool("cairnPasskeys", true)      // create/use synced Cairn passkeys (falls back to the system)
+    var syncOn by bool("syncOn", true)                    // sync bookmarks, history, tabs, passwords, passkeys, settings
+    var syncLast by long("syncLast", 0)
+    var anonAiToken by secret("anonAi")  // let tasks use your name, email, phone and address
     var agentConfirmEach by bool("agentConfirmEach", false)
     var ttsRate by int("ttsRate", 100)                   // percent
     var ttsVoice by str("ttsVoice", "")
 
     // ---- Account / companion ----
     var server by str("server", BuildConfig.DEFAULT_SERVER)
+    var serverAuto by bool("serverAuto", true)
+    var safeBrowsing by bool("safeBrowsing", true)
+    var dohMode by str("dohMode", "off")                  // off | cloudflare | google | custom
+    var dohUrl by str("dohUrl", "")          // follow the published Cairn server address (server.json) unless set by hand
     var deviceIdS by str("deviceId", "")
     var userJsonS by str("user", "")
     var accessTokenS by secret("at")
@@ -148,6 +161,7 @@ object Prefs {
     /** Signs out of the Cairn account (keeps browser settings, history and API keys). */
     fun clearAccount() {
         deviceId = null; userJson = null; accessToken = null; refreshToken = null
+        runCatching { app.cairn.browser.vault.Sync.signOut() }
         p.edit().remove("files").apply()
     }
 }

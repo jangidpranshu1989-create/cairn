@@ -42,12 +42,19 @@ data class Article(val title: String, val url: String, val lang: String, val tex
 /** Runs the shared page scripts (assets/agent.js) inside a WebView. */
 object PageJs {
     lateinit var script: String
-    fun init(ctx: Context) { script = ctx.assets.open("agent.js").bufferedReader().readText() }
+    /**
+     * The global the page script lives under is random per app launch (and non-enumerable), so a hostile page can't
+     * pre-define a fake `window.__cairn` to feed the agent made-up page data or hide a login/payment form from Guard.
+     */
+    val ns: String = "__c" + java.util.UUID.randomUUID().toString().replace("-", "").take(14)
+    fun init(ctx: Context) {
+        script = ctx.assets.open("agent.js").bufferedReader().readText().replace("window.__cairn", "window.$ns").replace("'__cairn'", "'$ns'")
+    }
 
-    /** Evaluates `window.__cairn.<call>` and returns the result as JSON text (or null). */
+    /** Evaluates `window.<ns>.<call>` and returns the result as JSON text (or null). */
     suspend fun call(w: WebView, call: String): String? = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { c ->
-            w.evaluateJavascript("(function(){$script\ntry{return JSON.stringify(window.__cairn.$call)}catch(e){return JSON.stringify({__error:String(e)})}})()") { r ->
+            w.evaluateJavascript("(function(){$script\ntry{return JSON.stringify(window.$ns.$call)}catch(e){return JSON.stringify({__error:String(e)})}})()") { r ->
                 val inner = runCatching { if (r == null || r == "null") null else JSONTokener(r).nextValue() as? String }.getOrNull()
                 if (c.isActive) c.resume(inner)
             }

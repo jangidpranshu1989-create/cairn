@@ -121,12 +121,14 @@ fun App(webHost: FrameLayout, bgHost: FrameLayout) {
         AnimatedVisibility(Ui.tabSwitcher, enter = fadeIn(tween(160)) + scaleIn(cairnSpring(), initialScale = .96f), exit = fadeOut(tween(140)) + scaleOut(targetScale = .97f)) { TabSwitcher() }
         AnimatedVisibility(Ui.omnibox, enter = fadeIn(tween(140)) + slideInVertically(cairnSpring()) { it / 14 }, exit = fadeOut(tween(110))) { Omnibox() }
         AssistantSheet()
+        if (Ui.profile) ProfileSheet { Ui.profile = false }
         // Live preview of background agent pages floats above everything except dialogs
         Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) { LivePreview(Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 12.dp)) }
         if (Ui.menu) MainMenu()
         if (Ui.siteInfo) SiteInfoSheet()
         Ui.linkMenu?.let { LinkMenuSheet(it) }
         Ui.prompt?.let { SitePromptDialog(it) }
+        OneTapSheet()
         VoiceOverlay()
         Ui.fullscreen?.let { v ->
             Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -150,8 +152,10 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
             else -> act.moveTaskToBack(true)
         }
     }
-    val hidden = Ui.collapsed && tab != null && !tab.isNtp && !tab.loading && !Ui.find && !ReadAloud.active
+    val hidden = Ui.collapsed && tab != null && !tab.isNtp && !tab.loading && !Ui.find && !ReadAloud.active && Agent.controlling != tab
     Column(Modifier.fillMaxSize().background(C.chrome).statusBarsPadding().imePadding()) {
+        // The page gets its own area. The dock sits *below* it in the layout (never over it), so nothing on the page is
+        // hidden or unclickable behind the bar. While you scroll down the dock folds into a slim strip and the page grows.
         Box(Modifier.weight(1f).fillMaxWidth().background(C.bg)) {
             // Background agent pages live under the visible page so they lay out at real size but are never seen.
             AndroidView({ bgHost }, Modifier.fillMaxSize())
@@ -159,30 +163,47 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
             if (tab == null || tab.isNtp) NewTabPage(tab?.incognito == true)
             tab?.error?.let { ErrorPage(tab, it.code, it.description) }
             tab?.ssl?.let { SslPage(tab) }
+            tab?.unsafe?.let { UnsafePage(tab) }
             AgentEdge(Agent.controlling != null && Agent.controlling == tab)
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (imeVisible) Modifier else Modifier.navigationBarsPadding()).padding(bottom = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
+            // Small transient pills float just above the dock edge; they're narrow and centred so the page stays usable.
+            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 val guard = (tab?.sensitive == true && tab == Browser.current) || Agent.controlling?.sensitive == true
-                GuardBadge(guard && !imeVisible && !hidden, Modifier.padding(bottom = 8.dp))
-                AgentStatus(Modifier.padding(bottom = 8.dp))
-                AnimatedVisibility(Ui.find && tab != null, enter = fadeIn() + slideInVertically(cairnSpring()) { it }, exit = fadeOut() + slideOutVertically { it }) { tab?.let { Floating { FindBar(it) } } }
-                AnimatedVisibility(ReadAloud.active && !Ui.find, enter = fadeIn() + slideInVertically(cairnSpring()) { it }, exit = fadeOut() + slideOutVertically { it }) { Floating { ReadAloudBar() } }
-                AnimatedVisibility(!imeVisible && !Ui.find && !hidden, enter = fadeIn(tween(140)) + slideInVertically(cairnSpring(520f, .82f)) { it }, exit = fadeOut(tween(120)) + slideOutVertically(tween(200)) { it }) {
-                    Dock(tab, Modifier.padding(top = if (ReadAloud.active) 8.dp else 0.dp))
-                }
-                AnimatedVisibility(hidden && !imeVisible, enter = fadeIn(tween(200)), exit = fadeOut(tween(80))) { tab?.let { MiniBar(it) } }
+                GuardBadge(guard && !imeVisible && !hidden, Modifier.padding(bottom = 6.dp))
+                AgentStatus(Modifier)
+            }
+        }
+        // No animateContentSize here: animating this height resized the WebView on every frame, which made pages
+        // re-layout continuously (sticky headers jumping, videos stuttering). The bar swaps in one step instead.
+        Column(Modifier.fillMaxWidth().background(C.chrome).then(if (imeVisible) Modifier else Modifier.navigationBarsPadding()),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            VaultBar(tab)
+            AutofillBar(tab)
+            AnimatedVisibility(Ui.find && tab != null, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { tab?.let { Floating { FindBar(it) } } }
+            AnimatedVisibility(ReadAloud.active && !Ui.find, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) { Floating { ReadAloudBar() } }
+            if (!imeVisible && !Ui.find) {
+                if (hidden) tab?.let { MiniBar(it) }
+                else Box(Modifier.animateEnterFade()) { Dock(tab, Modifier.padding(top = 6.dp, bottom = 6.dp)) }
             }
         }
     }
 }
 
+/** Fades/slides content in once when it first appears (no layout animation, so the page above never resizes twice). */
+@Composable
+private fun Modifier.animateEnterFade(): Modifier {
+    val a = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { a.animateTo(1f, spring(dampingRatio = .9f, stiffness = 700f)) }
+    return this.graphicsLayer { alpha = a.value; translationY = (1f - a.value) * 18f }
+}
+
 /** Shown in place of the dock while reading (Safari-style): just the site, tap to bring the dock back. */
 @Composable
 private fun MiniBar(tab: Tab) {
-    Row(Modifier.height(30.dp).clip(RoundedCornerShape(15.dp)).background(C.glass).clickable { Haptics.tick(); Ui.collapsed = false }.padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Icon(if (tab.secure) Ic.Lock else Ic.Info, null, Modifier.size(11.dp), tint = if (tab.secure) C.muted else C.warn); Spacer(Modifier.width(6.dp))
-        Text(tab.host.removePrefix("www."), color = C.text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    // A full-width strip (not a floating pill): tap anywhere on it, or scroll up, to bring the dock back.
+    Row(Modifier.fillMaxWidth().height(28.dp).clickable { Haptics.tick(); Ui.collapsed = false }.padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        Icon(if (tab.secure) Ic.Lock else Ic.Info, null, Modifier.size(10.dp), tint = if (tab.secure) C.faint else C.warn); Spacer(Modifier.width(6.dp))
+        Text(tab.host.removePrefix("www."), color = C.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -221,7 +242,6 @@ private val ideas = listOf(
     Idea(Ic.AccountTree, "Map a topic", "Make a mind map of how GPUs work"),
 )
 
-private fun greeting(): String = when (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) { in 5..11 -> "Good morning"; in 12..16 -> "Good afternoon"; in 17..21 -> "Good evening"; else -> "Hello" }
 
 @Composable
 fun NewTabPage(private: Boolean) {
@@ -248,12 +268,16 @@ fun NewTabPage(private: Boolean) {
             Spacer(Modifier.height(120.dp))
             return@Column
         }
+        val now = rememberNow()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Logo(30.dp); Spacer(Modifier.width(12.dp))
-            Column {
-                Text("Cairn", color = C.text, fontSize = 24.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp)
-                Text(greeting(), color = C.faint, fontSize = 13.sp)
+            Column(Modifier.weight(1f)) {
+                AnimatedContent(greetingFor(now), label = "greet", transitionSpec = { fadeIn(tween(400)) togetherWith fadeOut(tween(200)) }) { g ->
+                    Text(g, color = C.text, fontSize = 22.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text(clockLine(now), color = C.faint, fontSize = 13.sp)
             }
+            ProfileAvatar(34.dp) { Ui.profile = true }
         }
         Spacer(Modifier.height(24.dp))
         // Search / ask
@@ -408,6 +432,40 @@ fun SslPage(tab: Tab) {
     }
 }
 
+/** Full-screen red interstitial for phishing and malware sites (Chrome-style). */
+@Composable
+fun UnsafePage(tab: Tab) {
+    var details by remember { mutableStateOf(false) }
+    val p = tab.unsafe ?: return
+    val red = Color(0xFFC5221F); val host = hostOf(p.url)
+    Column(Modifier.fillMaxSize().background(red).verticalScroll(rememberScrollState()).padding(28.dp), verticalArrangement = Arrangement.Center) {
+        Spacer(Modifier.height(48.dp))
+        Icon(Ic.GppBad, null, Modifier.size(48.dp), tint = Color.White)
+        Spacer(Modifier.height(22.dp))
+        Text(if (p.kind == "malware") "The site ahead contains malware" else "Dangerous site", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, lineHeight = 30.sp)
+        Spacer(Modifier.height(12.dp))
+        Text(if (p.kind == "malware") "Attackers on $host might attempt to install dangerous programs on your phone that steal or delete your information (for example, photos, passwords, messages and credit cards)."
+            else "Attackers on $host may trick you into doing something dangerous like installing software or revealing your personal information (for example, passwords, phone numbers or credit cards).",
+            color = Color.White.copy(alpha = 0.92f), fontSize = 15.sp, lineHeight = 22.sp)
+        Spacer(Modifier.height(30.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.clip(RoundedCornerShape(24.dp)).background(Color.White).clickable {
+                tab.unsafe = null; if (!Browser.back(tab)) Browser.load(tab, NTP)
+            }.padding(horizontal = 22.dp, vertical = 12.dp)) { Text("Back to safety", color = red, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+            Spacer(Modifier.width(12.dp))
+            TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "Details", color = Color.White) }
+        }
+        if (details) {
+            Spacer(Modifier.height(16.dp))
+            Text("Cairn Safe Browsing recently found ${if (p.kind == "malware") "malware" else "phishing"} on $host. Websites that are normally safe are sometimes infected. Cairn checked this privately: only a short piece of a hash left your phone.",
+                color = Color.White.copy(alpha = 0.9f), fontSize = 13.5.sp, lineHeight = 20.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("Proceed anyway (unsafe)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable { app.cairn.browser.browser.SafeBrowsing.allow(host); tab.unsafe = null; Browser.load(tab, p.url) }.padding(vertical = 8.dp))
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Find in page
 @Composable
 fun FindBar(tab: Tab) {
@@ -438,8 +496,8 @@ fun ReadAloudBar() {
             Box(Modifier.fillMaxHeight().fillMaxWidth(if (ReadAloud.total > 0) (ReadAloud.index + 1f) / ReadAloud.total else 0f).background(C.agent))
         }
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp).height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Ic.GraphicEq, null, Modifier.size(18.dp), tint = C.agent)
-            Spacer(Modifier.width(12.dp))
+            VoiceOrb(0f, if (ReadAloud.playing) "speak" else "think", 40.dp)
+            Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(ReadAloud.title.ifBlank { "Reading aloud" }, color = C.text, fontSize = 13.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
                 Text(if (ReadAloud.playing) "Playing · ${ReadAloud.index + 1} of ${ReadAloud.total}" else "Paused", color = C.faint, fontSize = 12.sp)
@@ -567,6 +625,7 @@ private fun RowScope.QuickAct(icon: androidx.compose.ui.graphics.vector.ImageVec
 fun TabSwitcher() {
     var private by remember { mutableStateOf(Browser.current?.incognito == true) }
     var menu by remember { mutableStateOf(false) }
+    var devices by remember { mutableStateOf(false) }
     val list = Browser.tabs.filter { it.incognito == private }
     BackHandler { Ui.tabSwitcher = false }
     Column(Modifier.fillMaxSize().background(C.chrome).statusBarsPadding().navigationBarsPadding()) {
@@ -580,13 +639,15 @@ fun TabSwitcher() {
             }
             Spacer(Modifier.weight(1f))
             Row(Modifier.clip(RoundedCornerShape(20.dp)).background(C.surface2).padding(3.dp)) {
-                Seg("${Browser.normalTabs().size}  Tabs", !private) { private = false }
-                Seg("Private", private) { private = true }
+                Seg("${Browser.normalTabs().size}  Tabs", !private && !devices) { private = false; devices = false }
+                Seg("Private", private && !devices) { private = true; devices = false }
+                Seg("Devices", devices) { devices = true; Haptics.tick(); app.cairn.browser.vault.Sync.soon(0) }
             }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = { Ui.tabSwitcher = false }) { Text("Done", color = C.text, fontWeight = FontWeight.Medium) }
         }
-        if (list.isEmpty()) EmptyState(if (private) Ic.VisibilityOff else Ic.Tab, if (private) "No private tabs" else "No tabs",
+        if (devices) RemoteTabsList(Modifier.weight(1f).fillMaxWidth())
+        else if (list.isEmpty()) EmptyState(if (private) Ic.VisibilityOff else Ic.Tab, if (private) "No private tabs" else "No tabs",
             if (private) "Private tabs don't save history or cookies." else "Open a new tab to start browsing.", Modifier.weight(1f).fillMaxWidth())
         else LazyVerticalGrid(GridCells.Fixed(2), Modifier.weight(1f), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(list, key = { it.id }) { t -> TabCard(t) }
@@ -602,8 +663,39 @@ fun TabSwitcher() {
 }
 
 @Composable
+private fun RemoteTabsList(mod: Modifier) {
+    val remote = app.cairn.browser.vault.Sync.remoteTabs
+    if (!Prefs.isSignedIn || remote.isEmpty()) {
+        EmptyState(Ic.Devices, if (Prefs.isSignedIn) "No tabs from other devices yet" else "Sign in to see your other devices",
+            if (Prefs.isSignedIn) "Tabs open on your computer or other phones show up here." else "Your open tabs follow your Cairn account, end-to-end encrypted.", mod)
+        return
+    }
+    androidx.compose.foundation.lazy.LazyColumn(mod, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        remote.forEach { d ->
+            item(key = "h" + d.device) {
+                Row(Modifier.padding(start = 8.dp, top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Ic.Devices, null, Modifier.size(16.dp), tint = C.muted); Spacer(Modifier.width(8.dp))
+                    Text(d.device, color = C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    if (d.at > 0) Text(android.text.format.DateUtils.getRelativeTimeSpanString(d.at).toString(), color = C.faint, fontSize = 12.sp)
+                }
+            }
+            items(d.tabs.filter { it.first.startsWith("http") }, key = { d.device + it.first }) { (url, title) ->
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.surface).clickable { Haptics.tick(); Browser.newTab(url, false); Ui.tabSwitcher = false }
+                    .padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Favicon(url, null, 18.dp, 4.dp); Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(title.ifBlank { url }, color = C.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(android.net.Uri.parse(url).host.orEmpty().removePrefix("www."), color = C.muted, fontSize = 12.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun Seg(t: String, on: Boolean, onClick: () -> Unit) {
-    Box(Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(if (on) C.surface3 else Color.Transparent).clickable(onClick = onClick).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(if (on) C.surface3 else Color.Transparent).clickable(onClick = onClick).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
         Text(t, color = if (on) C.text else C.muted, fontSize = 13.5.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal)
     }
 }
@@ -680,8 +772,10 @@ fun MainMenu() {
             HorizontalDivider(color = C.line, modifier = Modifier.padding(vertical = 6.dp))
             MenuRow(Ic.Add, "New tab") { close(); Browser.newTab(); Ui.omnibox = true }
             MenuRow(Ic.VisibilityOff, "New private tab") { close(); Browser.newTab(NTP, incognito = true) }
+            MenuRow(Ic.QuestionAnswer, "Chats with Cairn") { close(); Ui.chats = true; Ui.assistant = true }
             MenuRow(Ic.History, "History") { Ui.go("history") }
             MenuRow(Ic.Download, "Downloads") { Ui.go("downloads") }
+            MenuRow(Ic.CloudOff, "Offline pages") { Ui.go("offline") }
             MenuRow(Ic.BookmarkBorder, "Bookmarks") { Ui.go("bookmarks") }
             if (page) {
                 MenuRow(Ic.ReadMore, "Reader view") { Ui.go("reader") }
@@ -692,6 +786,10 @@ fun MainMenu() {
                 }
                 MenuRow(Ic.AddToHomeScreen, "Add to Home screen") { close(); addToHome(ctx, tab) }
                 MenuRow(Ic.FileDownload, "Download page") { close(); Agent.quick("pdf") }
+                MenuRow(Ic.CloudOff, "Save for offline") {
+                    close(); val w = tab.web
+                    if (w != null) app.cairn.browser.browser.Offline.save(ctx, w, tab.title, tab.url) { ok -> act.toast(if (ok) "Saved for offline reading" else "Couldn't save this page") }
+                }
             }
             MenuRow(Ic.Settings, "Settings") { Ui.go("settings") }
             if (page && Prefs.shield) Text(if (tab!!.blocked > 0) "Shield blocked ${tab.blocked} trackers on this page" else "Shield is on. No trackers found on this page.",
@@ -782,7 +880,7 @@ fun SitePromptDialog(p: SitePrompt) {
     var remember by remember { mutableStateOf(true) }
     fun done(allow: Boolean) { Ui.prompt = null; p.decide(allow, remember) }
     AlertDialog(onDismissRequest = { done(false) }, containerColor = C.surface2, shape = RoundedCornerShape(22.dp),
-        icon = { Icon(when (p.icon) { "camera" -> Ic.Videocam; "mic" -> Ic.Mic; else -> Ic.LocationOn }, null, tint = C.text) },
+        icon = { Icon(when (p.icon) { "camera" -> Ic.Videocam; "mic" -> Ic.Mic; "notifications" -> Ic.Notifications; else -> Ic.LocationOn }, null, tint = C.text) },
         title = { Text("${hostOf(p.origin)} wants to ${p.what}", color = C.text, fontSize = 17.sp, textAlign = TextAlign.Center) },
         text = {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { remember = !remember }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

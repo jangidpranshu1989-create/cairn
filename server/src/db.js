@@ -6,9 +6,27 @@ import { config } from './config.js';
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(path.join(config.dataDir, 'transfers'), { recursive: true });
 
-export const db = new Database(path.join(config.dataDir, 'cairn.db'));
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+/**
+ * Storage. Default: a local SQLite file in DATA_DIR (needs a persistent disk — free hosts like Render/Koyeb wipe it on
+ * restart). Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN to keep everything in Turso instead (free tier): the server then
+ * keeps an embedded replica that syncs with Turso, so data survives restarts and redeploys. Same SQL, same API.
+ */
+async function open() {
+  if (config.tursoUrl) {
+    const { default: Libsql } = await import('libsql');
+    const d = new Libsql(path.join(config.dataDir, 'cairn-replica.db'), { syncUrl: config.tursoUrl, authToken: config.tursoToken });
+    try { d.sync(); } catch (e) { console.error('[db] Turso initial sync failed:', e.message); }
+    setInterval(() => { try { d.sync(); } catch {} }, 30_000).unref();
+    console.log('[db] using Turso', config.tursoUrl.replace(/\?.*$/, ''));
+    d.exec('PRAGMA foreign_keys = ON');
+    return d;
+  }
+  const d = new Database(path.join(config.dataDir, 'cairn.db'));
+  d.pragma('journal_mode = WAL');
+  d.pragma('foreign_keys = ON');
+  return d;
+}
+export const db = await open();
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -105,6 +123,34 @@ CREATE TABLE IF NOT EXISTS reset_tokens (
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, name TEXT, email TEXT NOT NULL, topic TEXT, body TEXT, ip TEXT, created_at INTEGER NOT NULL
 );
+-- Item-level end-to-end encrypted sync. The server only ever stores ciphertext; item_id is an HMAC chosen by the client.
+CREATE TABLE IF NOT EXISTS sync_items (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  rev INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  ciphertext TEXT,
+  device_id TEXT,
+  PRIMARY KEY (user_id, kind, item_id)
+);
+CREATE INDEX IF NOT EXISTS sync_items_rev ON sync_items(user_id, rev);
+CREATE TABLE IF NOT EXISTS sync_meta (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  rev INTEGER NOT NULL DEFAULT 0,
+  wrapped_key TEXT,               -- vault key wrapped client-side with a key derived from the master password
+  key_salt TEXT,
+  kdf TEXT
+);
+-- Built-in AI for people without an account: a per-install anonymous token with its own small daily quota.
+CREATE TABLE IF NOT EXISTS anon_devices (
+  id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL,
+  platform TEXT,
+  created_at INTEGER NOT NULL,
+  ip TEXT
+);
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT,
@@ -113,6 +159,12 @@ CREATE TABLE IF NOT EXISTS audit (
   at INTEGER NOT NULL
 );
 `);
+
+// Lightweight migrations for databases created by older versions
+const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
+if (!cols('sessions').includes('prev_hash')) db.exec('ALTER TABLE sessions ADD COLUMN prev_hash TEXT');
+if (!cols('sessions').includes('auth_at')) db.exec('ALTER TABLE sessions ADD COLUMN auth_at INTEGER');
+if (!cols('sync_meta').includes('kcv')) db.exec('ALTER TABLE sync_meta ADD COLUMN kcv TEXT');
 
 export const now = () => Date.now();
 export function audit(userId, action, meta = {}) {

@@ -1,5 +1,5 @@
 // Cairn Browser — main process
-const { app, BrowserWindow, ipcMain, protocol, net, session, Menu, dialog, shell, nativeTheme, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, Menu, dialog, shell, nativeTheme, clipboard, systemPreferences } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -14,11 +14,11 @@ const search = require('./search');
 let tabsMod, cloud, llm, passwords, pageTools, AgentCls;
 
 const UI_DIR = path.join(__dirname, '..', 'ui');
-const PAGES = new Set(['search', 'newtab', 'settings', 'history', 'bookmarks', 'downloads', 'passwords', 'account', 'mindmap', 'error', 'about', 'reader']);
+const PAGES = new Set(['search', 'newtab', 'settings', 'history', 'bookmarks', 'downloads', 'passwords', 'autofill', 'account', 'mindmap', 'error', 'about', 'reader', 'unsafe']);
 const isMac = process.platform === 'darwin';
 
 let win, tabs, agent, agentTabId = null;
-const pending = { asks: new Map(), confirms: new Map(), approvals: new Map(), pw: new Map(), perms: new Map() };
+const pending = { asks: new Map(), confirms: new Map(), approvals: new Map(), pw: new Map(), perms: new Map(), af: new Map() };
 let downloads = new Map();
 
 function chromeUA() {
@@ -37,14 +37,20 @@ function registerProtocol() {
     if (u.host === 'auth-callback') return new Response('Signing in…', { headers: { 'content-type': 'text/plain' } });
     if (u.host === 'file') { // serve generated files (e.g. long screenshots) for preview
       const p = u.searchParams.get('p');
-      if (p && p.startsWith(pageTools.outDir())) return net.fetch(pathToFileURL(p).toString());
+      if (p && within(p, pageTools.outDir())) return net.fetch(pathToFileURL(path.resolve(p)).toString());
       return new Response('Forbidden', { status: 403 });
     }
     let rel = u.pathname === '/' || !u.pathname ? `pages/${u.host}.html` : (u.pathname.startsWith('/') ? u.pathname.slice(1) : u.pathname);
     if (u.pathname === '/' && !PAGES.has(u.host)) rel = 'pages/error.html';
     const file = path.normalize(path.join(UI_DIR, rel));
-    if (!file.startsWith(UI_DIR)) return new Response('Forbidden', { status: 403 });
-    return net.fetch(pathToFileURL(file).toString());
+    if (!within(file, UI_DIR)) return new Response('Forbidden', { status: 403 });
+    return net.fetch(pathToFileURL(file).toString()).then((r) => {
+      if (!/\.html$/.test(file)) return r;
+      // Internal pages get a strict CSP: no remote scripts, no framing, no plugin content.
+      const h = new Headers(r.headers);
+      h.set('Content-Security-Policy', "default-src 'self' cairn:; script-src 'self' cairn: 'unsafe-inline'; style-src 'self' cairn: 'unsafe-inline'; img-src * data: blob:; media-src * data: blob:; connect-src *; font-src 'self' cairn: data:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'");
+      return new Response(r.body, { status: r.status, headers: h });
+    });
   };
   protocol.handle('cairn', handler);
   session.fromPartition('persist:cairn').protocol.handle('cairn', handler);
@@ -90,7 +96,13 @@ async function setupSession() {
     const rec = { id, filename: item.getFilename(), url: item.getURL(), total: item.getTotalBytes(), received: 0, state: 'progressing', path: item.getSavePath(), at: Date.now() };
     downloads.set(id, { rec, item });
     send('downloads:update', [...downloads.values()].map(d => d.rec));
-    item.on('updated', (_ev, state) => { rec.received = item.getReceivedBytes(); rec.total = item.getTotalBytes(); rec.state = state; rec.path = item.getSavePath(); send('downloads:update', [...downloads.values()].map(d => d.rec)); });
+    let lastT = Date.now(), lastB = 0;
+    item.on('updated', (_ev, state) => {
+      const now = Date.now(), got = item.getReceivedBytes();
+      if (now - lastT >= 500) { const inst = (got - lastB) * 1000 / (now - lastT); rec.speed = rec.speed ? Math.round(rec.speed * 0.7 + inst * 0.3) : Math.round(inst); lastT = now; lastB = got; }
+      rec.paused = item.isPaused(); if (rec.paused) rec.speed = 0;
+      rec.mime = item.getMimeType();
+      rec.received = got; rec.total = item.getTotalBytes(); rec.state = state; rec.path = item.getSavePath(); send('downloads:update', [...downloads.values()].map(d => d.rec)); });
     item.once('done', (_ev, state) => {
       rec.state = state; rec.path = item.getSavePath(); rec.received = item.getReceivedBytes();
       const d = store.get().downloads; d.data.unshift({ ...rec }); d.data.splice(500); d.save();
@@ -143,6 +155,29 @@ function createWindow() {
   tabs.on('ask', (text) => send('agent:prefill', { text, run: true }));
   tabs.on('speak', (text) => send('agent:event', { type: 'speak', text }));
   tabs.on('tool', (t) => runPageTool(t));
+  tabs.isAuthorizeUrl = (url) => cloud.isAuthorizeUrl(url);
+  tabs.on('oauth-authorize', async (url, tab) => {
+    const wc = tab.view.webContents;
+    const fallback = () => { tab.oneTapBypass = url; wc.loadURL(url).catch(() => {}); };
+    try {
+      const req = await cloud.oauthRequest(url);
+      if (String(req.prompt || '').split(' ').includes('login')) return fallback();
+      const u = cloud.publicSession().user || {};
+      const name = u.name || (u.email || '').split('@')[0] || 'you';
+      const scopes = req.scopes.filter(s => s.id !== 'openid').map(s => '• ' + s.label);
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'question', title: 'Continue with Cairn', buttons: [`Continue as ${name}`, 'Cancel', 'Use another account'], defaultId: 0, cancelId: 1, noLink: true,
+        message: `Continue to ${req.client.name}?`,
+        detail: `${req.client.domain}${req.client.firstParty ? ' · by Cairn' : ''}\n\nSigned in as ${u.email || name}.\n${req.client.name} will be able to:\n• Know who you are on Cairn\n${scopes.join('\n')}\n\nCairn never shares your password, passkeys or browsing data.`,
+      });
+      if (response === 2) return fallback();
+      const to = await cloud.oauthApprove(url, response === 0);
+      wc.loadURL(to).catch(() => {});
+      if (response === 0) send('toast', { text: `Signed in to ${req.client.name} with Cairn` });
+    } catch (e) {
+      if (e.redirect) wc.loadURL(e.redirect).catch(() => {}); else fallback();
+    }
+  });
   tabs.on('auth-callback', (url, tab) => { if (cloud.handleAuthCallback(url)) { tab.view.webContents.loadURL('cairn://account').catch(() => {}); send('toast', { text: 'Signed in to Cairn' }); } });
   tabs.on('page-key', (e, input) => { if (input.type === 'keyDown' && input.key === 'Escape' && agent?.running) { /* allow page escape */ } });
 
@@ -229,13 +264,20 @@ async function runPageTool(kind) {
     if (kind === 'summary') { const s = await pageTools.summarize(wc, {}); send('agent:event', { type: 'summary', ...s, standalone: true }); }
     else if (kind === 'mindmap') { openMindmap(await pageTools.mindmap(wc, {})); }
     else if (kind === 'pdf') { const f = await pageTools.savePdf(wc); send('toast', { text: 'Saved PDF', file: f }); }
+    else if (kind === 'offline') {
+      const dir = path.join(store.get().settings.data.downloadDir || app.getPath('downloads'), 'Cairn Offline'); fs.mkdirSync(dir, { recursive: true });
+      const f = uniquePath(path.join(dir, `${String(wc.getTitle() || 'page').replace(/[^\p{L}\p{N} _-]+/gu, ' ').trim().slice(0, 60) || 'page'}.mhtml`));
+      await wc.savePage(f, 'MHTML');
+      const d = store.get().downloads; d.data.unshift({ id: Date.now().toString(36), filename: path.basename(f), url: t.url, total: fs.statSync(f).size, received: fs.statSync(f).size, state: 'completed', path: f, at: Date.now(), offline: true }); d.save();
+      send('toast', { text: 'Saved for offline reading', file: f });
+    }
     else if (kind === 'readerpdf') { const a = await pageTools.getArticle(wc); const f = await pageTools.htmlToPdf(pageTools.documentHtml(a.title, a.url, a.text), a.title); send('toast', { text: 'Saved clean article PDF', file: f }); }
     else if (kind === 'longshot') { const r = await pageTools.longScreenshot(wc); send('toast', { text: `Long screenshot saved (${r.width}×${r.height})`, file: r.file, image: true }); }
     else if (kind === 'shot') { const f = await pageTools.visibleScreenshot(wc); send('toast', { text: 'Screenshot saved', file: f, image: true }); }
     else if (kind === 'read') { const a = await pageTools.getArticle(wc); send('agent:event', { type: 'speak', text: `${a.title}.\n${a.text}`, lang: a.lang, title: a.title }); }
     else if (kind === 'reader') { const a = await pageTools.getArticle(wc); global.__reader = a; tabs.create('cairn://reader'); }
   } catch (e) {
-    send('toast', { text: e.message === 'NO_AI_KEY' ? 'Add a Groq or NVIDIA key in Settings → AI to use this.' : e.message, error: true });
+    send('toast', { text: e.message === 'NO_AI' ? "Cairn's AI isn't reachable right now. Check your internet connection." : e.message, error: true });
   } finally { send('tool:busy', { kind, busy: false }); }
 }
 
@@ -299,6 +341,9 @@ function registerIpc() {
     const ses = session.fromPartition('persist:cairn');
     if (opts.cookies) await ses.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] });
     if (opts.cache) await ses.clearCache();
+    if (opts.passwords) passwords.clearSince(since);
+    if (opts.autofill) require('./autofill').clearSince(since);
+    if (opts.passwords || opts.autofill) require('./sync').soon?.();
     return true;
   }, { internal: true });
 
@@ -309,7 +354,7 @@ function registerIpc() {
     return [...live, ...store.get().downloads.data.filter(x => !ids.has(x.id))];
   });
   handle('downloads:cancel', (_e, id) => downloads.get(id)?.item.cancel());
-  handle('downloads:pause', (_e, id) => { const d = downloads.get(id); if (!d) return; d.item.isPaused() ? d.item.resume() : d.item.pause(); });
+  handle('downloads:pause', (_e, id) => { const d = downloads.get(id); if (!d) return; if (d.item.isPaused()) { if (d.item.canResume()) d.item.resume(); } else d.item.pause(); d.rec.paused = d.item.isPaused(); d.rec.speed = 0; });
   handle('downloads:clear', () => { store.get().downloads.data = []; store.get().downloads.save(); downloads = new Map([...downloads].filter(([, d]) => d.rec.state === 'progressing')); });
   handle('file:open', (_e, f) => { if (safeFile(f)) shell.openPath(f); });
   handle('file:reveal', (_e, f) => { if (safeFile(f)) shell.showItemInFolder(f); });
@@ -329,28 +374,33 @@ function registerIpc() {
   handle('open:file-url', (_e, f) => safeFile(f) ? `cairn://file?p=${encodeURIComponent(f)}` : null);
 
   // settings
-  handle('settings:get', () => { const s = { ...store.get().settings.data }; const v = store.get().vault.data; s.groqKey = v.groqKey ? '••••' + v.groqKey.slice(-4) : ''; s.nvidiaKey = v.nvidiaKey ? '••••' + v.nvidiaKey.slice(-4) : ''; return s; });
+  handle('settings:get', () => ({ ...store.get().settings.data, groqKey: undefined, nvidiaKey: undefined }));
   handle('settings:set', (_e, patch) => {
     const s = store.get().settings; const v = store.get().vault;
     for (const [k, val] of Object.entries(patch || {})) {
-      if (k === 'groqKey' || k === 'nvidiaKey') { if (!String(val).startsWith('••••')) { v.data[k] = String(val).trim(); v.flush(); } continue; }
       if (k in store.DEFAULT_SETTINGS) s.data[k] = val;
+      if (k === 'serverUrl') s.data.serverAuto = false;
     }
     s.save();
     if ('theme' in patch) applyTheme();
     if ('serverUrl' in patch) cloud.connect();
+    if ('dohMode' in patch || 'dohUrl' in patch) applySecureDns();
     send('settings:changed', s.data);
     return true;
-  }, { internal: true });
-  handle('settings:testKey', async (_e, provider, key) => {
-    const v = store.get().vault.data;
-    const k = key && !key.startsWith('••••') ? key : (provider === 'groq' ? v.groqKey : v.nvidiaKey);
-    return k ? llm.testKey(provider, k) : false;
   }, { internal: true });
   handle('settings:pickDir', async () => { const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] }); return r.canceled ? null : r.filePaths[0]; }, { internal: true });
 
   // cloud account & phone
   handle('cloud:session', () => cloud.publicSession());
+  handle('sync:status', () => require('./sync').status(), { internal: true });
+  handle('sync:now', () => require('./sync').syncNow(), { internal: true });
+  handle('sync:setOn', (_e, on) => require('./sync').setOn(on), { internal: true });
+  handle('sync:remoteTabs', () => require('./sync').remoteTabs(), { internal: true });
+  handle('sync:unlock', (_e, pass) => require('./sync').unlockPassphrase(String(pass || '')), { internal: true });
+  handle('sync:setPassphrase', (_e, pass) => require('./sync').setPassphrase(String(pass || '')), { internal: true });
+  handle('sync:removePassphrase', (_e, pw) => require('./sync').removePassphrase(String(pw || '')), { internal: true });
+  handle('sync:reset', (_e, pw) => require('./sync').resetSync(String(pw || '')), { internal: true });
+  handle('vault:encrypted', () => require('electron').safeStorage.isEncryptionAvailable());
   handle('cloud:captcha', () => cloud.captcha(), { internal: true });
   handle('cloud:login', (_e, email, pw, cap) => cloud.login(email, pw, cap), { internal: true });
   handle('cloud:signup', (_e, payload) => cloud.signup(payload), { internal: true });
@@ -361,7 +411,7 @@ function registerIpc() {
   handle('cloud:removeDevice', (_e, id) => cloud.removeDevice(id), { internal: true });
   handle('cloud:deleteAccount', (_e, pw) => cloud.deleteAccount(pw), { internal: true });
   handle('cloud:base', () => cloud.base());
-  handle('cloud:passkeyPage', () => { tabs.create(cloud.base() + '/account.html?handoff=desktop'); });
+  handle('cloud:passkeyPage', () => { tabs.create(cloud.base() + '/accounts/?handoff=desktop'); });
 
   // passwords — management (internal pages only)
   handle('pw:all', () => passwords.all(), { internal: true });
@@ -397,12 +447,71 @@ function registerIpc() {
     pending.pw.set(id, { origin, username, password });
     send('pw:prompt', { id, origin, username, update: st === 'update' });
   });
+  handle('safety:back', (e) => { const t = [...tabs.tabs.values()].find(x => x.view.webContents === e.sender); if (!t) return; const nh = t.view.webContents.navigationHistory; if (nh.canGoBack() && nh.getActiveIndex() > 1) nh.goToOffset(-2); else t.view.webContents.loadURL('cairn://newtab'); }, { internal: true });
+  handle('safety:proceed', (e, url) => { try { const u = new URL(url); if (!/^https?:$/.test(u.protocol)) return; require('./safety').allow(u.hostname); e.sender.loadURL(url); } catch {} }, { internal: true });
   handle('perm:decide', (_e, id, allow, remember) => {
     const p = pending.perms.get(id); pending.perms.delete(id); if (!p) return;
     clearTimeout(p.timer); p.cb(!!allow);
     if (remember && p.site) { const st = store.get().settings; st.data.sitePermissions = { ...(st.data.sitePermissions || {}) }; st.data.sitePermissions[p.site] = { ...(st.data.sitePermissions[p.site] || {}), [p.key]: !!allow }; st.save(); }
   });
+  // synced passkeys — page side (origin from the sending frame)
+  const passkeys = require('./passkeys');
+  const pkVerify = async (kind, rpId, name) => {
+    if (process.platform === 'darwin' && systemPreferences.canPromptTouchID?.()) {
+      const ok = await systemPreferences.promptTouchID(kind === 'create' ? `create a passkey for ${rpId}` : `sign in to ${rpId} with your passkey`).then(() => true, () => false);
+      return { ok, uv: ok };
+    }
+    const { response } = await dialog.showMessageBox(win, { type: 'question', buttons: [kind === 'create' ? 'Create passkey' : 'Sign in', 'Use another device or key', 'Cancel'], defaultId: 0, cancelId: 2,
+      message: kind === 'create' ? `Create a passkey for ${rpId}?` : `Sign in to ${rpId} with your Cairn passkey?`,
+      detail: `${name || 'Your account'} · ${kind === 'create' ? 'saved in Cairn and synced to your phone and other computers' : 'synced from your Cairn account'}` });
+    return { ok: response === 0, uv: false, other: response === 1 };
+  };
+  const pkChoose = async (rpId, cands) => {
+    const { response } = await dialog.showMessageBox(win, { type: 'question', buttons: [...cands.map(c => c.userName || c.displayName || 'Passkey'), 'Cancel'], cancelId: cands.length, message: `Choose a passkey for ${rpId}` });
+    return cands[response] || null;
+  };
+  const pkRun = async (fn) => {
+    try { return { ok: true, cred: await fn() }; }
+    catch (e) { if (e.fallback) return { fallback: true }; return { error: e.message, name: e.name === 'Error' ? 'NotAllowedError' : e.name }; }
+  };
+  handle('pk:create', (e, o) => pkRun(async () => { const r = await passkeys.create(frameOrigin(e), o || {}, pkVerify); require('./sync').soon?.(); return r; }));
+  handle('pk:get', (e, o) => pkRun(() => passkeys.get(frameOrigin(e), o || {}, pkVerify, pkChoose)));
+  handle('pk:all', () => passkeys.all(), { internal: true });
+  handle('pk:remove', (_e, id) => { passkeys.remove(id); require('./sync').soon?.(); }, { internal: true });
+
+  // payment cards & addresses — page side
+  const autofill = require('./autofill');
+  const afOn = () => store.get().settings.data.autofillForms !== false;
+  handle('af:query', (e, kind) => (afOn() && /^https:/.test(frameOrigin(e)) && autofill.KINDS.includes(kind)) ? autofill.query(kind) : []);
+  handle('af:fill', async (e, kind, id) => {
+    const origin = frameOrigin(e); if (!afOn() || !/^https:/.test(origin)) return null;
+    const j = autofill.get(kind, id); if (!j) return null;
+    if (kind === 'cards') {
+      let ok = false;
+      if (process.platform === 'darwin' && systemPreferences.canPromptTouchID?.()) ok = await systemPreferences.promptTouchID(`fill your card on ${new URL(origin).hostname}`).then(() => true, () => false);
+      else ok = (await dialog.showMessageBox(win, { type: 'question', buttons: ['Fill card', 'Cancel'], defaultId: 0, cancelId: 1, message: `Fill ${autofill.label(kind, j)} on ${new URL(origin).hostname}?`, detail: 'Cairn never saves your card’s security code (CVC). You’ll type it on the site.' })).response === 0;
+      if (!ok) return null;
+    }
+    return j;
+  });
+  handle('af:offer', (e, kind, data) => {
+    const origin = frameOrigin(e);
+    if (!afOn() || !/^https:/.test(origin) || !autofill.KINDS.includes(kind) || !data || typeof data !== 'object') return;
+    try { if (!autofill.isNew(kind, data)) return; const c = autofill.clean(kind, data); if (kind === 'cards' && !autofill.luhn(c.number)) return; if (kind === 'addresses' && !c.line1) return;
+      const id = Math.random().toString(36).slice(2); pending.af.set(id, { kind, data: c });
+      send('pw:prompt', { id, text: kind === 'cards' ? `Save card <b>${autofill.label(kind, c).replace(/[<>&]/g, '')}</b> to Cairn? It's encrypted and the CVC is never saved.` : `Save this address (<b>${String(c.line1).replace(/[<>&"]/g, '').slice(0, 60)}</b>) for faster checkout?`, kind });
+    } catch {}
+  });
+  // payment cards & addresses — management (internal pages only)
+  handle('af:all', (_e, kind) => autofill.all(kind), { internal: true });
+  handle('af:get', async (_e, kind, id) => {
+    if (kind === 'cards') { const { response } = await dialog.showMessageBox(win, { type: 'warning', buttons: ['Show card', 'Cancel'], defaultId: 1, cancelId: 1, message: 'Show this card number?', detail: 'Make sure nobody is looking at your screen.' }); if (response) return null; }
+    return autofill.get(kind, id);
+  }, { internal: true });
+  handle('af:save', (_e, kind, j, id) => { const r = autofill.save(kind, j, { id }); require('./sync').soon?.(); return r; }, { internal: true });
+  handle('af:remove', (_e, kind, id) => { autofill.remove(kind, id); require('./sync').soon?.(); }, { internal: true });
   handle('pw:decide', (_e, id, action) => {
+    const a = pending.af.get(id); if (a) { pending.af.delete(id); if (action === 'save') { autofill.save(a.kind, a.data); require('./sync').soon?.(); } return; }
     const p = pending.pw.get(id); pending.pw.delete(id); if (!p) return;
     if (action === 'save') passwords.save(p.origin, p.username, p.password);
     if (action === 'never') passwords.never(p.origin);
@@ -432,7 +541,9 @@ function registerIpc() {
   }, { internal: true });
 }
 
-function safeFile(f) { if (!f) return false; const p = path.resolve(f); return p.startsWith(pageTools.outDir()) || p.startsWith(app.getPath('downloads')) || p.startsWith(store.get().settings.data.downloadDir || '\0'); }
+// True only when `p` resolves to a path inside `dir` (blocks ../ traversal and sibling-prefix tricks like /out-evil).
+function within(p, dir) { if (!p || !dir) return false; const r = path.resolve(String(p)); const d = path.resolve(String(dir)); return r === d || r.startsWith(d + path.sep); }
+function safeFile(f) { if (!f) return false; const dl = store.get().settings.data.downloadDir; return within(f, pageTools.outDir()) || within(f, app.getPath('downloads')) || (!!dl && within(f, dl)); }
 
 function suggest(q) {
   const ql = String(q).toLowerCase().trim();
@@ -468,6 +579,7 @@ function appMenu() {
     { label: 'Mind map', click: () => runPageTool('mindmap') },
     { label: 'Reader view', click: () => runPageTool('reader') },
     { label: 'Save as PDF', accelerator: 'CmdOrCtrl+Shift+S', click: () => runPageTool('pdf') },
+    { label: 'Save page for offline', click: () => runPageTool('offline') },
     { label: 'Long screenshot', accelerator: 'CmdOrCtrl+Shift+L', click: () => runPageTool('longshot') },
     { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: () => tabs.active?.view.webContents.print() },
     { type: 'separator' },
@@ -519,7 +631,7 @@ function buildMenu() {
       ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ label: `Tab ${n}`, accelerator: `CmdOrCtrl+${n}`, click: tabAt(n), visible: false })),
     ] },
     { role: 'windowMenu' },
-    { label: 'Help', submenu: [{ label: 'About Cairn', click: () => t().create('cairn://about') }, { label: 'Privacy Policy', click: () => t().create('https://cairn.app/privacy.html') }] },
+    { label: 'Help', submenu: [{ label: 'About Cairn', click: () => t().create('cairn://about') }, { label: 'Privacy Policy', click: () => t().create('https://jangidpranshu1989-create.github.io/cairn/privacy.html') }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -534,8 +646,34 @@ app.on('second-instance', (_e, argv) => {
 app.on('open-url', (e, url) => { e.preventDefault(); if (url.startsWith('cairn://auth-callback') && cloud?.handleAuthCallback(url)) send('toast', { text: 'Signed in to Cairn' }); });
 
 app.userAgentFallback = chromeUA();
+// Built-in Secure DNS (DNS-over-HTTPS) for every page Cairn loads.
+const DOH = { cloudflare: 'https://cloudflare-dns.com/dns-query', google: 'https://dns.google/dns-query' };
+function applySecureDns() {
+  const s = store.get().settings.data;
+  const url = s.dohMode === 'custom' ? (/^https:\/\//.test(s.dohUrl || '') ? s.dohUrl.trim() : '') : DOH[s.dohMode];
+  try {
+    if (url) app.configureHostResolver({ secureDnsMode: 'secure', secureDnsServers: [url] });
+    else app.configureHostResolver({ secureDnsMode: 'automatic', secureDnsServers: [] });
+  } catch (e) { console.warn('Secure DNS:', e.message); }
+}
+
+// The Cairn server address is published in the public repo so every install finds the same account server.
+async function discoverServer() {
+  const s = store.get().settings;
+  if (!app.isPackaged || process.env.CAIRN_SERVER || s.data.serverAuto === false) return;
+  const r = await fetch('https://raw.githubusercontent.com/jangidpranshu1989-create/cairn/main/server.json', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+  if (!r.ok) return;
+  const url = String((await r.json()).server || '').trim().replace(/\/$/, '');
+  if (!/^https:\/\//.test(url) || url === s.data.serverUrl) return;
+  const signedIn = cloud.isSignedIn ? cloud.isSignedIn() : !!store.get().vault.data.cloud?.refreshToken;
+  if (signedIn && s.data.serverUrl !== 'https://cairn-browser.pplx.app/port/8787') return;
+  s.data.serverUrl = url; s.save();
+  cloud.connect();
+}
+
 app.whenReady().then(async () => {
   store.init();
+  applySecureDns();
   tabsMod = require('./tabs'); cloud = require('./cloud'); llm = require('./llm'); passwords = require('./passwords'); pageTools = require('./page-tools');
   AgentCls = require('./agent/agent').Agent;
   registerProtocol();
@@ -544,6 +682,15 @@ app.whenReady().then(async () => {
   applyTheme();
   setupSession().catch(e => console.error(e));
   cloud.connect();
+  discoverServer().catch(() => {});
+  const sync = require('./sync');
+  sync.init(cloud, tabs);
+  sync.events.on('settings', () => { applyTheme(); send('settings:changed', true); });
+  sync.events.on('status', (st) => send('sync:status', st));
+  sync.events.on('tabs', (t) => send('sync:remoteTabs', t));
+  cloud.events.on('sync_error', (m) => send('toast', { text: 'Sync: ' + m }));
+  if (!require('electron').safeStorage.isEncryptionAvailable())
+    setTimeout(() => send('toast', { text: 'Your OS keychain is unavailable, so saved passwords are stored unencrypted on this computer. Install/unlock a keyring (e.g. gnome-keyring) to protect them.' }), 4000);
   cloud.events.on('session', (s) => send('cloud:session', s));
   cloud.events.on('online', (o) => send('cloud:online', o));
   cloud.events.on('device_paired', (m) => send('toast', { text: `Phone paired: ${m.device.name}` }));

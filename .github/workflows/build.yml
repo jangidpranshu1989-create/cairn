@@ -17,10 +17,13 @@ jobs:
       - name: Boot smoke test
         working-directory: server
         run: |
-          DATA_DIR=/tmp/sdata JWT_SECRET=ci-secret node src/index.js & sleep 4
+          DATA_DIR=/tmp/sdata CAPTCHA_DEV_ANSWER=1 PUBLIC_URL=http://localhost:8787 node src/index.js & sleep 4
           curl -fsS http://localhost:8787/api/health
+          curl -fsS http://localhost:8787/.well-known/openid-configuration
+          BASE=http://localhost:8787 node test/oidc-smoke.mjs
   desktop:
     strategy:
+      fail-fast: false
       matrix: { os: [windows-latest, macos-latest, ubuntu-latest] }
     runs-on: ${{ matrix.os }}
     steps:
@@ -29,18 +32,17 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
       - run: npm ci
         working-directory: desktop
-      - run: node scripts-embed-keys.js
+      - name: Package
         working-directory: desktop
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-      - run: npx electron-builder --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
-        working-directory: desktop
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          SIGN_LINK: ${{ secrets.CSC_LINK }}
+          SIGN_PASS: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          # Only hand signing vars to electron-builder when a certificate exists; an empty CSC_LINK breaks the build.
+          if [ -n "$SIGN_LINK" ]; then export CSC_LINK="$SIGN_LINK" CSC_KEY_PASSWORD="$SIGN_PASS"; else export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
+          npx electron-builder --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
       - uses: actions/upload-artifact@v4
         with:
           name: cairn-${{ matrix.os }}
@@ -51,12 +53,29 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
-      - run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+      - name: Release keystore (optional)
         working-directory: android
+        shell: bash
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > release.jks
+            printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$KS_PASS" "$KS_ALIAS" "$KEY_PASS" > keystore.properties
+          else echo "No keystore secret: release APK will be unsigned"; fi
+      - run: |
+          chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+          cd app/build/outputs/apk/release && f=$(ls *.apk | head -1) && mv "$f" Cairn-Android.apk
+        working-directory: android
       - uses: actions/upload-artifact@v4
         with:
           name: cairn-android
           path: android/app/build/outputs/apk/release/*.apk
+      - name: Attach APK to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/release/*.apk

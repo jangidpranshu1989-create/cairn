@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reset password · Cairn Account</title><link rel="icon" href="../favicon.svg"><link rel="stylesheet" href="accounts.css"></head>
+<body>
+<header class="top"><a class="brand" href="./"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><ellipse cx="16" cy="25" rx="11" ry="4" fill="currentColor"/><ellipse cx="16" cy="16.5" rx="8" ry="3.6" fill="currentColor" opacity=".8"/><ellipse cx="16" cy="9" rx="5" ry="3" fill="currentColor" opacity=".6"/></svg> Cairn Account</a></header>
+<main class="card">
+<h1>Choose a new password</h1>
+<p class="sub">At least 10 characters, with letters and numbers. Any language works.</p>
+<form id="f"><label for="p">New password</label><input id="p" type="password" autocomplete="new-password" required minlength="10">
+<button class="btn primary">Update password</button></form>
+<div class="msg" id="m" role="status"></div>
+</main>
+<script src="common.js"></script><script src="reset.js"></script></body></html>

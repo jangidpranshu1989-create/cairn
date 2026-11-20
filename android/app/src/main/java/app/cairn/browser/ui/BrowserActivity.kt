@@ -70,9 +70,12 @@ object Ui {
     var pairLink by mutableStateOf<Uri?>(null)
     var assistantDraft by mutableStateOf("")
     var lasso by mutableStateOf(false)                   // circle-to-act overlay
+    var lassoFrame by mutableStateOf<android.graphics.Bitmap?>(null)  // frozen page frame the lasso selects from
     var pip by mutableStateOf(true)                      // live mini-preview of background agent work
     var mentions = androidx.compose.runtime.mutableStateListOf<Tab>()  // @tab context for the next message
     val attachments = androidx.compose.runtime.mutableStateListOf<app.cairn.browser.agent.Attachment>()
+    var chats by mutableStateOf(false)                    // chat history list inside the assistant
+    var profile by mutableStateOf(false)                  // Chrome-style account sheet
     var attachTray by mutableStateOf(false)               // widget "Photo": open the attach tray in the assistant
     val stack = ArrayDeque<String>()
 
@@ -102,6 +105,7 @@ class BrowserActivity : FragmentActivity() {
         webHost = FrameLayout(this)
         bgHost = FrameLayout(this).apply { clipChildren = true; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS }
         Browser.restore()
+        app.cairn.browser.agent.Chats.init(this)
         AppState.paired.value = Prefs.isPaired
         AppState.refreshFiles()
         handleIntent(intent, cold = true)
@@ -116,12 +120,16 @@ class BrowserActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        app.cairn.browser.service.AgentService.foreground = true
         Browser.current?.web?.onResume()
         if (Prefs.isPaired) SyncService.start(this, SyncService.ACTION_SYNC)
+        Thread { app.cairn.browser.data.ServerConfig.refresh() }.start()
+        app.cairn.browser.vault.Sync.soon(800)
     }
 
     override fun onPause() {
         super.onPause()
+        app.cairn.browser.service.AgentService.foreground = false
         Browser.flushCookies()
         Browser.current?.let { Browser.capture(it) }
         Browser.persist()
@@ -162,12 +170,23 @@ class BrowserActivity : FragmentActivity() {
 
     fun backgroundHost(): FrameLayout = bgHost
 
+    private var scrollAcc = 0
+    private var lastToggle = 0L
     fun onPageScrolled(t: Tab, dy: Int, y: Int) {
         if (t != Browser.current) return
         Backdrop.tick++
         if (!Prefs.compactBar) return
-        if (dy > 14 && y > 120 && !Ui.collapsed) Ui.collapsed = true
-        else if ((dy < -18 || y < 40) && Ui.collapsed) Ui.collapsed = false
+        val now = android.os.SystemClock.uptimeMillis()
+        // Showing/hiding the dock resizes the page, which itself moves the scroll position. Ignore that echo for a
+        // moment, otherwise the bar flickers and sites with sticky headers jump.
+        if (now - lastToggle < 450) { scrollAcc = 0; return }
+        if (dy == 0) return
+        scrollAcc = if ((scrollAcc > 0) == (dy > 0)) scrollAcc + dy else dy
+        val px = resources.displayMetrics.density
+        val hide = scrollAcc > 48 * px && y > 160 * px
+        val show = scrollAcc < -36 * px || y < 24 * px
+        if (hide && !Ui.collapsed) { Ui.collapsed = true; lastToggle = now; scrollAcc = 0 }
+        else if (show && Ui.collapsed) { Ui.collapsed = false; lastToggle = now; scrollAcc = 0 }
     }
 
     fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
@@ -210,18 +229,33 @@ class BrowserActivity : FragmentActivity() {
         if (res.isEmpty()) return req.deny()
         if (res.all { it == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID }) return req.grant(res.toTypedArray())
         val cam = PermissionRequest.RESOURCE_VIDEO_CAPTURE in res; val mic = PermissionRequest.RESOURCE_AUDIO_CAPTURE in res
-        val key = listOfNotNull("camera".takeIf { cam }, "microphone".takeIf { mic }).joinToString("+")
+        val keys = listOfNotNull("camera".takeIf { cam }, "microphone".takeIf { mic })
         val grant = {
             val perms = listOfNotNull(Manifest.permission.CAMERA.takeIf { cam }, Manifest.permission.RECORD_AUDIO.takeIf { mic }).toTypedArray()
             runtime(perms) { ok -> if (ok) req.grant(res.toTypedArray()) else req.deny() }
         }
-        when (BrowserDb.perm(origin, key)) {
-            true -> grant()
-            false -> req.deny()
-            null -> Ui.prompt = SitePrompt(origin, when { cam && mic -> "use your camera and microphone"; cam -> "use your camera"; else -> "use your microphone" }, if (cam) "camera" else "mic") { allow, remember ->
-                if (remember && !t.incognito) BrowserDb.setPerm(origin, key, allow)
+        val legacy = BrowserDb.perm(origin, "camera+microphone")
+        val saved = keys.map { BrowserDb.perm(origin, it) ?: legacy }
+        when {
+            saved.any { it == false } -> req.deny()
+            saved.all { it == true } -> grant()
+            else -> Ui.prompt = SitePrompt(origin, when { cam && mic -> "use your camera and microphone"; cam -> "use your camera"; else -> "use your microphone" }, if (cam) "camera" else "mic") { allow, remember ->
+                if (remember && !t.incognito) keys.forEach { BrowserDb.setPerm(origin, it, allow) }
                 if (allow) grant() else req.deny()
             }
+        }
+    }
+
+    /** Web Notifications (WebView has none built in): asked like Chrome, remembered per site in Site settings. */
+    fun onNotifyPermission(t: Tab, origin: String, done: (String) -> Unit) {
+        when (BrowserDb.perm(origin, "notifications")) {
+            true -> return done("granted"); false -> return done("denied"); null -> {}
+        }
+        if (t.incognito) return done("denied")
+        Ui.prompt = SitePrompt(origin, "show notifications", "notifications") { allow, _ ->
+            BrowserDb.setPerm(origin, "notifications", allow)
+            if (allow && android.os.Build.VERSION.SDK_INT >= 33) runtime(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { ok -> done(if (ok) "granted" else "denied") }
+            else done(if (allow) "granted" else "denied")
         }
     }
 

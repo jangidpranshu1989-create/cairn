@@ -43,19 +43,7 @@ object Downloads {
         val cleanMime = mime?.substringBefore(';')?.trim()?.ifEmpty { null }
             ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(MimeTypeMap.getFileExtensionFromUrl(url))
         val name = sanitize(nameOverride ?: URLUtil.guessFileName(url, contentDisposition, cleanMime))
-        val req = DownloadManager.Request(Uri.parse(url)).apply {
-            setMimeType(cleanMime)
-            CookieManager.getInstance().getCookie(url)?.let { addRequestHeader("Cookie", it) }
-            addRequestHeader("User-Agent", ua ?: Browser.mobileUa())
-            referer?.takeIf { it.startsWith("http") }?.let { addRequestHeader("Referer", it) }
-            setTitle(name); setDescription(Uri.parse(url).host)
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            val sub = folder.split('/').map { it.trim().replace(Regex("[^\\p{L}\\p{N} _.-]"), "") }.filter { it.isNotEmpty() && it != ".." }.joinToString("/")
-            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, if (sub.isEmpty()) "Cairn/$name" else "Cairn/$sub/$name")
-        }
-        val dm = ctx.getSystemService(DownloadManager::class.java)
-        val id = dm.enqueue(req)
-        if (!incognito) BrowserDb.addDownload(DownloadItem(0, id, name, url, cleanMime ?: "", "", 0, System.currentTimeMillis()))
+        val id = app.cairn.browser.service.Downloader.start(ctx, url, name, cleanMime ?: "", ua, referer, incognito, folder)
         Toast.makeText(ctx, "Downloading $name", Toast.LENGTH_SHORT).show()
         id
     }.onFailure { Toast.makeText(ctx, "Can't download this file", Toast.LENGTH_SHORT).show() }.getOrNull()

@@ -1,0 +1,19 @@
+name: website
+on:
+  push: { branches: [main], paths: ['tools/**', 'website/**', '.github/workflows/pages.yml'] }
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: pages, cancel-in-progress: true }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/build_site.py && touch website/.nojekyll
+      # GitHub Pages serves the gh-pages branch: https://jangidpranshu1989-create.github.io/cairn
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./website
+          publish_branch: gh-pages

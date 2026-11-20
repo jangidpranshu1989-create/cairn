@@ -5,6 +5,9 @@ const path = require('node:path');
 const store = require('./store');
 
 const events = new EventEmitter();
+const syncMod = () => require('./sync');
+// Unlock (or create) the end-to-end encrypted sync vault right after a password sign-in. Never blocks login.
+function afterPasswordAuth(email, password) { syncMod().setupKey(email, password).catch(e => events.emit('sync_error', e.message)); }
 let ws = null, wsTimer = null, backoff = 1000;
 
 const base = () => store.get().settings.data.serverUrl.replace(/\/$/, '');
@@ -40,6 +43,7 @@ async function login(email, password, captcha) {
   const j = await r.json();
   if (!r.ok) return { error: j.error, captcha: j.captcha };
   setSession({ accessToken: j.accessToken, refreshToken: j.refreshToken, user: j.user });
+  afterPasswordAuth(email, password);
   return { user: j.user };
 }
 async function signup(payload) {
@@ -47,10 +51,11 @@ async function signup(payload) {
   const j = await r.json();
   if (!r.ok) return { error: j.error, captcha: j.captcha };
   setSession({ accessToken: j.accessToken, refreshToken: j.refreshToken, user: j.user });
+  if (payload?.email && payload?.password) afterPasswordAuth(payload.email, payload.password);
   return { user: j.user };
 }
 async function captcha() { return (await fetch(base() + '/api/auth/captcha')).json(); }
-async function logout() { try { await api('/auth/logout', { method: 'POST' }); } catch {} setSession(null); }
+async function logout() { try { await api('/auth/logout', { method: 'POST' }); } catch {} try { syncMod().signOut(); } catch {} setSession(null); }
 
 function handleAuthCallback(url) {
   const h = new URLSearchParams(new URL(url).hash.slice(1));
@@ -59,12 +64,17 @@ function handleAuthCallback(url) {
   return true;
 }
 
-function connect() {
+async function connect() {
   clearTimeout(wsTimer);
   try { ws?.close(); } catch {}
   ws = null;
   if (!isSignedIn()) return;
-  const url = base().replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(session().accessToken);
+  // One-time, 60-second ticket so the long-lived access token never appears in a URL (proxy/server logs).
+  let q;
+  try { q = 'ticket=' + encodeURIComponent((await api('/auth/ws-ticket', { method: 'POST' })).ticket); }
+  catch { q = 'token=' + encodeURIComponent(session()?.accessToken || ''); }
+  if (!isSignedIn() || ws) return;
+  const url = base().replace(/^http/, 'ws') + '/ws?' + q;
   const sock = new WebSocket(url);
   ws = sock;
   sock.onopen = () => { backoff = 1000; events.emit('online', true); };
@@ -106,5 +116,21 @@ const pairStart = () => api('/devices/pair/start', { method: 'POST' });
 const removeDevice = (id) => api('/devices/' + id, { method: 'DELETE' });
 async function deleteAccount(password) { await api('/auth/account', { method: 'DELETE', body: { password } }); setSession(null); return { ok: true }; }
 
-module.exports = { events, api, isSignedIn, publicSession, login, signup, captcha, logout, handleAuthCallback, connect,
+// ---------- "Continue with Cairn" one-tap ----------
+function isAuthorizeUrl(url) {
+  if (!isSignedIn()) return false;
+  try { const u = new URL(url), b = new URL(base()); return u.origin === b.origin && u.pathname === b.pathname.replace(/\/$/, '') + '/oauth/authorize'; } catch { return false; }
+}
+async function oauthRequest(url) {
+  const r = await fetch(base() + '/api/oauth/request' + new URL(url).search);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || 'This sign-in request is not valid'), { redirect: j.redirect });
+  return j;
+}
+async function oauthApprove(url, approve) {
+  const params = Object.fromEntries(new URL(url).searchParams);
+  return (await api('/oauth/approve', { method: 'POST', body: { ...params, approve, via: 'desktop' } })).redirect;
+}
+
+module.exports = { isAuthorizeUrl, oauthRequest, oauthApprove, events, api, isSignedIn, publicSession, login, signup, captcha, logout, handleAuthCallback, connect,
   requestApproval, decideLocally, sendToPhone, devices, pairStart, removeDevice, deleteAccount, base };

@@ -1,5 +1,5 @@
 import { WebSocketServer } from 'ws';
-import { verifyAccess } from './auth.js';
+import { verifyAccess, redeemTicket } from './auth.js';
 import { db, now } from './db.js';
 
 // userId -> Set<{ ws, deviceId, kind }>
@@ -9,7 +9,7 @@ export function attachHub(server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url, 'http://x');
-    const p = verifyAccess(url.searchParams.get('token') || '');
+    const p = redeemTicket(url.searchParams.get('ticket')) || verifyAccess(url.searchParams.get('token') || '');
     if (!p) { ws.close(4401, 'unauthorized'); return; }
     const dev = p.did ? db.prepare('SELECT kind FROM devices WHERE id=?').get(p.did) : null;
     const entry = { ws, deviceId: p.did || null, kind: dev?.kind || 'desktop', userId: p.sub };

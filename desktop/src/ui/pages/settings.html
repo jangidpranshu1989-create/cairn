@@ -10,6 +10,7 @@
   <a href="#phone" data-s="phone">Phone &amp; sync</a>
   <a href="#downloads" data-s="downloads">Downloads</a>
   <a href="cairn://passwords">Passwords</a>
+  <a href="cairn://autofill">Payments &amp; addresses</a>
   <a href="cairn://account">Account</a>
   <span class="sp"></span>
   <a href="#about" data-s="about">About Cairn</a>
@@ -30,20 +31,9 @@
   </div>
 </section>
 
-<section class="sec" id="s-ai"><h1>AI &amp; Agent</h1><p class="muted">Cairn uses Groq for speed and NVIDIA NIM as an automatic fallback.</p>
-  <div class="group"><h3>AI source</h3>
-    <div class="opt"><div class="l"><b>Run AI with</b><small>Your own keys stay encrypted on this device. Cairn Cloud uses your account's daily quota.</small></div><div class="seg" data-k="aiMode"><button data-v="byok">My own API keys</button><button data-v="cloud">Cairn Cloud</button></div></div>
-    <div class="opt col"><div class="l"><b>Groq API key</b><small>Free key at <a href="https://console.groq.com/keys">console.groq.com/keys</a>. Powers chat, agent and Whisper voice input.</small></div>
-      <div class="keyrow"><input class="input" id="groqKey" placeholder="gsk_…" spellcheck="false"><button class="btn" data-test="groq">Test</button><button class="btn primary" data-save="groqKey">Save</button><span class="status" id="st-groq"></span></div></div>
-    <div class="opt col"><div class="l"><b>NVIDIA NIM API key</b><small>Get one at <a href="https://build.nvidia.com">build.nvidia.com</a>. Nemotron models for vision and fallback.</small></div>
-      <div class="keyrow"><input class="input" id="nvidiaKey" placeholder="nvapi-…" spellcheck="false"><button class="btn" data-test="nvidia">Test</button><button class="btn primary" data-save="nvidiaKey">Save</button><span class="status" id="st-nvidia"></span></div></div>
-    <div class="opt"><div class="l"><b>Preferred provider</b><small>The other one is used automatically if this fails.</small></div><div class="seg" data-k="preferredProvider"><button data-v="groq">Groq</button><button data-v="nvidia">NVIDIA NIM</button></div></div>
-  </div>
-  <div class="group"><h3>Models</h3>
-    <div class="opt"><div class="l"><b>Groq — smart</b></div><input class="input" data-k="groqModel" style="width:300px"></div>
-    <div class="opt"><div class="l"><b>Groq — fast</b></div><input class="input" data-k="groqFastModel" style="width:300px"></div>
-    <div class="opt"><div class="l"><b>NVIDIA — smart / vision</b></div><input class="input" data-k="nvidiaModel" style="width:300px"></div>
-    <div class="opt"><div class="l"><b>NVIDIA — fast</b></div><input class="input" data-k="nvidiaFastModel" style="width:300px"></div>
+<section class="sec" id="s-ai"><h1>AI &amp; Agent</h1><p class="muted">Cairn's AI is built in. There are no keys to add.</p>
+  <div class="group"><h3>Cairn AI</h3>
+    <div class="opt"><div class="l"><b>Built in · ready to use</b><small id="aiPlan">Works with no setup.</small></div></div>
   </div>
   <div class="group"><h3>Agent</h3>
     <div class="opt"><div class="l"><b>Ask before</b><small>Payments always need your approval — on your phone or here.</small></div><div class="seg" data-k="agentConfirm"><button data-v="purchases">Purchases &amp; sign-ins</button><button data-v="every-action">Every action</button></div></div>
@@ -60,15 +50,26 @@
 <section class="sec" id="s-privacy"><h1>Privacy &amp; security</h1><p class="muted">Cairn has no ads and never sells your data.</p>
   <div class="group"><h3>Protection</h3>
     <div class="opt"><div class="l"><b>Cairn Shield</b><small>Block ads, trackers and cryptominers on every site.</small></div><label class="sw"><input type="checkbox" data-k="shield"><span></span></label></div>
+    <div class="opt"><div class="l"><b>Safe Browsing</b><small>Shows a warning before phishing and malware sites open. Checked privately with hash prefixes, Cairn never sees which sites you visit.</small></div><label class="sw"><input type="checkbox" data-k="safeBrowsing"><span></span></label></div>
     <div class="opt"><div class="l"><b>Send Do Not Track &amp; Global Privacy Control</b></div><label class="sw"><input type="checkbox" data-k="doNotTrack"><span></span></label></div>
     <div class="opt"><div class="l"><b>Offer to save passwords</b></div><label class="sw"><input type="checkbox" data-k="offerSavePasswords"><span></span></label></div>
     <div class="opt"><div class="l"><b>Autofill saved passwords</b></div><label class="sw"><input type="checkbox" data-k="autofillPasswords"><span></span></label></div>
+    <div class="opt"><div class="l"><b>Payment methods &amp; addresses</b><small>Save and fill cards and addresses on checkout forms. CVC is never saved.</small></div><a class="btn" href="cairn://autofill">Manage</a><label class="sw"><input type="checkbox" data-k="autofillForms"><span></span></label></div>
   </div>
-  <div class="group"><h3>Site permissions</h3><div id="permList"></div></div>
+  <div class="group"><h3>Secure DNS</h3>
+    <div class="opt"><div class="l"><b>Use secure DNS</b><small>Encrypts site-name lookups (DNS-over-HTTPS) so your network can't see or change them.</small></div>
+      <select class="input" id="dohMode"><option value="off">Off (network default)</option><option value="cloudflare">Cloudflare (1.1.1.1)</option><option value="google">Google (8.8.8.8)</option><option value="custom">Custom</option></select></div>
+    <div class="opt" id="dohCustomRow" hidden><div class="l"><b>Custom DoH address</b><small>For example https://dns.quad9.net/dns-query</small></div><input class="input" id="dohUrl" placeholder="https://…/dns-query" style="min-width:280px"><button class="btn" id="dohSave">Save</button></div>
+  </div>
+  <div class="group"><h3>Site permissions</h3>
+    <div class="opt"><div class="l"><b>Add a site</b><small>Set camera, microphone, location, notifications and pop-ups for a site.</small></div><input class="input" id="permAdd" placeholder="example.com"><button class="btn" id="permAddGo">Add</button></div>
+    <div id="permList"></div></div>
   <div class="group"><h3>Clear browsing data</h3>
     <div class="opt"><div class="l"><b>Time range</b></div><select class="input" id="clrRange"><option value="3600000">Last hour</option><option value="86400000">Last 24 hours</option><option value="604800000">Last 7 days</option><option value="0" selected>All time</option></select></div>
     <div class="opt"><div class="l"><b>Cookies &amp; site data</b><small>Signs you out of most sites.</small></div><label class="sw"><input type="checkbox" id="clrCookies"><span></span></label></div>
     <div class="opt"><div class="l"><b>Cached images and files</b></div><label class="sw"><input type="checkbox" id="clrCache" checked><span></span></label></div>
+    <div class="opt"><div class="l"><b>Saved passwords</b><small>Also removed from your other signed-in devices.</small></div><label class="sw"><input type="checkbox" id="clrPw"><span></span></label></div>
+    <div class="opt"><div class="l"><b>Autofill form data</b><small>Saved cards and addresses, on every synced device.</small></div><label class="sw"><input type="checkbox" id="clrAf"><span></span></label></div>
     <div class="opt"><div class="l"><small>History is always cleared for the chosen range.</small></div><button class="btn danger" id="clrGo">Clear data</button></div>
   </div>
   <div class="group"><h3>Policies</h3>
@@ -77,6 +78,12 @@
 </section>
 
 <section class="sec" id="s-phone"><h1>Phone &amp; sync</h1><p class="muted">Pair the Cairn Android app to approve payments with your fingerprint and receive files.</p>
+  <div class="group"><h3>Sync</h3>
+    <div class="opt"><div class="l"><b>Sync this computer</b><small id="syncInfo">Bookmarks, history, open tabs, passwords, passkeys and settings — end-to-end encrypted with your account password.</small></div><button class="btn" id="syncNow">Sync now</button><label class="sw"><input type="checkbox" id="syncOn"><span></span></label></div>
+    <div class="opt" id="ppRow"><div class="l"><b>Custom sync passphrase</b><small id="ppInfo">Optional. Encrypt synced data with a passphrase only you know, instead of your account password. Cairn's server can never read it, but if you forget it you'll have to reset sync.</small></div><button class="btn" id="ppBtn">Set passphrase</button></div>
+    <div class="opt" id="ppForm" hidden><div class="l" style="flex:1"><input class="input" type="password" id="ppIn" placeholder="Passphrase" autocomplete="new-password" style="width:100%"><input class="input" type="password" id="ppIn2" placeholder="Confirm passphrase" autocomplete="new-password" style="width:100%;margin-top:6px"></div><button class="btn" id="ppCancel">Cancel</button><button class="btn primary" id="ppGo">Save</button></div>
+    <div id="remoteTabs"></div>
+  </div>
   <div class="group" id="phoneGroup"><h3>Pair a phone</h3><div class="opt" id="phoneBody"><div class="l muted">Loading…</div></div></div>
   <div class="group"><h3>Paired devices</h3><div id="devList"><div class="opt"><div class="l muted">No phones paired yet.</div></div></div></div>
   <div class="group"><h3>Server</h3>

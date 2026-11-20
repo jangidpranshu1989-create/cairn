@@ -38,6 +38,7 @@ function save(origin, username, password) {
 function never(origin) { (vault().data.never ||= []).push(siteKey(origin)); vault().flush(); }
 const isNever = (origin) => (vault().data.never || []).includes(siteKey(origin));
 
+function clearSince(since = 0) { vault().data.passwords = list().filter(p => (p.updated || p.created || 0) < since); vault().flush(); }
 function remove(id) { vault().data.passwords = list().filter(p => p.id !== id); vault().flush(); }
 function update(id, fields) { const p = list().find(x => x.id === id); if (p) { Object.assign(p, fields, { updated: Date.now() }); vault().flush(); } }
 
@@ -82,4 +83,4 @@ function generate(len = 18) {
   return chars.join('');
 }
 
-module.exports = { query, fill, status, save, never, isNever, remove, update, all, reveal, exportCsv, importCsv, generate, originOf };
+module.exports = { clearSince, query, fill, status, save, never, isNever, remove, update, all, reveal, exportCsv, importCsv, generate, originOf };

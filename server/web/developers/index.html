@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cairn for Developers · Continue with Cairn</title><meta name="description" content="Add a Continue with Cairn button to your website or app with OAuth 2.0 and OpenID Connect.">
+<link rel="icon" href="../favicon.svg"><link rel="stylesheet" href="../accounts/accounts.css"></head>
+<body>
+<header class="top"><a class="brand" href="../accounts/"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><ellipse cx="16" cy="25" rx="11" ry="4" fill="currentColor"/><ellipse cx="16" cy="16.5" rx="8" ry="3.6" fill="currentColor" opacity=".8"/><ellipse cx="16" cy="9" rx="5" ry="3" fill="currentColor" opacity=".6"/></svg> Cairn for Developers</a><button class="theme" aria-label="Toggle theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button></header>
+<main class="card wide doc">
+  <span class="badge">OAuth 2.0 · OpenID Connect · PKCE</span>
+  <h1 style="margin-top:12px">Add "Continue with Cairn" to your app</h1>
+  <p>Cairn is a standard OpenID Connect provider. Users signed in to the Cairn browser on Android or desktop get a one-tap sign-in sheet; everyone else sees the Cairn consent page.</p>
+  <div id="demo" style="margin:18px 0"></div>
+
+  <h2>1. Register your app</h2>
+  <div id="signedOut"><p>Sign in to your Cairn Account to register apps.</p><a class="btn primary" style="max-width:260px" href="../accounts/?return=">Sign in</a></div>
+  <div id="signedIn" class="hidden">
+    <form id="reg">
+      <label for="n">App name</label><input id="n" required minlength="2" maxlength="60" placeholder="My Notes">
+      <label for="h">Homepage (optional)</label><input id="h" type="url" placeholder="https://notes.example.com">
+      <label for="r">Redirect URIs, one per line</label><textarea id="r" required placeholder="https://notes.example.com/callback"></textarea>
+      <label for="t">Type</label><select id="t"><option value="public">Public (website / SPA / mobile, PKCE)</option><option value="confidential">Confidential (server with a client secret)</option></select>
+      <button class="btn primary">Register app</button>
+    </form>
+    <div class="msg" id="m" role="status"></div>
+    <div id="created" class="hidden"></div>
+    <h2>Your apps</h2><div class="list" id="clients"></div>
+  </div>
+
+  <h2>2. Drop in the button</h2>
+  <pre><code id="snippet"></code></pre>
+  <p>Or use the declarative form. A <code>cairn:signin</code> event fires on <code>document</code> with <code>{ user, tokens, idToken }</code>.</p>
+  <pre><code id="snippet2"></code></pre>
+
+  <h2>3. Verify on your server</h2>
+  <p>Send the <code>id_token</code> to your backend and verify it with any OIDC library using the discovery document. Check <code>iss</code>, <code>aud</code> (your client ID), <code>exp</code> and <code>nonce</code>.</p>
+  <div class="kv" id="endpoints"></div>
+
+  <h2>Scopes</h2>
+  <div class="kv"><span><code>openid</code></span><div>Required. Stable user ID (<code>sub</code>).</div><span><code>profile</code></span><div>Name.</div><span><code>email</code></span><div>Email and whether it is verified.</div><span><code>offline_access</code></span><div>Refresh token (rotated on every use).</div></div>
+</main>
+<script src="../accounts/common.js"></script><script src="../sdk/cairn-auth.js"></script><script src="developers.js"></script>
+</body></html>

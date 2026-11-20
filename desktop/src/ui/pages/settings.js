@@ -35,39 +35,49 @@
   speechSynthesis.onvoiceschanged = fillVoices; fillVoices();
   $('#voices').onchange = (e) => save({ voiceName: e.target.value });
 
-  // API keys
-  for (const k of ['groqKey', 'nvidiaKey']) $('#' + k).value = S[k] || '';
-  $$('[data-save]').forEach(b => b.onclick = async () => {
-    const k = b.dataset.save, v = $('#' + k).value.trim();
-    await api('settings:set', { [k]: v }); toast(v ? 'Key saved securely' : 'Key removed');
-    S = await api('settings:get'); $('#' + k).value = S[k] || '';
-  });
-  $$('[data-test]').forEach(b => b.onclick = async () => {
-    const p = b.dataset.test, st = $('#st-' + p), key = $('#' + p + 'Key').value.trim();
-    st.className = 'status'; st.textContent = 'Testing…'; b.disabled = true;
-    try { const ok = await api('settings:testKey', p, key); st.className = 'status ' + (ok ? 'ok' : 'err'); st.textContent = ok ? 'Working' : 'Key rejected'; }
-    catch (e) { st.className = 'status err'; st.textContent = cleanErr(e); }
-    b.disabled = false;
-  });
+  // Cairn AI is built in: show which plan is serving this device
+  api('cloud:session').then(se => { const el = $('#aiPlan'); if (el) el.textContent = se?.signedIn ? 'Included with your Cairn Account on every device.' : 'Works with no setup. Sign in to your Cairn Account for a higher daily limit.'; }).catch(() => {});
 
   // clear data
   $('#clrGo').onclick = async () => {
-    const r = Number($('#clrRange').value);
-    await api('history:clear', { since: r ? Date.now() - r : 0, cookies: $('#clrCookies').checked, cache: $('#clrCache').checked });
+    const r = Number($('#clrRange').value); const pw = $('#clrPw').checked, af = $('#clrAf').checked;
+    if ((pw || af) && !confirm('Delete saved ' + [pw && 'passwords', af && 'cards and addresses'].filter(Boolean).join(' and ') + ' for this time range from this computer and every synced device? This can\'t be undone.')) return;
+    await api('history:clear', { since: r ? Date.now() - r : 0, cookies: $('#clrCookies').checked, cache: $('#clrCache').checked, passwords: pw, autofill: af });
     toast('Browsing data cleared');
   };
-  const PERM_NAMES = { geolocation: 'Location', camera: 'Camera', microphone: 'Microphone', notifications: 'Notifications', 'clipboard-read': 'Clipboard', midi: 'MIDI', openExternal: 'Open apps' };
+
+  // secure DNS
+  const dohPaint = () => { $('#dohMode').value = S.dohMode || 'off'; $('#dohUrl').value = S.dohUrl || ''; $('#dohCustomRow').hidden = $('#dohMode').value !== 'custom'; };
+  dohPaint();
+  $('#dohMode').onchange = async (e) => { const m = e.target.value; $('#dohCustomRow').hidden = m !== 'custom'; if (m !== 'custom' || /^https:\/\//.test(S.dohUrl || '')) await save({ dohMode: m }); };
+  $('#dohSave').onclick = async () => { const u = $('#dohUrl').value.trim(); if (!/^https:\/\/[^/]+/.test(u)) return toast('Enter an https:// address'); await save({ dohMode: 'custom', dohUrl: u }); };
+
+  // site permissions: Ask / Allow / Block per site
+  const PERMS = [['camera', 'Camera'], ['microphone', 'Microphone'], ['geolocation', 'Location'], ['notifications', 'Notifications'], ['popups', 'Pop-ups']];
+  const PERM_NAMES = Object.fromEntries([...PERMS, ['clipboard-read', 'Clipboard'], ['midi', 'MIDI'], ['openExternal', 'Open apps']]);
   function renderPerms() {
-    const sp = S.sitePermissions || {}; const el = $('#permList'); const sites = Object.keys(sp).filter(o => Object.keys(sp[o]).length);
-    if (!sites.length) { el.innerHTML = '<div class="opt"><div class="l"><small>Sites you allow or block (location, camera, microphone, notifications) appear here.</small></div></div>'; return; }
-    el.innerHTML = sites.map(o => `<div class="opt"><div class="l"><b>${esc(o.replace(/^https?:\/\//, ''))}</b><small>${Object.entries(sp[o]).map(([k, v]) => `${PERM_NAMES[k] || k}: ${v ? 'Allowed' : 'Blocked'}`).join(' · ')}</small></div><button class="btn" data-reset="${esc(o)}">Reset</button></div>`).join('');
+    const sp = S.sitePermissions || {}; const el = $('#permList'); const sites = Object.keys(sp);
+    if (!sites.length) { el.innerHTML = '<div class="opt"><div class="l"><small>Sites you allow or block appear here.</small></div></div>'; return; }
+    el.innerHTML = sites.map(o => `<div class="opt" style="flex-wrap:wrap;gap:8px"><div class="l" style="min-width:180px"><b>${esc(o.replace(/^https?:\/\//, ''))}</b></div>
+      ${PERMS.map(([k, n]) => `<label class="small muted">${n} <select class="input" data-site="${esc(o)}" data-perm="${k}"><option value="ask"${sp[o][k] === undefined ? ' selected' : ''}>${k === 'popups' ? 'Default' : 'Ask'}</option><option value="allow"${sp[o][k] === true ? ' selected' : ''}>Allow</option><option value="block"${sp[o][k] === false ? ' selected' : ''}>Block</option></select></label>`).join('')}
+      <button class="btn" data-reset="${esc(o)}">Reset</button></div>`).join('');
+  }
+  async function setPerm(o, k, v) {
+    const sp = JSON.parse(JSON.stringify(S.sitePermissions || {})); sp[o] = sp[o] || {};
+    if (v === 'ask') delete sp[o][k]; else sp[o][k] = v === 'allow';
+    await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; toast('Saved');
   }
   renderPerms();
+  $('#permList').addEventListener('change', (e) => { const s = e.target.closest('select[data-perm]'); if (s) setPerm(s.dataset.site, s.dataset.perm, s.value); });
   $('#permList').addEventListener('click', async (e) => {
     const o = e.target.closest('[data-reset]')?.dataset.reset; if (!o) return;
     const sp = { ...(S.sitePermissions || {}) }; delete sp[o]; await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; renderPerms(); toast('Permissions reset');
   });
-  api('cloud:base').then(b => { $('#privacyLink').href = 'https://cairn.app/privacy.html'; });
+  $('#permAddGo').onclick = async () => {
+    let v = $('#permAdd').value.trim(); if (!v.includes('.')) return toast('Enter a site like example.com');
+    try { const o = new URL(/^https?:/.test(v) ? v : 'https://' + v).origin; const sp = { ...(S.sitePermissions || {}) }; sp[o] = sp[o] || {}; await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; $('#permAdd').value = ''; renderPerms(); } catch { toast('That address is not valid'); }
+  };
+  api('cloud:base').then(b => { $('#privacyLink').href = 'https://jangidpranshu1989-create.github.io/cairn/privacy.html'; });
 
   // downloads
   const dl = () => $('#dlDir').textContent = S.downloadDir || 'Default Downloads folder (Cairn files go to Downloads/Cairn)';
@@ -103,6 +113,56 @@
       $$('[data-rm]').forEach(b => b.onclick = async () => { await api('cloud:removeDevice', b.dataset.rm); loadDevices(); });
     } catch {}
   }
+
+  // sync
+  async function loadSync() {
+    const st = await api('sync:status').catch(() => null); if (!st) return;
+    $('#syncOn').checked = st.on;
+    const when = st.last ? new Date(st.last).toLocaleString() : 'never';
+    $('#syncInfo').textContent = !st.signedIn ? 'Sign in to your Cairn account to sync bookmarks, history, tabs, passwords and passkeys across devices.'
+      : !st.ready ? 'Sign in again with your password to unlock end-to-end encrypted sync on this computer.'
+      : st.error ? 'Last sync failed: ' + st.error : 'End-to-end encrypted. Last synced: ' + when;
+    // custom passphrase
+    const mode = !st.signedIn ? 'hidden' : st.needPassphrase ? 'unlock' : st.passphrase ? 'on' : st.ready ? 'off' : 'hidden';
+    $('#ppRow').hidden = mode === 'hidden'; $('#ppForm').hidden = true; $('#ppRow').dataset.mode = mode;
+    $('#ppBtn').textContent = { unlock: 'Enter passphrase', on: 'Change or remove', off: 'Set passphrase' }[mode] || '';
+    $('#ppInfo').textContent = mode === 'unlock' ? 'Your synced data is protected by a custom passphrase. Enter it to start syncing on this computer.'
+      : mode === 'on' ? 'On. Synced data is encrypted with your passphrase. Cairn\'s server never sees it.'
+      : 'Optional. Encrypt synced data with a passphrase only you know, instead of your account password. Cairn\'s server can never read it, but if you forget it you\'ll have to reset sync.';
+    if (st.needPassphrase) $('#syncInfo').textContent = 'Locked with your custom sync passphrase.';
+    const rt = await api('sync:remoteTabs').catch(() => []);
+    $('#remoteTabs').innerHTML = rt.map(d => `<div class="opt"><div class="l"><b>${ICON('phone')} ${esc(d.device)}</b><small>${d.tabs.filter(t => /^https?:/i.test(t.url)).slice(0, 8).map(t => `<a href="${esc(t.url)}">${esc(t.title || t.url)}</a>`).join(' · ')}${d.tabs.length > 8 ? ` · +${d.tabs.length - 8} more` : ''}</small></div></div>`).join('');
+  }
+  $('#syncOn').onchange = async (e) => { await api('sync:setOn', e.target.checked); loadSync(); };
+  $('#syncNow').onclick = async () => { $('#syncNow').disabled = true; const r = await api('sync:now').catch(e => ({ error: cleanErr(e) })); $('#syncNow').disabled = false; toast(r.ok ? 'Synced' : (r.error || 'Sync failed')); loadSync(); };
+  $('#ppBtn').onclick = async () => {
+    const mode = $('#ppRow').dataset.mode;
+    if (mode === 'on') {
+      const c = prompt('Type a new passphrase to change it, or type REMOVE to go back to using your account password.');
+      if (!c) return;
+      try {
+        if (c.trim() === 'REMOVE') { const pw = prompt('Enter your Cairn account password'); if (!pw) return; await api('sync:removePassphrase', pw); toast('Passphrase removed'); }
+        else { await api('sync:setPassphrase', c); toast('Passphrase changed'); }
+      } catch (e) { toast(cleanErr(e)); }
+      return loadSync();
+    }
+    $('#ppForm').hidden = false; $('#ppIn2').hidden = mode === 'unlock'; $('#ppIn').value = $('#ppIn2').value = ''; $('#ppIn').focus();
+    $('#ppGo').textContent = mode === 'unlock' ? 'Unlock' : 'Save';
+  };
+  $('#ppCancel').onclick = () => { $('#ppForm').hidden = true; };
+  $('#ppGo').onclick = async () => {
+    const mode = $('#ppRow').dataset.mode, a = $('#ppIn').value;
+    try {
+      if (mode === 'unlock') { await api('sync:unlock', a); toast('Sync unlocked'); }
+      else { if (a !== $('#ppIn2').value) return toast('Passphrases don\'t match'); await api('sync:setPassphrase', a); toast('Passphrase set. Other devices keep syncing; new devices will ask for it.'); }
+    } catch (e) {
+      if (mode === 'unlock' && /not correct/.test(cleanErr(e)) && confirm('Wrong passphrase. Forgot it? You can reset sync: the encrypted copy on the server is deleted and this computer uploads its data again with a new key.')) {
+        const pw = prompt('Enter your Cairn account password to reset sync'); if (pw) { try { await api('sync:reset', pw); toast('Sync reset'); } catch (e2) { toast(cleanErr(e2)); } }
+      } else toast(cleanErr(e));
+    }
+    loadSync();
+  };
+  loadSync();
 
   const info = await api('app:info');
   $('#ver').textContent = 'Cairn ' + info.version; $('#verD').textContent = `Chromium ${info.chrome} · Electron ${info.electron} · ${info.platform}`;

@@ -24,7 +24,12 @@ object Recall {
         }
     }
 
+    private val PRIVATE = Regex("(?i)(login|signin|sign-in|auth|account|password|otp|verify|checkout|payment|pay|bank|wallet|billing|card|cart|order|mail\\.|inbox|chat|messages?|health|patient)")
+    /** Mail, banking, payment, health and account pages are never remembered, whatever their content. */
+    fun isPrivateUrl(url: String): Boolean = runCatching { val u = java.net.URI(url); PRIVATE.containsMatchIn((u.host ?: "") + (u.path ?: "")) }.getOrDefault(true)
+
     fun index(url: String, title: String, body: String) {
+        if (isPrivateUrl(url)) return
         if (!Prefs.memory || body.length < 200 || !url.startsWith("http")) return
         val clean = body.replace(Regex("\\s+"), " ").take(30_000)
         runCatching {

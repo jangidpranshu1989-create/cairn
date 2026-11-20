@@ -64,6 +64,20 @@ class Attachment(val name: String, val mime: String, val uri: Uri?, val bitmap: 
 
         fun fromCamera(bmp: Bitmap) = Attachment("Photo", "image/jpeg", null, bmp)
 
+        /** Full-resolution camera photo (written by the camera app to our cache), upright and sharp enough for OCR. */
+        fun fromCameraFile(ctx: Context, uri: Uri): Attachment? {
+            val bmp = decodeScaled(ctx, uri, 2400) ?: return null
+            return Attachment("Photo", "image/jpeg", null, bmp)
+        }
+
+        /** A fresh file in cache/camera for the camera app to write into. Old photos are cleaned up. */
+        fun newCameraUri(ctx: Context): Uri {
+            val dir = java.io.File(ctx.cacheDir, "camera").apply { mkdirs() }
+            dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 6 * 3600_000L }?.forEach { it.delete() }
+            val f = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
+            return androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+        }
+
         fun fromDocument(ctx: Context, uri: Uri): Attachment {
             val mime = ctx.contentResolver.getType(uri) ?: "application/octet-stream"
             if (mime.startsWith("image/")) fromImage(ctx, uri)?.let { return it }
@@ -73,8 +87,16 @@ class Attachment(val name: String, val mime: String, val uri: Uri?, val bitmap: 
         private fun decodeScaled(ctx: Context, uri: Uri, max: Int): Bitmap? = runCatching {
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) }
-            var sample = 1; while (maxOf(o.outWidth, o.outHeight) / sample > max * 2) sample *= 2
-            ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) }
+            if (o.outWidth <= 0) return@runCatching null
+            var sample = 1; while (maxOf(o.outWidth, o.outHeight) / (sample * 2) >= max) sample *= 2
+            val raw = ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) } ?: return@runCatching null
+            // Phone cameras store photos sideways plus an EXIF rotation flag; apply it so text is upright for OCR/vision.
+            val deg = runCatching { ctx.contentResolver.openInputStream(uri)?.use { when (android.media.ExifInterface(it).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90; android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180; android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270; else -> 0 } } }.getOrNull() ?: 0
+            val big = maxOf(raw.width, raw.height).toFloat()
+            val sc = if (big > max) max / big else 1f
+            if (deg == 0 && sc == 1f) raw
+            else Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, android.graphics.Matrix().apply { postScale(sc, sc); postRotate(deg.toFloat()) }, true)
         }.getOrNull()
     }
 

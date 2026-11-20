@@ -47,6 +47,17 @@ object Notifier {
         NotificationManagerCompat.from(ctx).notify(approvalId(a.id), n)
     }
 
+    /** A notification posted by a website the user allowed. Tapping it opens the page in Cairn. */
+    fun site(ctx: Context, origin: String, title: String, body: String, url: String) {
+        if (!canPost(ctx)) return
+        val open = PendingIntent.getActivity(ctx, origin.hashCode(), Intent(ctx, BrowserActivity::class.java).setAction(Intent.ACTION_VIEW).setData(Uri.parse(url.ifBlank { origin }))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        NotificationManagerCompat.from(ctx).notify((origin + title).hashCode(), NotificationCompat.Builder(ctx, CairnApp.CH_SITES)
+            .setSmallIcon(R.drawable.ic_stat_cairn).setColor(ACCENT).setContentTitle(title.ifBlank { Uri.parse(origin).host ?: origin })
+            .setContentText(body).setSubText(Uri.parse(origin).host).setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(open).setAutoCancel(true).build())
+    }
+
     fun cancelApproval(ctx: Context, id: String) = NotificationManagerCompat.from(ctx).cancel(approvalId(id))
 
     fun fileSaved(ctx: Context, name: String, folder: String, uri: Uri, mime: String) {

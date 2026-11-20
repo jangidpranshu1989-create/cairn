@@ -1,46 +1,53 @@
-// LLM access for the desktop app.
-// Mode "byok": call Groq / NVIDIA NIM directly with the user's keys (stored encrypted locally).
-// Mode "cloud": call the Cairn server proxy (keys stay server-side, quotas per account).
+// LLM access for the desktop app. Zero setup and no keys on the device:
+//  1. Cairn server AI: your account quota when signed in, otherwise an anonymous per-install token. The server
+//     holds the provider keys (Groq → NVIDIA NIM → keyless fallback).
+//  2. If the server can't be reached, a keyless OpenAI-compatible endpoint called directly from this computer.
 const store = require('./store');
 const cloud = require('./cloud');
 
-const PROVIDERS = {
-  groq: { base: 'https://api.groq.com/openai/v1', label: 'Groq' },
-  nvidia: { base: 'https://integrate.api.nvidia.com/v1', label: 'NVIDIA NIM' },
-};
+const FREE_URL = 'https://text.pollinations.ai/openai';
+const base = () => store.get().settings.data.serverUrl.replace(/\/$/, '');
+const timeout = (signal, ms) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms));
 
-const BUILTIN = (() => {
-  try {
-    const j = require('./builtin.json');
-    const un = (b) => Buffer.from([...Buffer.from(b || '', 'base64')].map((x, i) => x ^ (0x5A + i * 7) & 0xff)).toString();
-    return { groq: un(j.g), nvidia: un(j.n) };
-  } catch { return { groq: '', nvidia: '' }; }
-})();
-
-function cfg() {
-  const s = store.get().settings.data;
-  const v = store.get().vault.data;
-  return {
-    groqKey: v.groqKey || s.groqKey || process.env.GROQ_API_KEY || BUILTIN.groq,
-    nvidiaKey: v.nvidiaKey || s.nvidiaKey || process.env.NVIDIA_API_KEY || BUILTIN.nvidia,
-    groqModel: s.groqModel, groqFastModel: s.groqFastModel,
-    nvidiaModel: s.nvidiaModel, nvidiaFastModel: s.nvidiaFastModel,
-    preferred: s.preferredProvider, mode: s.aiMode,
-  };
+async function anonToken(force) {
+  const v = store.get().vault;
+  if (v.data.anonAiToken && !force) return v.data.anonAiToken;
+  const r = await fetch(base() + '/api/ai/device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform: 'desktop' }), signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw Object.assign(new Error('Cairn AI is unreachable'), { status: r.status });
+  v.data.anonAiToken = (await r.json()).token; v.flush();
+  return v.data.anonAiToken;
 }
 
-function order(c, tier) {
-  let o = tier === 'vision' ? ['nvidia', 'groq'] : ['groq', 'nvidia'];
-  if (c.preferred && tier !== 'vision') o = [c.preferred, ...o.filter(p => p !== c.preferred)];
-  return o.filter(p => (p === 'groq' ? c.groqKey : c.nvidiaKey));
+/** POST to the server AI with account or anonymous credentials. Returns the raw Response. */
+async function serverFetch(path, { json, form, accept, signal } = {}) {
+  const send = async (auth) => fetch(base() + '/api' + path, {
+    method: 'POST', signal: timeout(signal, 120_000),
+    headers: { Authorization: 'Bearer ' + auth, ...(json ? { 'Content-Type': 'application/json' } : {}), ...(accept ? { Accept: accept } : {}) },
+    body: form || JSON.stringify(json),
+  });
+  if (cloud.isSignedIn()) {
+    let r = await send(store.get().vault.data.cloud.accessToken);
+    if (r.status === 401) { try { await cloud.api('/auth/me'); r = await send(store.get().vault.data.cloud.accessToken); } catch {} }
+    if (r.status !== 401) return r;
+  }
+  let r = await send(await anonToken());
+  if (r.status === 401) r = await send(await anonToken(true));
+  return r;
 }
-const modelFor = (p, tier, c) => p === 'groq' ? (tier === 'fast' ? c.groqFastModel : c.groqModel) : (tier === 'fast' ? c.nvidiaFastModel : c.nvidiaModel);
+async function okJson(r) {
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || `AI error ${r.status}`), { status: r.status });
+  return j;
+}
 
-function status() {
-  const c = cfg();
-  if (c.mode === 'cloud') return { ready: cloud.isSignedIn(), mode: 'cloud', providers: [] };
-  const providers = order(c, 'smart');
-  return { ready: providers.length > 0, mode: 'byok', providers };
+function status() { return { ready: true, mode: cloud.isSignedIn() ? 'account' : 'builtin', providers: ['cairn'] }; }
+
+async function freeChat(opts) {
+  const body = { model: 'openai', messages: opts.messages, temperature: opts.temperature ?? 0.2, max_tokens: opts.maxTokens ?? 4096 };
+  if (opts.tools?.length) { body.tools = opts.tools; body.tool_choice = opts.toolChoice || 'auto'; }
+  const r = await fetch(FREE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: timeout(opts.signal, 120_000) });
+  const j = await okJson(r);
+  return { message: j.choices[0].message, provider: 'free', usage: j.usage };
 }
 
 /**
@@ -48,80 +55,44 @@ function status() {
  * → { message, provider }
  */
 async function chat(opts) {
-  const c = cfg();
-  if (c.mode === 'cloud') {
-    const j = await cloud.api('/ai/chat', { method: 'POST', body: { ...opts, signal: undefined, stream: false } , signal: opts.signal });
-    return { message: j.choices[0].message, provider: j._provider, usage: j.usage };
+  const { signal, ...rest } = opts;
+  let cloudErr;
+  try {
+    const j = await okJson(await serverFetch('/ai/chat', { json: { ...rest, stream: false }, signal }));
+    return { message: j.choices[0].message, provider: j._provider || 'cairn', usage: j.usage };
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    cloudErr = e;
   }
-  const providers = order(c, opts.tier || 'smart');
-  if (!providers.length) throw new Error('NO_AI_KEY');
-  let last;
-  for (const p of providers) {
-    const body = {
-      model: opts.tier === 'vision' && p === 'groq' ? 'qwen/qwen3.8-27b' : modelFor(p, opts.tier === 'vision' ? 'smart' : opts.tier, c),
-      messages: opts.messages,
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? 4096,
-    };
-    if (opts.tools?.length) { body.tools = opts.tools; body.tool_choice = opts.toolChoice || 'auto'; }
-    if (opts.json) body.response_format = { type: 'json_object' };
-    if (p === 'nvidia') body.chat_template_kwargs = { enable_thinking: false };
-    if (p === 'groq' && /gpt-oss/.test(body.model)) body.reasoning_effort = opts.reasoning || 'low';
-    try {
-      const r = await fetch(`${PROVIDERS[p].base}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p === 'groq' ? c.groqKey : c.nvidiaKey}` },
-        body: JSON.stringify(body),
-        signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
-      });
-      if (!r.ok) {
-        const t = await r.text();
-        last = new Error(`${PROVIDERS[p].label} ${r.status}: ${t.slice(0, 240)}`);
-        // Groq returns 400 tool_use_failed when the model emits a malformed call — let the other provider try.
-        if (r.status === 401) last.message = `${PROVIDERS[p].label} API key is invalid (401). Update it in Settings → AI.`;
-        continue;
-      }
-      const j = await r.json();
-      return { message: j.choices[0].message, provider: p, usage: j.usage };
-    } catch (e) {
-      if (opts.signal?.aborted) throw e;
-      last = e;
-    }
-  }
-  throw last;
+  if (opts.tier === 'vision' || (cloudErr.status === 429 && /daily/i.test(cloudErr.message))) throw cloudErr;
+  try { return await freeChat(opts); }
+  catch (e) { if (signal?.aborted) throw e; throw cloudErr.status && cloudErr.status !== 503 ? cloudErr : new Error('NO_AI'); }
 }
 
-/** Streams a plain-text reply; calls onDelta(text) per chunk. Cloud mode falls back to one chunk. */
-async function stream(messages, onDelta, opts = {}) {
-  const c = cfg();
-  if (c.mode === 'cloud') { const { message } = await chat({ messages, ...opts }); onDelta(message.content || ''); return message.content || ''; }
-  const providers = order(c, opts.tier || 'smart');
-  if (!providers.length) throw new Error('NO_AI_KEY');
-  let last;
-  for (const p of providers) {
-    const body = { model: modelFor(p, opts.tier || 'smart', c), messages, temperature: 0.3, max_tokens: opts.maxTokens ?? 1000, stream: true };
-    if (p === 'nvidia') body.chat_template_kwargs = { enable_thinking: false };
-    if (p === 'groq' && /gpt-oss/.test(body.model)) body.reasoning_effort = 'low';
-    let out = '';
-    try {
-      const r = await fetch(`${PROVIDERS[p].base}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${p === 'groq' ? c.groqKey : c.nvidiaKey}` },
-        body: JSON.stringify(body), signal: AbortSignal.timeout(90_000) });
-      if (!r.ok) { last = new Error(`${PROVIDERS[p].label} ${r.status}`); continue; }
-      const dec = new TextDecoder(); let buf = '';
-      for await (const chunk of r.body) {
-        buf += dec.decode(chunk, { stream: true });
-        let i;
-        while ((i = buf.indexOf('\n')) >= 0) {
-          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-          if (!line.startsWith('data:')) continue;
-          const d = line.slice(5).trim(); if (d === '[DONE]') continue;
-          try { const t = JSON.parse(d).choices?.[0]?.delta?.content; if (t) { out += t; onDelta(t); } } catch {}
-        }
-      }
-      if (out) return out;
-    } catch (e) { if (out) return out; last = e; }
+async function readSse(r, onDelta) {
+  const dec = new TextDecoder(); let buf = '', out = '';
+  for await (const chunk of r.body) {
+    buf += dec.decode(chunk, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith('data:')) continue;
+      const d = line.slice(5).trim(); if (d === '[DONE]') continue;
+      try { const t = JSON.parse(d).choices?.[0]?.delta?.content; if (t) { out += t; onDelta(t); } } catch {}
+    }
   }
-  throw last || new Error('AI request failed');
+  return out;
+}
+
+/** Streams a plain-text reply; calls onDelta(text) per chunk. Falls back to one chunk. */
+async function stream(messages, onDelta, opts = {}) {
+  let partial = '';
+  try {
+    const r = await serverFetch('/ai/chat', { json: { messages, tier: opts.tier || 'smart', maxTokens: opts.maxTokens ?? 1000, temperature: 0.3, stream: true }, accept: 'text/event-stream' });
+    if (r.ok) { const out = await readSse(r, (t) => { partial += t; onDelta(t); }); if (out) return out; }
+  } catch { if (partial) return partial; }
+  const { message } = await chat({ messages, ...opts });
+  onDelta(message.content || ''); return message.content || '';
 }
 
 /** Plain text helper */
@@ -142,36 +113,13 @@ async function completeJSON(system, user, opts = {}) {
 }
 
 async function transcribe(buffer, mime, language) {
-  const c = cfg();
-  if (c.mode === 'cloud') {
-    const fd = new FormData();
-    fd.append('audio', new Blob([buffer], { type: mime }), 'voice.webm');
-    if (language) fd.append('language', language);
-    return (await cloud.api('/ai/stt', { method: 'POST', form: fd })).text;
-  }
-  if (!c.groqKey) throw new Error('Voice input needs a Groq API key (Settings → AI).');
   const fd = new FormData();
-  fd.append('file', new Blob([buffer], { type: mime }), 'voice.webm');
-  fd.append('model', 'whisper-large-v3-turbo');
+  fd.append('audio', new Blob([buffer], { type: mime }), 'voice.webm');
   if (language) fd.append('language', language);
-  const r = await fetch(`${PROVIDERS.groq.base}/audio/transcriptions`, { method: 'POST', headers: { Authorization: `Bearer ${c.groqKey}` }, body: fd });
-  if (!r.ok) throw new Error(`Transcription failed (${r.status})`);
-  return (await r.json()).text;
+  return (await okJson(await serverFetch('/ai/stt', { form: fd }))).text;
 }
 
-// Cloud TTS fallback (Groq Orpheus, English) for systems without a matching OS voice.
-async function speech(text, voice = 'hannah') {
-  const c = cfg();
-  if (!c.groqKey) throw new Error('No voice installed for this language. Add a Groq key (Settings → AI) or install system voices.');
-  const r = await fetch(`${PROVIDERS.groq.base}/audio/speech`, { method: 'POST', headers: { Authorization: `Bearer ${c.groqKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'canopylabs/orpheus-v1-english', voice, input: String(text).slice(0, 1200), response_format: 'wav' }), signal: AbortSignal.timeout(30000) });
-  if (!r.ok) throw new Error(`Speech failed (${r.status})`);
-  return Buffer.from(await r.arrayBuffer());
-}
+// Cloud TTS isn't offered; Cairn reads aloud with the system's voices.
+async function speech() { throw new Error('No voice installed for this language. Install a system voice for it in your OS settings.'); }
 
-async function testKey(provider, key) {
-  const r = await fetch(`${PROVIDERS[provider].base}/models`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15000) });
-  return r.ok;
-}
-
-module.exports = { chat, stream, complete, completeJSON, transcribe, speech, status, testKey };
+module.exports = { chat, stream, complete, completeJSON, transcribe, speech, status };

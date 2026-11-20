@@ -25,8 +25,8 @@ android {
         applicationId = "app.cairn.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.4.0"
+        versionCode = 7
+        versionName = "2.4.1"
         // Default Cairn Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
         buildConfigField("String", "DEFAULT_SERVER", "\"${(project.findProperty("cairnServer") as String?) ?: "https://cairn-browser.pplx.app/port/8787"}\"")
         buildConfigField("String", "SITE", "\"${(project.findProperty("cairnSite") as String?) ?: "https://jangidpranshu1989-create.github.io/cairn"}\"")
@@ -84,6 +84,8 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     // On-device OCR (bundled models: offline, no Play services) for photos of books, notes, bills and signs
-    implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+    // Unbundled ML Kit OCR: models come from Google Play services (keeps the APK ~45 MB smaller). Without Play services
+    // OCR is skipped and photos go to the vision model instead.
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition-devanagari:16.0.1")
 }

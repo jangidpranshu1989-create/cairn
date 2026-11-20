@@ -166,9 +166,13 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
             tab?.unsafe?.let { UnsafePage(tab) }
             AgentEdge(Agent.controlling != null && Agent.controlling == tab)
             // Small transient pills float just above the dock edge; they're narrow and centred so the page stays usable.
-            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                val guard = (tab?.sensitive == true && tab == Browser.current) || Agent.controlling?.sensitive == true
-                GuardBadge(guard && !imeVisible && !hidden, Modifier.padding(bottom = 6.dp))
+            // Guard pill: only while a password/PIN/OTP/card field is actually focused on a real page, at the top of the
+            // page area (far from the dock and the keyboard), and only for a few seconds. Never on the New Tab page.
+            val focusGuard = tab != null && !tab.isNtp && tab.secureFocus && tab.error == null
+            var guardShown by remember { mutableStateOf(false) }
+            LaunchedEffect(focusGuard, tab?.id) { guardShown = focusGuard; if (focusGuard) { delay(3500); guardShown = false } }
+            GuardBadge(guardShown && Ui.screen == null && !Ui.assistant, Modifier.align(Alignment.TopCenter).padding(top = 10.dp))
+            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 AgentStatus(Modifier)
             }
         }
@@ -248,7 +252,7 @@ fun NewTabPage(private: Boolean) {
     val v = BrowserDb.version.intValue
     val sites = remember(v) {
         val top = runCatching { BrowserDb.topSites(8) }.getOrDefault(emptyList()).map { (it.title.ifBlank { hostOf(it.url) }) to it.url }
-        (top + defaults.filter { d -> top.none { hostOf(it.second).removePrefix("www.") == hostOf(d.second).removePrefix("www.") } }).take(8)
+        (top + defaults.filter { d -> top.none { BrowserDb.siteKey(it.second) == BrowserDb.siteKey(d.second) } }).distinctBy { BrowserDb.siteKey(it.second) }.take(8)
     }
     Column(Modifier.fillMaxSize().background(C.bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(if (private) 72.dp else 64.dp))
@@ -331,7 +335,7 @@ fun NewTabPage(private: Boolean) {
                 Icon(Ic.ChevronRight, null, Modifier.size(16.dp), tint = C.faint)
             }
         }
-        val recent = remember(v) { runCatching { BrowserDb.history(limit = 4) }.getOrDefault(emptyList()) }
+        val recent = remember(v) { runCatching { BrowserDb.history(limit = 20).filter { !BrowserDb.isJunk(it.url, it.title) }.distinctBy { it.url.substringBefore('#') }.take(4) }.getOrDefault(emptyList()) }
         if (recent.isNotEmpty()) {
             Spacer(Modifier.height(26.dp))
             Text("Jump back in", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)

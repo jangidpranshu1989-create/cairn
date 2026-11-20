@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
 object Favicons {
     private lateinit var dir: File
     private val http = OkHttpClient.Builder().connectTimeout(6, TimeUnit.SECONDS).readTimeout(8, TimeUnit.SECONDS).callTimeout(14, TimeUnit.SECONDS).followRedirects(true).build()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + app.cairn.browser.Crash.handler)
     private val gate = Semaphore(4)
     private val inFlight = HashSet<String>()
     private val missing = HashSet<String>()

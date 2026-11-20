@@ -123,7 +123,8 @@ class BrowserActivity : FragmentActivity() {
         app.cairn.browser.service.AgentService.foreground = true
         Browser.current?.web?.onResume()
         if (Prefs.isPaired) SyncService.start(this, SyncService.ACTION_SYNC)
-        Thread { app.cairn.browser.data.ServerConfig.refresh() }.start()
+        Thread { runCatching { app.cairn.browser.data.ServerConfig.refresh() } }.start()
+        if (app.cairn.browser.Crash.consumeRecovered()) toast("Cairn recovered from a problem — your tabs are back")
         app.cairn.browser.vault.Sync.soon(800)
     }
 

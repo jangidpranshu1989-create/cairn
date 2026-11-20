@@ -30,7 +30,7 @@ object WebBridge {
     val fillOffer = mutableStateOf<FillOffer?>(null)
     val afOffer = mutableStateOf<AutofillOffer?>(null)
     val afSave = mutableStateOf<AutofillSave?>(null)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + app.cairn.browser.Crash.handler)
 
     val supported get() = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
 

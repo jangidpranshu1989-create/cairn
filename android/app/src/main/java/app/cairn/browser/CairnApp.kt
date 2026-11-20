@@ -11,8 +11,10 @@ import app.cairn.browser.service.SyncService
 class CairnApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        Crash.install(this)
         Prefs.init(this)
         app.cairn.browser.data.BrowserDb.init(this)
+        Thread { runCatching { app.cairn.browser.data.BrowserDb.purgeJunk() } }.start()
         app.cairn.browser.vault.Vault.init(this)
         app.cairn.browser.service.Downloader.init(this)
         app.cairn.browser.vault.Sync.init(this)

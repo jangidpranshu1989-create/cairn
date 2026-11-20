@@ -42,6 +42,30 @@
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
     <article class="rv">
+      <div><div class="ver">v2.5.0</div><time datetime="2026-11-20">20 November 2026</time><span class="tag">New dock, fewer crashes</span></div>
+      <div class="prose">
+        <p>A redesigned two-row dock, a calmer home screen and a much sturdier browser, based on testing 2.4.1 on real phones.</p>
+        <h3>Dock</h3>
+        <ul>
+          <li>New two-row dark dock: a rounded address pill (menu, current site, reload) above Back, Forward, the Assistant pill with a voice button, Tabs and New tab.</li>
+          <li>Tap Assistant to chat, tap the waveform to talk. The dock still hides while you scroll down and returns when you scroll up, without covering the page.</li>
+        </ul>
+        <h3>Home and Guard</h3>
+        <ul>
+          <li>The "Cairn Guard Active" pill no longer sits on top of Jump back in. It now appears only while a password, PIN or OTP field is focused on a web page.</li>
+          <li>Blank pages, error pages and chrome-error addresses are no longer saved as shortcuts or history, and duplicate sites are merged.</li>
+        </ul>
+        <h3>Stability</h3>
+        <ul>
+          <li>Crash safety net: errors are logged on the device and Cairn recovers instead of closing. If a restart is needed your tabs come back.</li>
+          <li>When a web page's renderer crashes only that tab reloads; pages that keep crashing stop retrying and show an error.</li>
+          <li>Background network and AI tasks can no longer take the app down.</li>
+        </ul>
+        <h3>Sign-up</h3>
+        <ul><li>The sign-up captcha is now drawn as a proper image that always fits, instead of getting cut off at the top.</li></ul>
+      </div>
+    </article>
+    <article class="rv">
       <div><div class="ver">v2.4.1</div><time datetime="2026-11-20">20 November 2026</time><span class="tag">Chats and camera</span></div>
       <div class="prose">
         <p>Cairn's assistant now remembers your conversations, reads book pages from the camera, and the browser scrolls like it should.</p>
@@ -180,7 +204,7 @@
     <div><h4>Company</h4><ul><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li><li><a href="security.html">Security</a></li></ul></div>
     <div><h4>Legal</h4><ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of service</a></li><li><a href="security.html#disclosure">Responsible disclosure</a></li></ul></div>
   </div>
-  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v2.4.1 · Built with Groq &amp; NVIDIA NIM</span></div>
+  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v2.5.0 · Built with Groq &amp; NVIDIA NIM</span></div>
 </div></footer>
 <script src="assets/site.js" defer></script>
 </body>

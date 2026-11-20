@@ -134,32 +134,43 @@ private fun Modifier.shadow2(corner: androidx.compose.ui.unit.Dp) = this.drawBeh
 }
 
 // ============================================================ Dock
+/**
+ * Comet-style two-row dock. Row 1: a full-width address pill (menu · site · reload). Row 2: back, forward, the
+ * Assistant pill (tap = chat, waveform = voice, long-press = Circle to Ask), tabs and new tab. It sits *below* the page
+ * in the layout, so it never covers page content.
+ */
 @Composable
 fun Dock(tab: Tab?, modifier: Modifier = Modifier) {
-    val density = LocalDensity.current
-    var top by remember { mutableFloatStateOf(0f) }
-    var h by remember { mutableFloatStateOf(0f) }
-    Glass(modifier.padding(horizontal = 10.dp).fillMaxWidth().height(60.dp).onGloballyPositioned { c ->
-        val webTop = IntArray(2).also { runCatching { act.webHost.getLocationInWindow(it) } }[1]
-        top = c.positionInWindow().y - webTop; h = c.size.height.toFloat()
-    }, 22.dp, sampled = false) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            AddressCapsule(tab, Modifier.weight(1f))
-            Spacer(Modifier.width(4.dp))
-            AgentStone()
-            TabsTile(tab)
-            IconBtn(Ic.MoreVert, "Menu", size = 44.dp) { Haptics.tick(); Ui.menu = true }
+    Column(modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        AddressPill(tab)
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+            val canBack = tab != null && (tab.canBack || !tab.isNtp)
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                IconBtn(Ic.ArrowBack, "Back", tint = if (canBack) C.text else C.faint, size = 46.dp, enabled = canBack) { Haptics.tick(); tab?.let { Browser.back(it) } }
+            }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                val canFwd = tab?.canForward == true
+                IconBtn(Ic.ArrowForward, "Forward", tint = if (canFwd) C.text else C.faint, size = 46.dp, enabled = canFwd) { Haptics.tick(); Browser.forward(tab) }
+            }
+            AssistantPill(Modifier.weight(2.6f))
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { TabsTile(tab) }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                IconBtn(Ic.Add, "New tab", tint = C.text, size = 46.dp) { Haptics.tick(); Browser.newTab(NTP, tab?.incognito == true); Ui.omnibox = true }
+            }
         }
     }
 }
 
 @Composable
-fun AddressCapsule(tab: Tab?, modifier: Modifier) {
+private fun AddressPill(tab: Tab?) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var drag by remember { mutableFloatStateOf(0f) }
     val swipe = with(LocalDensity.current) { 64.dp.toPx() }
     val dx by animateFloatAsState(drag * .35f, cairnSpring(), label = "dx")
-    Box(modifier.height(44.dp).clip(RoundedCornerShape(15.dp)).background(if (tab?.incognito == true) C.surface3 else C.surface2.copy(alpha = .72f))
+    val shape = RoundedCornerShape(26.dp)
+    Box(Modifier.fillMaxWidth().height(50.dp).clip(shape).background(if (tab?.incognito == true) C.surface3 else C.surface)
+        .border(1.dp, C.line2, shape)
         .pointerInput(tab) {
             detectHorizontalDragGestures(onDragEnd = {
                 val list = Browser.tabs.filter { it.incognito == tab?.incognito }; val i = list.indexOf(tab)
@@ -169,31 +180,54 @@ fun AddressCapsule(tab: Tab?, modifier: Modifier) {
             }) { _, d -> drag += d }
         }
         .combinedClickableCompat(onClick = { Ui.omniboxText = null; Ui.omnibox = true }, onLongClick = { tab?.takeIf { !it.isNtp }?.let { Haptics.long(); copyText(ctx, "Link", it.url); act.toast("Link copied") } })) {
-        Row(Modifier.fillMaxSize().offset { IntOffset(dx.roundToInt(), 0) }.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (tab == null || tab.isNtp) {
-                Icon(Ic.Search, null, Modifier.size(16.dp), tint = C.faint); Spacer(Modifier.width(9.dp))
-                Text(if (tab?.incognito == true) "Search privately" else "Search or ask", color = C.faint, fontSize = 15.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                IconBtn(Ic.Mic, "Voice search", size = 36.dp, tint = C.muted) { act.listen { t -> Browser.open(t) } }
-            } else {
-                val q = Search.queryOf(tab.url)
-                Box(Modifier.size(26.dp).clip(CircleShape).clickable { Ui.siteInfo = true }, contentAlignment = Alignment.Center) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconBtn(Ic.MoreVert, "Menu", tint = C.text, size = 42.dp) { Haptics.tick(); Ui.menu = true }
+            Row(Modifier.weight(1f).offset { IntOffset(dx.roundToInt(), 0) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                if (tab == null || tab.isNtp) {
+                    Text(if (tab?.incognito == true) "Search privately" else "Search or ask", color = C.faint, fontSize = 16.sp, maxLines = 1)
+                } else {
+                    val q = Search.queryOf(tab.url)
                     when {
-                        tab.sensitive -> Icon(Ic.GppGood, "Cairn Guard is active", Modifier.size(15.dp), tint = C.ok)
-                        q != null -> Icon(Ic.Search, null, Modifier.size(15.dp), tint = C.muted)
-                        !tab.secure -> Icon(Ic.Info, "Not secure", Modifier.size(15.dp), tint = C.warn)
-                        else -> Favicon(tab.url, tab.icon, 16.dp, 4.dp)
+                        tab.sensitive -> { Icon(Ic.GppGood, "Cairn Guard is active", Modifier.size(14.dp).clickable { Ui.siteInfo = true }, tint = C.ok); Spacer(Modifier.width(6.dp)) }
+                        !tab.secure && q == null -> { Icon(Ic.Info, "Not secure", Modifier.size(14.dp).clickable { Ui.siteInfo = true }, tint = C.warn); Spacer(Modifier.width(6.dp)) }
+                        else -> {}
                     }
+                    Text(q ?: tab.host.removePrefix("www.").ifBlank { tab.url }, color = C.text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, false))
+                    tab.translated?.let { Text(it.take(2).uppercase(), color = C.agent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp).border(1.dp, C.agent.copy(alpha = .5f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) }
                 }
-                Spacer(Modifier.width(7.dp))
-                Text(q ?: tab.host.removePrefix("www.").ifBlank { tab.url }, color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                tab.translated?.let { Text(it.take(2).uppercase(), color = C.agent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(end = 4.dp).border(1.dp, C.agent.copy(alpha = .5f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) }
-                IconBtn(if (tab.loading) Ic.Close else Ic.Refresh, if (tab.loading) "Stop" else "Reload", size = 36.dp, tint = C.muted) { Haptics.tick(); if (tab.loading) Browser.stop(tab) else Browser.reload(tab) }
             }
+            if (tab == null || tab.isNtp) IconBtn(Ic.Mic, "Voice search", size = 42.dp, tint = C.text) { act.listen { t -> Browser.open(t) } }
+            else IconBtn(if (tab.loading) Ic.Close else Ic.Refresh, if (tab.loading) "Stop" else "Reload", size = 42.dp, tint = C.text) { Haptics.tick(); if (tab.loading) Browser.stop(tab) else Browser.reload(tab) }
         }
-        // Progress hairline along the bottom of the capsule
         val p by animateFloatAsState(if (tab?.loading == true) tab.progress / 100f else 1f, tween(240), label = "p")
         val alpha by animateFloatAsState(if (tab?.loading == true) 1f else 0f, tween(if (tab?.loading == true) 80 else 420), label = "pa")
-        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(p.coerceAtLeast(.04f)).height(2.dp).background((if (Agent.controlling == tab && tab != null) C.agent else C.text).copy(alpha = .8f * alpha)))
+        Box(Modifier.align(Alignment.BottomStart).padding(horizontal = 18.dp).fillMaxWidth(p.coerceAtLeast(.04f)).height(2.dp).clip(CircleShape)
+            .background((if (Agent.controlling == tab && tab != null) C.agent else C.text).copy(alpha = .8f * alpha)))
+    }
+}
+
+/** Center of the dock: Cairn mark + "Assistant", with a white voice button on the right. */
+@Composable
+private fun AssistantPill(modifier: Modifier) {
+    val t = rememberInfiniteTransition(label = "pill")
+    val rot by t.animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "rot")
+    val col = C.agent
+    val shape = RoundedCornerShape(25.dp)
+    Row(modifier.padding(horizontal = 4.dp).height(48.dp).clip(shape).background(C.surface).border(1.dp, C.line2, shape)
+        .combinedClickableCompat(onClick = { Haptics.tick(); Ui.assistant = true }, onLongClick = { Haptics.long(); startLasso() })
+        .padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            if (Agent.running) Canvas(Modifier.size(24.dp).rotate(rot)) { drawArc(col, 0f, 110f, false, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round)) }
+            Logo(18.dp, lift = if (Agent.running) 1f else 0f)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(if (Agent.running) "Working…" else "Assistant", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.weight(1f))
+        Box(Modifier.size(40.dp).clip(CircleShape).background(if (C.dark) Color(0xFFECECEC) else C.text).clickable {
+            Haptics.tick(); act.listen { q -> if (q.isNotBlank()) { Ui.assistant = true; Agent.run(q) } }
+        }, contentAlignment = Alignment.Center) {
+            Icon(Ic.GraphicEq, "Talk to Cairn", Modifier.size(20.dp), tint = if (C.dark) Color(0xFF1C1C1F) else C.bg)
+        }
     }
 }
 

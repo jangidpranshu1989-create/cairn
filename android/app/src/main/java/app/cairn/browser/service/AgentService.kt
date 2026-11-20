@@ -30,7 +30,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  * finishes or is waiting for an approval or answer.
  */
 class AgentService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + app.cairn.browser.Crash.handler)
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {

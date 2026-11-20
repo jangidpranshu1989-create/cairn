@@ -43,7 +43,7 @@ class OneTapRequest(val tab: Tab, val authorizeUrl: String, val params: JSONObje
 object OneTap {
     var pending by mutableStateOf<OneTapRequest?>(null)
     var busy by mutableStateOf(false)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + app.cairn.browser.Crash.handler)
 
     private fun isAuthorize(u: Uri): Boolean {
         val server = runCatching { Uri.parse(Prefs.server) }.getOrNull() ?: return false

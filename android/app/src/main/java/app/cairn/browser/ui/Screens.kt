@@ -1,5 +1,7 @@
 package app.cairn.browser.ui
 
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
@@ -906,7 +908,7 @@ fun AccountScreen() {
         captcha?.takeIf { mode != "forgot" }?.let { c ->
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CaptchaImage(c.svg, Modifier.weight(1f).height(52.dp).clip(RoundedCornerShape(12.dp)))
+                CaptchaImage(c.svg, Modifier.weight(1f).height(64.dp).clip(RoundedCornerShape(12.dp)))
                 Spacer(Modifier.width(8.dp)); IconBtn(Ic.Refresh, "New picture", tint = C.muted) { loadCaptcha() }
             }
             Spacer(Modifier.height(8.dp))
@@ -936,15 +938,55 @@ fun AccountScreen() {
     }
 }
 
-/** The server's SVG captcha, drawn in a tiny non-interactive WebView (no JavaScript). */
+/**
+ * The server's captcha, drawn natively as an image: the SVG's <path> shapes are parsed and painted on a Canvas,
+ * scaled to fit and centred — so it can never be clipped or scrolled the way a WebView-rendered SVG could.
+ */
 @Composable
 fun CaptchaImage(svg: String, modifier: Modifier = Modifier) {
-    androidx.compose.ui.viewinterop.AndroidView({ c -> android.webkit.WebView(c).apply {
-        settings.javaScriptEnabled = false; isVerticalScrollBarEnabled = false; isHorizontalScrollBarEnabled = false; setBackgroundColor(0xFFF4EFE6.toInt())
-        isClickable = false; isFocusable = false
-    } }, modifier.background(Color(0xFFF4EFE6)), update = { w ->
-        w.loadDataWithBaseURL(null, "<html><body style='margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f4efe6'>$svg</body></html>", "text/html", "utf-8", null)
-    })
+    val parsed = remember(svg) { runCatching { parseCaptchaSvg(svg) }.getOrNull() }
+    if (parsed == null || parsed.shapes.isEmpty()) {
+        Box(modifier.background(Color(0xFFF4EFE6)), contentAlignment = Alignment.Center) { Text("Tap ↻ for a new picture", color = Color(0xFF6B6459), fontSize = 13.sp) }
+        return
+    }
+    androidx.compose.foundation.Canvas(modifier.background(parsed.bg).padding(horizontal = 6.dp, vertical = 4.dp)) {
+        val sc = minOf(size.width / parsed.w, size.height / parsed.h)
+        val dx = (size.width - parsed.w * sc) / 2f; val dy = (size.height - parsed.h * sc) / 2f
+        val m = android.graphics.Matrix().apply { setScale(sc, sc); postTranslate(dx, dy) }
+        drawIntoCanvas { cv ->
+            parsed.shapes.forEach { sh ->
+                val path = android.graphics.Path(sh.path).apply { transform(m) }
+                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    color = sh.color
+                    if (sh.stroke) { style = android.graphics.Paint.Style.STROKE; strokeWidth = (sc * 1.1f).coerceAtLeast(1f) } else style = android.graphics.Paint.Style.FILL
+                }
+                cv.nativeCanvas.drawPath(path, paint)
+            }
+        }
+    }
+}
+
+private class CaptchaShape(val path: android.graphics.Path, val color: Int, val stroke: Boolean)
+private class CaptchaSvg(val w: Float, val h: Float, val bg: Color, val shapes: List<CaptchaShape>)
+
+private fun parseCaptchaSvg(svg: String): CaptchaSvg {
+    fun attr(tag: String, name: String) = Regex("""\b$name\s*=\s*"([^"]*)"""").find(tag)?.groupValues?.get(1)
+    fun color(v: String?): Int? = v?.takeIf { it.startsWith("#") }?.let { c ->
+        val hex = if (c.length == 4) "#" + c.drop(1).map { "$it$it" }.joinToString("") else c
+        runCatching { android.graphics.Color.parseColor(hex) }.getOrNull() }
+    val root = Regex("""<svg[^>]*>""").find(svg)?.value ?: error("no svg")
+    val vb = attr(root, "viewBox")?.split(Regex("[,\\s]+"))?.mapNotNull { it.toFloatOrNull() }
+    val w = vb?.getOrNull(2) ?: attr(root, "width")?.toFloatOrNull() ?: 150f
+    val h = vb?.getOrNull(3) ?: attr(root, "height")?.toFloatOrNull() ?: 50f
+    val bg = Regex("""<rect[^>]*>""").find(svg)?.value?.let { color(attr(it, "fill")) } ?: 0xFFF4EFE6.toInt()
+    val shapes = Regex("""<path[^>]*>""").findAll(svg).mapNotNull { m ->
+        val tag = m.value; val d = attr(tag, "d") ?: return@mapNotNull null
+        val p = runCatching { androidx.core.graphics.PathParser.createPathFromPathData(d) }.getOrNull() ?: return@mapNotNull null
+        val fill = attr(tag, "fill"); val stroke = attr(tag, "stroke")
+        if (fill == "none" || fill == null && stroke != null) CaptchaShape(p, color(stroke) ?: 0xFF555555.toInt(), true)
+        else CaptchaShape(p, color(fill) ?: 0xFF333333.toInt(), false)
+    }.toList()
+    return CaptchaSvg(w, h, Color(bg), shapes)
 }
 
 // ---------------------------------------------------------------- Pairing

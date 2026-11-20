@@ -36,7 +36,7 @@ object Sync {
     val status = mutableStateOf("")
     val busy = mutableStateOf(false)
     val remoteTabs = mutableStateListOf<RemoteTabs>()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + app.cairn.browser.Crash.handler)
     private val lock = Mutex()
     private var pending: Job? = null
     private lateinit var file: File

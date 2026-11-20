@@ -80,6 +80,8 @@
 <section class="sec" id="s-phone"><h1>Phone &amp; sync</h1><p class="muted">Pair the Cairn Android app to approve payments with your fingerprint and receive files.</p>
   <div class="group"><h3>Sync</h3>
     <div class="opt"><div class="l"><b>Sync this computer</b><small id="syncInfo">Bookmarks, history, open tabs, passwords, passkeys and settings — end-to-end encrypted with your account password.</small></div><button class="btn" id="syncNow">Sync now</button><label class="sw"><input type="checkbox" id="syncOn"><span></span></label></div>
+    <div class="opt" id="ppRow"><div class="l"><b>Custom sync passphrase</b><small id="ppInfo">Optional. Encrypt synced data with a passphrase only you know, instead of your account password. Cairn's server can never read it, but if you forget it you'll have to reset sync.</small></div><button class="btn" id="ppBtn">Set passphrase</button></div>
+    <div class="opt" id="ppForm" hidden><div class="l" style="flex:1"><input class="input" type="password" id="ppIn" placeholder="Passphrase" autocomplete="new-password" style="width:100%"><input class="input" type="password" id="ppIn2" placeholder="Confirm passphrase" autocomplete="new-password" style="width:100%;margin-top:6px"></div><button class="btn" id="ppCancel">Cancel</button><button class="btn primary" id="ppGo">Save</button></div>
     <div id="remoteTabs"></div>
   </div>
   <div class="group" id="phoneGroup"><h3>Pair a phone</h3><div class="opt" id="phoneBody"><div class="l muted">Loading…</div></div></div>

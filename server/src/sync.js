@@ -1,5 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
+import crypto from 'node:crypto';
 import { db, now, audit } from './db.js';
 import { requireAuth } from './auth.js';
 import { notify } from './hub.js';
@@ -28,16 +29,32 @@ syncRouter.get('/key', requireAuth, (req, res) => {
   res.json({ wrappedKey: m.wrapped_key || null, salt: m.key_salt || null, kdf: m.kdf || null, rev: m.rev });
 });
 syncRouter.put('/key', requireAuth, (req, res) => {
-  const p = z.object({ wrappedKey: z.string().min(20).max(2000), salt: z.string().max(200), kdf: z.string().max(200), replace: z.boolean().default(false) }).safeParse(req.body);
+  const p = z.object({ wrappedKey: z.string().min(20).max(2000), salt: z.string().max(200), kdf: z.string().max(200), replace: z.boolean().default(false), kcv: z.string().min(20).max(100).optional() }).safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: 'invalid key' });
   const m = meta(req.user.id);
   if (m.wrapped_key && !p.data.replace) return res.status(409).json({ error: 'key exists', wrappedKey: m.wrapped_key, salt: m.key_salt, kdf: m.kdf });
-  db.prepare('UPDATE sync_meta SET wrapped_key=?, key_salt=?, kdf=? WHERE user_id=?').run(p.data.wrappedKey, p.data.salt, p.data.kdf, req.user.id);
+  db.prepare('UPDATE sync_meta SET wrapped_key=?, key_salt=?, kdf=?, kcv=? WHERE user_id=?').run(p.data.wrappedKey, p.data.salt, p.data.kdf, p.data.kcv || null, req.user.id);
   // Replacing the key (password reset without the old password) makes old ciphertext unreadable; wipe it.
   if (m.wrapped_key && p.data.replace) db.prepare('DELETE FROM sync_items WHERE user_id=?').run(req.user.id);
   audit(req.user.id, p.data.replace ? 'sync_key_replaced' : 'sync_key_created');
   res.json({ ok: true });
 });
+
+// Re-wrap the SAME vault key under a different secret (e.g. turning a custom sync passphrase on or off).
+// Nothing is deleted. The caller proves it holds the vault key with kcv = HMAC(vaultKey, "cairn-kcv"), which the
+// server only compares (trust-on-first-use for accounts created before 2.3). The server never learns the key.
+syncRouter.post('/key/rewrap', requireAuth, (req, res) => {
+  const p = z.object({ wrappedKey: z.string().min(20).max(2000), salt: z.string().max(200), kdf: z.string().max(200), expect: z.string().max(2000), kcv: z.string().min(20).max(100) }).safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: 'invalid key' });
+  const m = meta(req.user.id);
+  if (!m.wrapped_key) return res.status(404).json({ error: 'no key yet' });
+  if (m.wrapped_key !== p.data.expect) return res.status(409).json({ error: 'key changed on another device, sync and try again' });
+  if (m.kcv && !safeEq(m.kcv, p.data.kcv)) return res.status(403).json({ error: 'this device does not hold the sync key' });
+  db.prepare('UPDATE sync_meta SET wrapped_key=?, key_salt=?, kdf=?, kcv=? WHERE user_id=?').run(p.data.wrappedKey, p.data.salt, p.data.kdf, p.data.kcv, req.user.id);
+  audit(req.user.id, /passphrase/.test(p.data.kdf) ? 'sync_passphrase_set' : 'sync_passphrase_removed');
+  res.json({ ok: true });
+});
+function safeEq(a, b) { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); }
 
 syncRouter.get('/changes', requireAuth, (req, res) => {
   const since = Math.max(0, Number(req.query.since) || 0);

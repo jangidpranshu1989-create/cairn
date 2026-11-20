@@ -90,9 +90,17 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(err.status || 500).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'File too large' : 'Internal error' });
+let _err;
+const pageError = (code, title, msg) => (_err ??= readFileSync(path.join(__dirname, '..', 'public', 'error.html'), 'utf8'))
+  .replaceAll('{{BASE}}', config.publicUrl).replaceAll('{{CODE}}', String(code)).replaceAll('{{TITLE}}', title).replaceAll('{{MSG}}', msg);
+app.use((err, req, res, _next) => {
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error(err);
+  const msg = err.code === 'LIMIT_FILE_SIZE' ? 'File too large' : err.type === 'entity.parse.failed' ? 'Invalid JSON' : err.type === 'entity.too.large' ? 'Request too large' : status >= 500 ? 'Internal error' : 'Bad request';
+  if (res.headersSent) return;
+  if (req.method === 'GET' && !req.path.startsWith('/api/') && req.accepts(['html', 'json']) === 'html')
+    return res.status(status).type('html').send(pageError(status, status >= 500 ? 'Something went wrong on our side' : 'That request didn\u2019t work', status >= 500 ? 'Cairn hit an unexpected error. Please try again in a moment.' : 'The link or request looks incomplete. Go back and try again.'));
+  res.status(status).json({ error: msg });
 });
 
 const server = http.createServer(app);

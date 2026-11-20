@@ -99,7 +99,8 @@ object Prefs {
     var agentMaxSteps by int("agentMaxStepsV2", 45)
     var agentUseProfile by bool("agentUseProfile", true)
     var savePasswords by bool("savePasswords", true)
-    var autofillForms by bool("autofillForms", true)      // offer saved cards and addresses on web forms      // offer to save passwords and fill them back in
+    var autofillForms by bool("autofillForms", true)      // offer saved cards and addresses on web forms
+    var syncPassphrase by bool("syncPassphrase", false)   // vault key wrapped with a custom passphrase instead of the password
     var cairnPasskeys by bool("cairnPasskeys", true)      // create/use synced Cairn passkeys (falls back to the system)
     var syncOn by bool("syncOn", true)                    // sync bookmarks, history, tabs, passwords, passkeys, settings
     var syncLast by long("syncLast", 0)

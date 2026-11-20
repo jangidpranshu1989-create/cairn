@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS audit (
 const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
 if (!cols('sessions').includes('prev_hash')) db.exec('ALTER TABLE sessions ADD COLUMN prev_hash TEXT');
 if (!cols('sessions').includes('auth_at')) db.exec('ALTER TABLE sessions ADD COLUMN auth_at INTEGER');
+if (!cols('sync_meta').includes('kcv')) db.exec('ALTER TABLE sync_meta ADD COLUMN kcv TEXT');
 
 export const now = () => Date.now();
 export function audit(userId, action, meta = {}) {

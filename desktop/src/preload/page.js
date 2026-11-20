@@ -1,7 +1,7 @@
 // Preload for every tab.
 //  - cairn:// internal pages get a privileged bridge (main re-checks the sender origin).
 //  - https pages get password autofill / save prompts / strong password suggestions.
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 if (location.protocol === 'cairn:') {
   contextBridge.exposeInMainWorld('cairn', {
@@ -10,6 +10,54 @@ if (location.protocol === 'cairn:') {
     platform: process.platform,
   });
 } else if (/^https?:$/.test(location.protocol)) {
+
+  // ---- Synced Cairn passkeys (WebAuthn) ----
+  // The page's navigator.credentials is wrapped in the main world; requests go to the main process together with the
+  // frame origin that Electron (not the page) reports. No Cairn passkey / user cancels -> native Chromium WebAuthn.
+  if (location.protocol === 'https:' || location.hostname === 'localhost') {
+    try {
+      contextBridge.exposeInMainWorld('__cairnWebAuthn', {
+        create: (o) => ipcRenderer.invoke('pk:create', o).catch(e => ({ error: String(e && e.message || e) })),
+        get: (o) => ipcRenderer.invoke('pk:get', o).catch(e => ({ error: String(e && e.message || e) })),
+      });
+      webFrame.executeJavaScript(`(function(){
+        var C = navigator.credentials, B = window.__cairnWebAuthn; if (!C || !window.PublicKeyCredential || !B) return;
+        try { delete window.__cairnWebAuthn; } catch (_) {}
+        var oCreate = C.create.bind(C), oGet = C.get.bind(C);
+        function b64(buf){ var b = new Uint8Array(buf instanceof ArrayBuffer ? buf : buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)), s = '';
+          for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, ''); }
+        function unb64(s){ s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; var r = atob(s), b = new Uint8Array(r.length); for (var i = 0; i < r.length; i++) b[i] = r.charCodeAt(i); return b.buffer; }
+        function creds(a){ return (a || []).map(function(c){ return { id: b64(c.id), type: c.type }; }); }
+        function def(o, p){ for (var k in p) Object.defineProperty(o, k, { value: p[k], enumerable: true, configurable: true }); return o; }
+        function mk(c, create){
+          var resp = Object.create((create ? window.AuthenticatorAttestationResponse : window.AuthenticatorAssertionResponse).prototype);
+          var cd = unb64(c.clientDataJSON), ad = unb64(c.authenticatorData);
+          if (create) def(resp, { clientDataJSON: cd, attestationObject: unb64(c.attestationObject), getTransports: function(){ return c.transports; },
+            getAuthenticatorData: function(){ return ad; }, getPublicKey: function(){ return unb64(c.publicKey); }, getPublicKeyAlgorithm: function(){ return c.alg; } });
+          else def(resp, { clientDataJSON: cd, authenticatorData: ad, signature: unb64(c.signature), userHandle: c.userHandle ? unb64(c.userHandle) : null });
+          var cred = Object.create(PublicKeyCredential.prototype);
+          def(cred, { id: c.id, rawId: unb64(c.id), type: 'public-key', response: resp, authenticatorAttachment: 'platform',
+            getClientExtensionResults: function(){ return create ? { credProps: { rk: true } } : {}; },
+            toJSON: function(){ var r = create ? { clientDataJSON: c.clientDataJSON, attestationObject: c.attestationObject, authenticatorData: c.authenticatorData, transports: c.transports, publicKey: c.publicKey, publicKeyAlgorithm: c.alg }
+              : { clientDataJSON: c.clientDataJSON, authenticatorData: c.authenticatorData, signature: c.signature, userHandle: c.userHandle || null };
+              return { id: c.id, rawId: c.id, type: 'public-key', authenticatorAttachment: 'platform', response: r, clientExtensionResults: {} }; } });
+          return cred;
+        }
+        function fail(r){ var m = r.error || 'The operation either timed out or was not allowed.'; var e; try { e = new DOMException(m, r.name || 'NotAllowedError'); } catch (_) { e = new Error(m); } throw e; }
+        C.create = function(o){
+          if (!o || !o.publicKey) return oCreate(o); var p = o.publicKey;
+          var opts = { rp: p.rp, user: { id: b64(p.user.id), name: p.user.name, displayName: p.user.displayName }, challenge: b64(p.challenge),
+            pubKeyCredParams: p.pubKeyCredParams, excludeCredentials: creds(p.excludeCredentials), authenticatorSelection: p.authenticatorSelection };
+          return B.create(opts).then(function(r){ if (r && r.ok) return mk(r.cred, true); if (!r || r.fallback) return oCreate(o); fail(r); });
+        };
+        C.get = function(o){
+          if (!o || !o.publicKey || o.mediation === 'conditional') return oGet(o); var p = o.publicKey;
+          var opts = { rpId: p.rpId, challenge: b64(p.challenge), allowCredentials: creds(p.allowCredentials), userVerification: p.userVerification };
+          return B.get(opts).then(function(r){ if (r && r.ok) return mk(r.cred, false); if (!r || r.fallback) return oGet(o); fail(r); });
+        };
+      })();`);
+    } catch {}
+  }
   const SHADOW_ID = '__cairn_pw';
   let saved = null; // [{id, username}]
   let chip = null;

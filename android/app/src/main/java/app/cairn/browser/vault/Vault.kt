@@ -71,6 +71,14 @@ object Vault {
         val spec = PBEKeySpec(password.toCharArray(), ("cairn-vault:" + email.trim().lowercase()).toByteArray(), 310_000, 256)
         return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
     }
+    /** Custom sync passphrase KEK (never leaves the device). NFC-normalised so the same passphrase typed on any keyboard matches desktop. */
+    fun kdfPassphrase(pass: String, email: String): ByteArray {
+        val spec = PBEKeySpec(java.text.Normalizer.normalize(pass, java.text.Normalizer.Form.NFC).toCharArray(), ("cairn-sync-passphrase:" + email.trim().lowercase()).toByteArray(), 310_000, 256)
+        return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+    }
+    /** Key check value: proves to the server that this device holds the vault key, without revealing it. */
+    fun kcv(k: ByteArray? = key): String { val m = Mac.getInstance("HmacSHA256"); m.init(SecretKeySpec(k ?: error("vault locked"), "HmacSHA256")); return b64u(m.doFinal("cairn-kcv".toByteArray())) }
+    fun currentKey(): ByteArray? = key
     fun newKey(): ByteArray = ByteArray(32).also(rnd::nextBytes)
     fun wrap(kek: ByteArray, k: ByteArray): String = seal(kek, b64u(k))
     fun unwrap(kek: ByteArray, wrapped: String): ByteArray? = open(kek, wrapped)?.let(::unb64u)

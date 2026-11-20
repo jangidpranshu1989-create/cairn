@@ -68,17 +68,59 @@ object Sync {
         val kek = Vault.kdf(password, email)
         val k = Api.syncGet("/key")
         val wrapped = k.optString("wrappedKey").takeIf { it.isNotEmpty() && it != "null" }
+        if (wrapped != null && k.optString("kdf").startsWith("passphrase")) {
+            // Locked with a custom sync passphrase: Settings asks for it. The passphrase never goes to the server.
+            Vault.clearKey(); Prefs.syncPassphrase = true; needPassphrase.value = true
+            status.value = "Enter your sync passphrase to start syncing"
+            return
+        }
         if (wrapped != null) {
             val key = Vault.unwrap(kek, wrapped) ?: throw ApiException(409, "Your synced data is locked with an older password. Sign in on a device that still has it, or reset sync in Settings.")
             Vault.setKey(key)
         } else {
             val key = Vault.newKey()
-            val (code, body) = Api.syncSend("/key", "PUT", JSONObject().put("wrappedKey", Vault.wrap(kek, key)).put("salt", "cairn-vault:email").put("kdf", "pbkdf2-sha256-310000"))
+            val (code, body) = Api.syncSend("/key", "PUT", JSONObject().put("wrappedKey", Vault.wrap(kek, key)).put("salt", "cairn-vault:email").put("kdf", "pbkdf2-sha256-310000").put("kcv", Vault.kcv(key)))
             if (code == 409) { Vault.unwrap(kek, body.optString("wrappedKey"))?.let(Vault::setKey) ?: throw ApiException(409, "Couldn't unlock sync") }
             else Vault.setKey(key)
         }
+        Prefs.syncPassphrase = false; needPassphrase.value = false
         state.clear(); rev = 0; save()
         soon(0)
+    }
+
+    // ---------- Custom sync passphrase (true zero-knowledge, optional) ----------
+    val needPassphrase = mutableStateOf(false)
+    private fun email() = Prefs.userEmail.trim().lowercase().ifEmpty { throw ApiException(400, "Sign in first") }
+    private fun rewrap(wrapped: String, salt: String, kdf: String) {
+        val cur = Api.syncGet("/key").optString("wrappedKey")
+        val (code, body) = Api.syncSend("/key/rewrap", "POST", JSONObject().put("wrappedKey", wrapped).put("salt", salt).put("kdf", kdf).put("expect", cur).put("kcv", Vault.kcv()))
+        if (code !in 200..299) throw ApiException(code, body.optString("error", "Couldn't update the sync key"))
+    }
+    fun unlockPassphrase(pass: String) {
+        val k = Api.syncGet("/key").optString("wrappedKey")
+        val key = Vault.unwrap(Vault.kdfPassphrase(pass, email()), k) ?: throw ApiException(403, "That passphrase is not correct")
+        Vault.setKey(key); Prefs.syncPassphrase = true; needPassphrase.value = false; status.value = ""
+        state.clear(); rev = 0; save(); soon(0)
+    }
+    fun setPassphrase(pass: String) {
+        val key = Vault.currentKey() ?: throw ApiException(400, "Sync is not unlocked on this phone")
+        if (java.text.Normalizer.normalize(pass, java.text.Normalizer.Form.NFC).length < 8) throw ApiException(400, "Use at least 8 characters")
+        rewrap(Vault.wrap(Vault.kdfPassphrase(pass, email()), key), "cairn-sync-passphrase:email", "passphrase-pbkdf2-sha256-310000")
+        Prefs.syncPassphrase = true
+    }
+    fun removePassphrase(password: String) {
+        val key = Vault.currentKey() ?: throw ApiException(400, "Sync is not unlocked on this phone")
+        rewrap(Vault.wrap(Vault.kdf(password, email()), key), "cairn-vault:email", "pbkdf2-sha256-310000")
+        Prefs.syncPassphrase = false
+    }
+    /** Forgot the passphrase: new key; the server copy is deleted and this phone uploads its data again. */
+    fun resetSync(password: String) {
+        val key = Vault.newKey()
+        val (code, body) = Api.syncSend("/key", "PUT", JSONObject().put("wrappedKey", Vault.wrap(Vault.kdf(password, email()), key)).put("salt", "cairn-vault:email")
+            .put("kdf", "pbkdf2-sha256-310000").put("kcv", Vault.kcv(key)).put("replace", true))
+        if (code !in 200..299) throw ApiException(code, body.optString("error", "Couldn't reset sync"))
+        Vault.setKey(key); Prefs.syncPassphrase = false; needPassphrase.value = false; status.value = ""
+        state.clear(); rev = 0; save(); soon(0)
     }
 
     /** Debounced sync after a local change. */

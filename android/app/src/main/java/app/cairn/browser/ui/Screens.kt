@@ -270,6 +270,52 @@ fun DownloadsScreen() {
     }
 }
 
+// ---------------------------------------------------------------- Sync passphrase
+/** mode: "set" | "unlock" | "manage" (change / remove) | "reset" */
+@Composable
+private fun PassphraseDialog(start: String, close: () -> Unit) {
+    var mode by remember { mutableStateOf(start) }
+    var a by remember { mutableStateOf("") }
+    var b by remember { mutableStateOf("") }
+    var err by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val S = app.cairn.browser.vault.Sync
+    fun run(block: () -> Unit, ok: String) { busy = true; err = null
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val r = runCatching(block)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { busy = false; r.onSuccess { act.toast(ok); Haptics.confirm(); close() }.onFailure { err = it.message ?: "Something went wrong" } }
+        } }
+    val title = when (mode) { "unlock" -> "Enter sync passphrase"; "manage" -> "Sync passphrase"; "remove" -> "Remove passphrase"; "reset" -> "Reset sync"; else -> "Set a sync passphrase" }
+    AlertDialog(onDismissRequest = { if (!busy) close() }, containerColor = C.surface2, title = { Text(title, color = C.text) },
+        text = { Column {
+            Text(when (mode) {
+                "unlock" -> "Your synced data is encrypted with a passphrase only you know. Enter it to start syncing on this phone."
+                "manage" -> "Type a new passphrase to change it. Your other signed-in devices keep syncing."
+                "remove" -> "Enter your Cairn account password. Sync will be protected by your account password again."
+                "reset" -> "Forgot the passphrase? Resetting deletes the encrypted copy on the server and this phone uploads its data again with a new key. Enter your account password."
+                else -> "Encrypts bookmarks, history, passwords, passkeys, cards and addresses with a passphrase that never leaves your devices. Cairn can't recover it if you forget it."
+            }, color = C.muted, fontSize = 13.5.sp)
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(a, { a = it }, label = { Text(if (mode == "remove" || mode == "reset") "Account password" else if (mode == "manage") "New passphrase" else "Passphrase") }, singleLine = true,
+                colors = fieldColors(), shape = RoundedCornerShape(12.dp), visualTransformation = PasswordVisualTransformation())
+            if (mode == "set" || mode == "manage") { Spacer(Modifier.height(8.dp))
+                OutlinedTextField(b, { b = it }, label = { Text("Confirm passphrase") }, singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp), visualTransformation = PasswordVisualTransformation()) }
+            err?.let { Spacer(Modifier.height(8.dp)); Text(it, color = C.err, fontSize = 13.sp) }
+            if (mode == "unlock") TextButton(onClick = { mode = "reset"; a = ""; err = null }) { Text("Forgot passphrase?", color = C.muted) }
+            if (mode == "manage") TextButton(onClick = { mode = "remove"; a = ""; b = ""; err = null }) { Text("Remove passphrase", color = C.err) }
+        } },
+        confirmButton = { TextButton(enabled = !busy && a.isNotEmpty(), onClick = {
+            when (mode) {
+                "unlock" -> run({ S.unlockPassphrase(a) }, "Sync unlocked")
+                "remove" -> run({ S.removePassphrase(a) }, "Passphrase removed")
+                "reset" -> run({ S.resetSync(a) }, "Sync reset")
+                else -> if (a != b) err = "Passphrases don't match" else run({ S.setPassphrase(a) }, "Passphrase saved")
+            }
+        }) { Text(if (busy) "Please wait…" else when (mode) { "unlock" -> "Unlock"; "remove" -> "Remove"; "reset" -> "Reset"; else -> "Save" }, color = if (mode == "reset" || mode == "remove") C.err else C.text) } },
+        dismissButton = { TextButton(enabled = !busy, onClick = close) { Text("Cancel", color = C.muted) } })
+}
+
 // ---------------------------------------------------------------- Offline pages
 private var offlineOpen: app.cairn.browser.browser.Offline.Page? = null
 
@@ -731,6 +777,7 @@ fun AccountScreen() {
                 Spacer(Modifier.height(12.dp))
                 val S = app.cairn.browser.vault.Sync
                 var on by remember { mutableStateOf(Prefs.syncOn) }
+                var ppMode by remember { mutableStateOf<String?>(null) }
                 val unlocked = app.cairn.browser.vault.Vault.ready.value
                 Group {
                     Toggle(Ic.Devices, "Sync", when {
@@ -740,7 +787,11 @@ fun AccountScreen() {
                         else -> "Bookmarks, history, tabs, passwords, passkeys and settings"
                     }, on) { on = it; Prefs.syncOn = it; if (it) S.soon(0) }
                     if (on && unlocked) { Divider(); Row2(Ic.Refresh, if (S.busy.value) "Syncing…" else "Sync now", null, onClick = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { S.syncNow() } }) }
+                    if (S.needPassphrase.value) { Divider(); Row2(Ic.Lock, "Enter sync passphrase", "Your synced data is protected with a custom passphrase", onClick = { ppMode = "unlock" }) }
+                    else if (unlocked) { Divider(); Row2(Ic.Lock, "Sync passphrase", if (Prefs.syncPassphrase) "On · only you can decrypt your synced data" else "Off · optional extra protection the server can never see",
+                        onClick = { ppMode = if (Prefs.syncPassphrase) "manage" else "set" }) }
                 }
+                ppMode?.let { m -> PassphraseDialog(m) { ppMode = null } }
             }
             Spacer(Modifier.height(12.dp))
             Group {

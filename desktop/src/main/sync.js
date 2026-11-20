@@ -19,6 +19,12 @@ const unb64u = (s) => Buffer.from(s, 'base64url');
 const v = () => store.get().vault;
 const st = () => (v().data.sync ||= { on: true, key: null, rev: 0, items: {}, install: crypto.randomUUID(), last: 0 });
 
+// Optional custom sync passphrase ("true zero-knowledge"): the vault key is wrapped with a key derived from a
+// passphrase that never leaves the device, so even someone holding the account password + server data can't read it.
+//   KEK = PBKDF2-SHA256(NFC(passphrase), "cairn-sync-passphrase:" + email.lower, 310000, 32 bytes)
+const PASS_KDF = 'passphrase-pbkdf2-sha256-310000', PASS_SALT = 'cairn-sync-passphrase:';
+function kdfPass(pass, email) { return crypto.pbkdf2Sync(Buffer.from(String(pass).normalize('NFC'), 'utf8'), PASS_SALT + String(email).trim().toLowerCase(), 310000, 32, 'sha256'); }
+const kcvOf = (vaultKey) => b64u(crypto.createHmac('sha256', vaultKey).update('cairn-kcv').digest());
 function kdf(password, email) { return crypto.pbkdf2Sync(password, 'cairn-vault:' + String(email).trim().toLowerCase(), 310000, 32, 'sha256'); }
 function seal(k, plain) {
   const iv = crypto.randomBytes(12);
@@ -47,20 +53,61 @@ async function setupKey(email, password) {
   const kek = kdf(password, email);
   const k = await req('/key');
   let vaultKey;
+  st().email = String(email).trim().toLowerCase();
+  if (k.wrappedKey && /^passphrase/.test(k.kdf || '')) {
+    // Locked with a custom sync passphrase: ask for it (it never goes to the server).
+    Object.assign(st(), { key: null, needPassphrase: true, passphrase: true }); v().flush(); events.emit('status', status());
+    return;
+  }
   if (k.wrappedKey) {
     const raw = open(kek, k.wrappedKey);
     if (!raw) throw new Error('Your synced data is locked with an older password. Sign in on a device that still has it, or reset sync.');
     vaultKey = unb64u(raw);
   } else {
     vaultKey = crypto.randomBytes(32);
-    try { await req('/key', 'PUT', { wrappedKey: seal(kek, b64u(vaultKey)), salt: 'cairn-vault:email', kdf: 'pbkdf2-sha256-310000' }); }
+    try { await req('/key', 'PUT', { wrappedKey: seal(kek, b64u(vaultKey)), salt: 'cairn-vault:email', kdf: 'pbkdf2-sha256-310000', kcv: kcvOf(vaultKey) }); }
     catch (e) {   // another device created it first
       const again = await req('/key'); const raw = again.wrappedKey && open(kek, again.wrappedKey);
       if (!raw) throw e; vaultKey = unb64u(raw);
     }
   }
-  Object.assign(st(), { key: b64u(vaultKey), rev: 0, items: {} }); v().flush();
+  Object.assign(st(), { key: b64u(vaultKey), rev: 0, items: {}, needPassphrase: false, passphrase: false }); v().flush();
   soon(0);
+}
+
+/** Unlocks sync on this device with the custom passphrase. */
+async function unlockPassphrase(pass) {
+  const email = st().email || cloud?.publicSession?.()?.user?.email; if (!email) throw new Error('Sign in first');
+  const k = await req('/key');
+  const raw = k.wrappedKey && open(kdfPass(pass, email), k.wrappedKey);
+  if (!raw) throw new Error('That passphrase is not correct');
+  Object.assign(st(), { key: raw, rev: 0, items: {}, needPassphrase: false, passphrase: true }); v().flush();
+  soon(0); return status();
+}
+/** Turns the custom passphrase on (or changes it). Same vault key, so nothing is re-uploaded. */
+async function setPassphrase(pass) {
+  if (!key()) throw new Error('Sync is not unlocked on this computer');
+  if (String(pass).normalize('NFC').length < 8) throw new Error('Use at least 8 characters');
+  const email = st().email || cloud?.publicSession?.()?.user?.email; if (!email) throw new Error('Sign in first');
+  const k = await req('/key');
+  await req('/key/rewrap', 'POST', { wrappedKey: seal(kdfPass(pass, email), b64u(key())), salt: 'cairn-sync-passphrase:email', kdf: PASS_KDF, expect: k.wrappedKey, kcv: kcvOf(key()) });
+  st().passphrase = true; v().flush(); return status();
+}
+/** Removes the passphrase: wraps the key with the account password again (needs the password). */
+async function removePassphrase(password) {
+  if (!key()) throw new Error('Sync is not unlocked on this computer');
+  const email = st().email || cloud?.publicSession?.()?.user?.email; if (!email) throw new Error('Sign in first');
+  const k = await req('/key');
+  await req('/key/rewrap', 'POST', { wrappedKey: seal(kdf(password, email), b64u(key())), salt: 'cairn-vault:email', kdf: 'pbkdf2-sha256-310000', expect: k.wrappedKey, kcv: kcvOf(key()) });
+  st().passphrase = false; v().flush(); return status();
+}
+/** Forgot the passphrase: start fresh with a new key (server copies are deleted; this computer re-uploads its data). */
+async function resetSync(password) {
+  const email = st().email || cloud?.publicSession?.()?.user?.email; if (!email) throw new Error('Sign in first');
+  const vaultKey = crypto.randomBytes(32);
+  await req('/key', 'PUT', { wrappedKey: seal(kdf(password, email), b64u(vaultKey)), salt: 'cairn-vault:email', kdf: 'pbkdf2-sha256-310000', kcv: kcvOf(vaultKey), replace: true });
+  Object.assign(st(), { key: b64u(vaultKey), rev: 0, items: {}, needPassphrase: false, passphrase: false }); v().flush();
+  soon(0); return status();
 }
 
 // ---------------- local snapshot ----------------
@@ -111,7 +158,7 @@ function apply(kind, j) {
       else list.push({ id: crypto.randomUUID(), origin: j.origin, username: j.username, password: j.password, created: j.at || Date.now(), updated: j.at || Date.now(), lastUsed: 0 });
       v().flush(); return j.origin + '\n' + j.username;
     }
-    case 'passkeys': {   // stored so they round-trip between phones; desktop sign-in with them comes later
+    case 'passkeys': {   // used by ./passkeys.js to sign in on this computer
       const list = v().data.passkeys ||= []; const { updated, ...pk } = j; const i = list.findIndex(p => p.credId === pk.credId);
       if (i >= 0) list[i] = pk; else list.push(pk); v().flush(); return pk.credId;
     }
@@ -180,9 +227,9 @@ async function syncNow() {
   return running;
 }
 function soon(ms = 2500) { if (!enabled()) return; clearTimeout(timer); timer = setTimeout(() => syncNow().catch(() => {}), ms); }
-const status = () => ({ on: st().on, ready: !!st().key, last: st().last || 0, error: st().error || '', signedIn: !!cloud?.isSignedIn() });
+const status = () => ({ on: st().on, ready: !!st().key, last: st().last || 0, error: st().error || '', signedIn: !!cloud?.isSignedIn(), passphrase: !!st().passphrase, needPassphrase: !!st().needPassphrase });
 function setOn(on) { st().on = !!on; v().flush(); if (on) soon(0); return status(); }
-function signOut() { clearTimeout(timer); Object.assign(st(), { key: null, rev: 0, items: {} }); remoteTabs.length = 0; v().flush(); }
+function signOut() { clearTimeout(timer); Object.assign(st(), { key: null, rev: 0, items: {}, needPassphrase: false, passphrase: false, email: '' }); remoteTabs.length = 0; v().flush(); }
 
 function init(cloudMod, tabs) {
   cloud = cloudMod; tabsRef = tabs;
@@ -200,4 +247,4 @@ function init(cloudMod, tabs) {
   soon(3000);
 }
 
-module.exports = { init, setupKey, syncNow, soon, status, setOn, signOut, remoteTabs: () => remoteTabs, events, _test: { kdf, seal, open } };
+module.exports = { init, setupKey, unlockPassphrase, setPassphrase, removePassphrase, resetSync, syncNow, soon, status, setOn, signOut, remoteTabs: () => remoteTabs, events, _test: { kdf, kdfPass, seal, open, kcvOf } };

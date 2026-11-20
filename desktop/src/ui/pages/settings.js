@@ -122,11 +122,46 @@
     $('#syncInfo').textContent = !st.signedIn ? 'Sign in to your Cairn account to sync bookmarks, history, tabs, passwords and passkeys across devices.'
       : !st.ready ? 'Sign in again with your password to unlock end-to-end encrypted sync on this computer.'
       : st.error ? 'Last sync failed: ' + st.error : 'End-to-end encrypted. Last synced: ' + when;
+    // custom passphrase
+    const mode = !st.signedIn ? 'hidden' : st.needPassphrase ? 'unlock' : st.passphrase ? 'on' : st.ready ? 'off' : 'hidden';
+    $('#ppRow').hidden = mode === 'hidden'; $('#ppForm').hidden = true; $('#ppRow').dataset.mode = mode;
+    $('#ppBtn').textContent = { unlock: 'Enter passphrase', on: 'Change or remove', off: 'Set passphrase' }[mode] || '';
+    $('#ppInfo').textContent = mode === 'unlock' ? 'Your synced data is protected by a custom passphrase. Enter it to start syncing on this computer.'
+      : mode === 'on' ? 'On. Synced data is encrypted with your passphrase. Cairn\'s server never sees it.'
+      : 'Optional. Encrypt synced data with a passphrase only you know, instead of your account password. Cairn\'s server can never read it, but if you forget it you\'ll have to reset sync.';
+    if (st.needPassphrase) $('#syncInfo').textContent = 'Locked with your custom sync passphrase.';
     const rt = await api('sync:remoteTabs').catch(() => []);
     $('#remoteTabs').innerHTML = rt.map(d => `<div class="opt"><div class="l"><b>${ICON('phone')} ${esc(d.device)}</b><small>${d.tabs.filter(t => /^https?:/i.test(t.url)).slice(0, 8).map(t => `<a href="${esc(t.url)}">${esc(t.title || t.url)}</a>`).join(' · ')}${d.tabs.length > 8 ? ` · +${d.tabs.length - 8} more` : ''}</small></div></div>`).join('');
   }
   $('#syncOn').onchange = async (e) => { await api('sync:setOn', e.target.checked); loadSync(); };
   $('#syncNow').onclick = async () => { $('#syncNow').disabled = true; const r = await api('sync:now').catch(e => ({ error: cleanErr(e) })); $('#syncNow').disabled = false; toast(r.ok ? 'Synced' : (r.error || 'Sync failed')); loadSync(); };
+  $('#ppBtn').onclick = async () => {
+    const mode = $('#ppRow').dataset.mode;
+    if (mode === 'on') {
+      const c = prompt('Type a new passphrase to change it, or type REMOVE to go back to using your account password.');
+      if (!c) return;
+      try {
+        if (c.trim() === 'REMOVE') { const pw = prompt('Enter your Cairn account password'); if (!pw) return; await api('sync:removePassphrase', pw); toast('Passphrase removed'); }
+        else { await api('sync:setPassphrase', c); toast('Passphrase changed'); }
+      } catch (e) { toast(cleanErr(e)); }
+      return loadSync();
+    }
+    $('#ppForm').hidden = false; $('#ppIn2').hidden = mode === 'unlock'; $('#ppIn').value = $('#ppIn2').value = ''; $('#ppIn').focus();
+    $('#ppGo').textContent = mode === 'unlock' ? 'Unlock' : 'Save';
+  };
+  $('#ppCancel').onclick = () => { $('#ppForm').hidden = true; };
+  $('#ppGo').onclick = async () => {
+    const mode = $('#ppRow').dataset.mode, a = $('#ppIn').value;
+    try {
+      if (mode === 'unlock') { await api('sync:unlock', a); toast('Sync unlocked'); }
+      else { if (a !== $('#ppIn2').value) return toast('Passphrases don\'t match'); await api('sync:setPassphrase', a); toast('Passphrase set. Other devices keep syncing; new devices will ask for it.'); }
+    } catch (e) {
+      if (mode === 'unlock' && /not correct/.test(cleanErr(e)) && confirm('Wrong passphrase. Forgot it? You can reset sync: the encrypted copy on the server is deleted and this computer uploads its data again with a new key.')) {
+        const pw = prompt('Enter your Cairn account password to reset sync'); if (pw) { try { await api('sync:reset', pw); toast('Sync reset'); } catch (e2) { toast(cleanErr(e2)); } }
+      } else toast(cleanErr(e));
+    }
+    loadSync();
+  };
   loadSync();
 
   const info = await api('app:info');

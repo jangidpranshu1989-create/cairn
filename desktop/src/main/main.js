@@ -396,6 +396,10 @@ function registerIpc() {
   handle('sync:now', () => require('./sync').syncNow(), { internal: true });
   handle('sync:setOn', (_e, on) => require('./sync').setOn(on), { internal: true });
   handle('sync:remoteTabs', () => require('./sync').remoteTabs(), { internal: true });
+  handle('sync:unlock', (_e, pass) => require('./sync').unlockPassphrase(String(pass || '')), { internal: true });
+  handle('sync:setPassphrase', (_e, pass) => require('./sync').setPassphrase(String(pass || '')), { internal: true });
+  handle('sync:removePassphrase', (_e, pw) => require('./sync').removePassphrase(String(pw || '')), { internal: true });
+  handle('sync:reset', (_e, pw) => require('./sync').resetSync(String(pw || '')), { internal: true });
   handle('vault:encrypted', () => require('electron').safeStorage.isEncryptionAvailable());
   handle('cloud:captcha', () => cloud.captcha(), { internal: true });
   handle('cloud:login', (_e, email, pw, cap) => cloud.login(email, pw, cap), { internal: true });
@@ -450,6 +454,31 @@ function registerIpc() {
     clearTimeout(p.timer); p.cb(!!allow);
     if (remember && p.site) { const st = store.get().settings; st.data.sitePermissions = { ...(st.data.sitePermissions || {}) }; st.data.sitePermissions[p.site] = { ...(st.data.sitePermissions[p.site] || {}), [p.key]: !!allow }; st.save(); }
   });
+  // synced passkeys — page side (origin from the sending frame)
+  const passkeys = require('./passkeys');
+  const pkVerify = async (kind, rpId, name) => {
+    if (process.platform === 'darwin' && systemPreferences.canPromptTouchID?.()) {
+      const ok = await systemPreferences.promptTouchID(kind === 'create' ? `create a passkey for ${rpId}` : `sign in to ${rpId} with your passkey`).then(() => true, () => false);
+      return { ok, uv: ok };
+    }
+    const { response } = await dialog.showMessageBox(win, { type: 'question', buttons: [kind === 'create' ? 'Create passkey' : 'Sign in', 'Use another device or key', 'Cancel'], defaultId: 0, cancelId: 2,
+      message: kind === 'create' ? `Create a passkey for ${rpId}?` : `Sign in to ${rpId} with your Cairn passkey?`,
+      detail: `${name || 'Your account'} · ${kind === 'create' ? 'saved in Cairn and synced to your phone and other computers' : 'synced from your Cairn account'}` });
+    return { ok: response === 0, uv: false, other: response === 1 };
+  };
+  const pkChoose = async (rpId, cands) => {
+    const { response } = await dialog.showMessageBox(win, { type: 'question', buttons: [...cands.map(c => c.userName || c.displayName || 'Passkey'), 'Cancel'], cancelId: cands.length, message: `Choose a passkey for ${rpId}` });
+    return cands[response] || null;
+  };
+  const pkRun = async (fn) => {
+    try { return { ok: true, cred: await fn() }; }
+    catch (e) { if (e.fallback) return { fallback: true }; return { error: e.message, name: e.name === 'Error' ? 'NotAllowedError' : e.name }; }
+  };
+  handle('pk:create', (e, o) => pkRun(async () => { const r = await passkeys.create(frameOrigin(e), o || {}, pkVerify); require('./sync').soon?.(); return r; }));
+  handle('pk:get', (e, o) => pkRun(() => passkeys.get(frameOrigin(e), o || {}, pkVerify, pkChoose)));
+  handle('pk:all', () => passkeys.all(), { internal: true });
+  handle('pk:remove', (_e, id) => { passkeys.remove(id); require('./sync').soon?.(); }, { internal: true });
+
   // payment cards & addresses — page side
   const autofill = require('./autofill');
   const afOn = () => store.get().settings.data.autofillForms !== false;

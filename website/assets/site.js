@@ -1,6 +1,6 @@
 // Cairn website — small, dependency-free interactions.
 (() => {
-  const API = 'https://cairn-browser.pplx.app/port/8787'; // Cairn Cloud (server/), handles /api/public/contact
+  const API = 'https://cairn-cloud.onrender.com'; // Cairn Cloud (server/), handles /api/public/contact
   const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
   document.documentElement.classList.remove('no-js');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;

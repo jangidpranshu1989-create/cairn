@@ -50,8 +50,10 @@ object Shopping {
     )
 
     private val ACCESSORY = Regex("""\b(case|cover|covers|back cover|screen ?guard|tempered|protector|glass|skin|charger|adapter|cable|cord|strap|band|holder|stand|mount|pouch|sleeve|stylus|lens protector|magsafe wallet|earphones?|airpods? case|keyboard cover|refill|spare|replacement)\b""", RegexOption.IGNORE_CASE)
+    private val CHEAP = Regex("""\b(keypad|feature phone|basic phone|button phone|dummy|toy|replica|clone|first copy|1st copy|compatible with|for (apple|samsung|oneplus|cmf|nothing|iphone|redmi|xiaomi|vivo|oppo|realme|poco|motorola|google|pixel|iqoo|tecno|infinix|lava)\b)""", RegexOption.IGNORE_CASE)
+    private val COLORS = listOf("black", "white", "blue", "green", "red", "grey", "gray", "silver", "gold", "purple", "violet", "pink", "orange", "yellow", "titanium", "graphite", "midnight", "starlight", "cream", "beige", "lavender", "mint", "teal", "bronze")
     private val VARIANTS = listOf("pro", "max", "plus", "mini", "ultra", "lite", "fe", "air", "neo", "prime", "edge", "fold", "flip")
-    private val STOP = setOf("the", "and", "for", "with", "buy", "cheapest", "best", "price", "under", "sabse", "sasta", "chahiye", "gb", "tb")
+    private val STOP = setOf("the", "and", "for", "with", "buy", "cheapest", "best", "price", "under", "sabse", "sasta", "chahiye", "gb", "tb", "ram", "rom", "storage", "variant", "colour", "color", "new", "latest", "online", "india", "dhundo", "dhoond", "find", "cart", "add", "daal", "order", "kar", "karke", "mein", "aur", "tak", "mujhe", "ek", "wala", "wali", "ka", "ki", "ke", "se", "me", "ko", "hai", "do", "de", "please", "pls", "rs", "inr", "of", "in", "to", "a", "an")
 
     private suspend fun searchStore(s: Store, query: String): Pair<List<Product>, String?> {
         var lastErr: String? = null
@@ -84,28 +86,38 @@ object Shopping {
         return emptyList<Product>() to lastErr
     }
 
+    /**
+     * Strict relevance: brand + every model word + every number must appear, storage must match when given, a different
+     * named colour is rejected, and accessories / keypad phones / "for <brand>" compatibles / other variants are dropped.
+     */
     fun heuristicFilter(query: String, items: List<Product>): List<Product> {
-        val q = query.lowercase()
+        val q = query.lowercase().replace(Regex("(under|below|upto|up to|within|less than|budget|rs\\.?|inr|₹)\\s*[\\d,.]+k?"), " ").replace(Regex("(\\d+)\\s*(gb|tb)"), "$1$2")
         val qTokens = Regex("[a-z0-9]+").findAll(q).map { it.value }.toList()
         val nums = qTokens.filter { t -> t.any(Char::isDigit) }
-        val words = qTokens.filter { t -> t.none(Char::isDigit) && t.length > 2 && t !in STOP }
+        val colors = qTokens.filter { it in COLORS }
+        val words = qTokens.filter { t -> t.none(Char::isDigit) && t.length >= 2 && t !in STOP && t !in COLORS }
+        val brand = words.firstOrNull()
         val wantsAccessory = ACCESSORY.containsMatchIn(q)
+        val wantsCheap = CHEAP.containsMatchIn(q)
         return items.filter { it ->
             val t = it.title.lowercase().replace(Regex("(\\d+)\\s*(gb|tb)"), "$1$2")
             val tt = Regex("[a-z0-9]+").findAll(t).map { m -> m.value }.toList()
             if (!wantsAccessory && ACCESSORY.containsMatchIn(t)) return@filter false
+            if (!wantsCheap && CHEAP.containsMatchIn(t)) return@filter false
+            if (brand != null && brand !in tt) return@filter false
             for (n in nums) {
                 if (Regex("^\\d+(gb|tb)$").matches(n)) { if (n !in tt && Regex("\\d+(gb|tb)").containsMatchIn(t)) return@filter false; continue }
                 if (n !in tt) return@filter false
             }
-            if (words.isNotEmpty() && words.count { w -> t.contains(w) } < kotlin.math.ceil(words.size * 0.6)) return@filter false
+            if (words.any { w -> w !in tt && !t.contains(w) }) return@filter false
+            if (colors.isNotEmpty()) { val named = tt.filter { c -> c in COLORS }; if (named.isNotEmpty() && named.none { c -> c in colors }) return@filter false }
             for (v in VARIANTS) if (v in tt && v !in qTokens) return@filter false
             true
         }
     }
 
     private fun trust(p: Product, store: Store, med: Double): Pair<Int, List<String>> {
-        var s = store.trust * 70
+        var s = store.trust * 80
         p.rating?.let { s += (it - 3) * 8 }
         p.reviews?.let { s += minOf(10.0, ln(it + 1.0) / ln(10.0) * 3) }
         if (p.sponsored) s -= 4
@@ -123,19 +135,18 @@ object Shopping {
         onProgress("Searching ${stores.size} stores: ${stores.joinToString { it.name }}")
         val gate = Semaphore(3) // keep memory in check on phones
         val settled = stores.map { s -> async { gate.withPermit { onStart(s); searchStore(s, query) }.also { (items, err) ->
-            onStore(s, heuristicFilter(query, items).ifEmpty { items }.sortedBy { it.price }, err)
+            onStore(s, heuristicFilter(query, items).sortedBy { it.price }, err)
             onProgress(if (err != null && items.isEmpty()) "${s.name}: couldn't load ($err)" else "${s.name}: ${items.size} listings") } } }.map { it.await() }
         val status = stores.mapIndexed { i, s -> StoreStatus(s.name, settled[i].first.size, settled[i].second) }
         var all = settled.flatMap { it.first }
-        val pre = heuristicFilter(query, all)
-        if (pre.size >= 2 || (pre.isNotEmpty() && all.size < 6)) all = pre
+        all = heuristicFilter(query, all)
         if (all.isEmpty()) return@coroutineScope CompareResult(query, emptyList(), status)
 
         onProgress("Matching ${all.size} listings to \"$query\"")
         runCatching {
             val list = all.take(90).mapIndexed { i, it -> "$i|${it.store}|${it.title.take(140)}|${it.price}" }.joinToString("\n")
             val j = Llm.completeJson(
-                "You match e-commerce listings to a shopping request. Keep only listings that ARE the requested product itself (same model; any colour; respect storage/size if the user specified it). Exclude accessories, cases, covers, chargers, screen guards, bundles of unrelated items, other models/generations. For each kept listing give a short normalized variant label like \"128 GB, Black\".",
+                "You match e-commerce listings to a shopping request. Keep ONLY listings that ARE exactly the requested product: same brand, same model and generation, same variant (Pro/Plus/Lite...), and the same storage and colour when the user specified them. Exclude accessories, cases, covers, chargers, screen guards, keypad/feature phones, \"compatible with\" items, bundles, refurbished-only listings and other models. When unsure, exclude. For each kept listing give a short normalized variant label like \"128 GB, Black\".",
                 "Request: $query\nListings (index|store|title|price):\n$list\n\nReturn {\"keep\":[{\"i\":index,\"variant\":\"...\"}]}", tier = "fast")
             val keep = j.optJSONArray("keep") ?: JSONArray()
             val m = (0 until keep.length()).associate { keep.getJSONObject(it).optInt("i") to keep.getJSONObject(it).optString("variant") }
@@ -147,8 +158,9 @@ object Shopping {
             p.copy(trust = score, flags = flags, discount = p.mrp?.let { ((1 - p.price / it) * 100).roundToInt() })
         }.sortedBy { it.price }
         val seen = HashSet<String>()
-        val results = ranked.filter { seen.add(it.storeId + it.price + it.title.take(30)) }.take(24)
-        (results.firstOrNull { it.trust >= 70 && it.flags.isEmpty() } ?: results.firstOrNull { it.trust >= 70 } ?: results.firstOrNull())?.best = true
+        // Low-trust listings (< 70: suspicious price, poor ratings, refurbished) are dropped, not just flagged.
+        val results = ranked.filter { it.trust >= 70 && seen.add(it.storeId + it.price + it.title.take(30)) }.take(24)
+        (results.firstOrNull { it.flags.isEmpty() } ?: results.firstOrNull())?.best = true
         CompareResult(query, results, status)
     }
 

@@ -175,11 +175,11 @@ fun inlineMd(s: String, linkColor: Color, codeBg: Color, cites: Set<Int>? = null
     append(s.substring(i))
 }
 
-/** A source citation shown inline in an answer: site name in a soft capsule; tap opens the page. */
+/** A numbered source citation chip shown inline in an answer ([1], [2]); tap opens the page. */
 @Composable
 fun CitePill(c: app.cairn.browser.agent.Cite, onClick: () -> Unit) {
-    Box(Modifier.fillMaxSize().padding(horizontal = 1.dp).clip(RoundedCornerShape(50)).background(C.surface3).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        androidx.compose.material3.Text(c.label, color = C.muted, fontSize = 10.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, lineHeight = 12.sp)
+    Box(Modifier.fillMaxSize().padding(horizontal = 1.dp, vertical = 1.dp).clip(RoundedCornerShape(6.dp)).background(C.agentSoft).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        androidx.compose.material3.Text("${c.n}", color = C.agent, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, lineHeight = 12.sp)
     }
 }
 
@@ -187,39 +187,25 @@ fun CitePill(c: app.cairn.browser.agent.Cite, onClick: () -> Unit) {
 private val FW_CITE = Regex("【(\\d{1,2})(?:†[^】]*)?】|\\[(\\d{1,2})†[^\\]]*]")
 fun normCites(s: String) = if (s.contains('【') || s.contains('†')) FW_CITE.replace(s) { "[" + (it.groupValues[1].ifEmpty { it.groupValues[2] }) + "]" } else s
 
-/** Lightweight Markdown renderer for assistant replies: headings, bullets, numbered lists, bold, code and links. */
+// ---------------- Skeleton loaders ----------------
+/** Placeholder for an assistant answer while the agent reasons: heading, paragraph lines and two source cards. */
 @Composable
-fun Markdown(md0: String, modifier: Modifier = Modifier, color: Color = C.text, cites: List<app.cairn.browser.agent.Cite>? = null, onCite: (app.cairn.browser.agent.Cite) -> Unit = {}) {
-    val md = remember(md0) { normCites(md0) }
-    val link = C.agent; val codeBg = C.surface3
-    val citeSet = cites?.map { it.n }?.toSet()
-    val inline = remember(cites) { cites?.associate { c ->
-        "cite:${c.n}" to InlineTextContent(Placeholder((c.label.length * 6.3f + 17f).sp, 19.sp, PlaceholderVerticalAlign.TextCenter)) { CitePill(c) { onCite(c) } }
-    } ?: emptyMap() }
-    @Composable fun Text(text: AnnotatedString, style: androidx.compose.ui.text.TextStyle, color: Color, modifier: Modifier = Modifier) =
-        androidx.compose.material3.Text(text, modifier = modifier, style = style, color = color, inlineContent = inline)
-    fun inlineMd(s: String, linkColor: Color, codeBg: Color) = inlineMd(s, linkColor, codeBg, citeSet)
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (raw in md.trim().lines()) {
-            val l = raw.trimEnd()
-            if (l.isBlank()) continue
-            val t = l.trimStart()
-            val indent = ((l.length - t.length) / 2).coerceAtMost(3)
-            when {
-                t.startsWith("### ") || t.startsWith("## ") || t.startsWith("# ") ->
-                    Text(inlineMd(t.trimStart('#', ' '), link, codeBg), style = MaterialTheme.typography.titleMedium, color = color, modifier = Modifier.padding(top = 6.dp))
-                Regex("^[-*•]\\s+").containsMatchIn(t) -> Row(Modifier.padding(start = (indent * 14).dp)) {
-                    Text("•", color = C.muted, modifier = Modifier.width(16.dp), style = MaterialTheme.typography.bodyLarge)
-                    Text(inlineMd(t.replaceFirst(Regex("^[-*•]\\s+"), ""), link, codeBg), style = MaterialTheme.typography.bodyLarge, color = color)
-                }
-                Regex("^\\d+[.)]\\s+").containsMatchIn(t) -> Row(Modifier.padding(start = (indent * 14).dp)) {
-                    Text(t.substringBefore(' '), color = C.muted, modifier = Modifier.widthIn(min = 22.dp), style = MaterialTheme.typography.bodyLarge)
-                    Text(inlineMd(t.substringAfter(' '), link, codeBg), style = MaterialTheme.typography.bodyLarge, color = color)
-                }
-                t.startsWith("|") && t.endsWith("|") -> if (!Regex("^\\|[\\s:|-]+\\|$").matches(t))
-                    Text(inlineMd(t.trim('|').split("|").joinToString("  ·  ") { it.trim() }, link, codeBg), style = MaterialTheme.typography.bodyMedium, color = color)
-                t.startsWith("> ") -> Text(inlineMd(t.drop(2), link, codeBg), style = MaterialTheme.typography.bodyLarge, color = C.muted, modifier = Modifier.padding(start = 10.dp))
-                else -> Text(inlineMd(t, link, codeBg), style = MaterialTheme.typography.bodyLarge, color = color)
+fun AnswerSkeleton() = Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Box(Modifier.fillMaxWidth(.45f).height(14.dp).shimmer(5.dp))
+    listOf(1f, .94f, .98f, .7f).forEach { Box(Modifier.fillMaxWidth(it).height(11.dp).shimmer(4.dp)) }
+    Spacer(Modifier.height(2.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { repeat(2) { Box(Modifier.width(150.dp).height(64.dp).shimmer(14.dp)) } }
+}
+
+/** List rows (favicon + two lines) for history, downloads, remote tabs and chats while they load. */
+@Composable
+fun SkeletonRows(count: Int = 6, modifier: Modifier = Modifier) = Column(modifier.fillMaxWidth()) {
+    repeat(count) { i ->
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(28.dp).shimmer(8.dp)); Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Box(Modifier.fillMaxWidth(if (i % 2 == 0) .82f else .64f).height(12.dp).shimmer(4.dp)); Spacer(Modifier.height(7.dp))
+                Box(Modifier.fillMaxWidth(.38f).height(10.dp).shimmer(4.dp))
             }
         }
     }

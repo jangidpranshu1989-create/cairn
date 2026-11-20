@@ -120,11 +120,22 @@ private fun SearchField(value: String, hint: String, onChange: (String) -> Unit)
 fun HistoryScreen() {
     var q by remember { mutableStateOf("") }
     val v = BrowserDb.version.intValue
-    val list = remember(q, v) { runCatching { BrowserDb.history(q, 500) }.getOrDefault(emptyList()) }
+    // Paged off the main thread: 80 rows at a time, the next page loads as you near the end (infinite scroll).
+    var limit by remember(q) { mutableIntStateOf(80) }
+    var loaded by remember { mutableStateOf<List<app.cairn.browser.data.HistoryItem>?>(null) }
+    LaunchedEffect(q, v, limit) {
+        if (q.isNotEmpty()) kotlinx.coroutines.delay(120)
+        loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { BrowserDb.history(q, limit) }.getOrDefault(emptyList()) }
+    }
+    val list = loaded.orEmpty()
+    val state = androidx.compose.foundation.lazy.rememberLazyListState()
+    val nearEnd by remember { derivedStateOf { state.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= state.layoutInfo.totalItemsCount - 12 } == true } }
+    LaunchedEffect(nearEnd, list.size) { if (nearEnd && list.size >= limit && limit < 5000) limit += 80 }
     ScreenHeader("History", { Ui.back() }) { TextButton(onClick = { Ui.go("settings/clear") }) { Text("Clear data", color = C.muted) } }
     SearchField(q, "Search history") { q = it }
-    if (list.isEmpty()) EmptyState(Ic.History, if (q.isEmpty()) "No history yet" else "No matches", if (q.isEmpty()) "Pages you visit appear here. Private tabs are never saved." else "Try a different word.", Modifier.fillMaxSize())
-    else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    if (loaded == null) SkeletonRows(9)
+    else if (list.isEmpty()) EmptyState(Ic.History, if (q.isEmpty()) "No history yet" else "No matches", if (q.isEmpty()) "Pages you visit appear here. Private tabs are never saved." else "Try a different word.", Modifier.fillMaxSize())
+    else LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 24.dp)) {
         list.groupBy { dayLabel(it.at) }.forEach { (day, items) ->
             item(key = "h-$day") { SectionLabel(day) }
             items(items, key = { it.id }) { h ->
@@ -138,6 +149,7 @@ fun HistoryScreen() {
                 }
             }
         }
+        if (list.size >= limit) item(key = "more") { SkeletonRows(2) }
     }
 }
 
@@ -192,7 +204,9 @@ fun DownloadsScreen() {
     val v = BrowserDb.version.intValue
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1000); tick++ } }
-    val list = remember(v) { runCatching { BrowserDb.downloads() }.getOrDefault(emptyList()) }
+    var loadedD by remember { mutableStateOf<List<app.cairn.browser.data.DownloadItem>?>(null) }
+    LaunchedEffect(v) { loadedD = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { BrowserDb.downloads() }.getOrDefault(emptyList()) } }
+    val list = loadedD.orEmpty()
     val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     val jobs = app.cairn.browser.service.Downloader.jobs
     var cat by rememberSaveable { mutableStateOf("all") }
@@ -201,6 +215,7 @@ fun DownloadsScreen() {
     ScreenHeader("Downloads", { Ui.back() }) {
         if (list.isNotEmpty()) TextButton(onClick = { list.filter { jobs[it.id] == null }.forEach { BrowserDb.deleteDownload(it.id) } }) { Text("Clear list", color = C.muted) }
     }
+    if (loadedD == null) { SkeletonRows(6); return }
     if (list.isEmpty()) { EmptyState(Ic.Download, "No downloads", "Files you download, PDFs and screenshots Cairn saves appear here.", Modifier.fillMaxSize()); return }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         cats.forEach { (k, label) ->

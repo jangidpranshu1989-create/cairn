@@ -666,13 +666,15 @@ async function discoverServer() {
   const url = String((await r.json()).server || '').trim().replace(/\/$/, '');
   if (!/^https:\/\//.test(url) || url === s.data.serverUrl) return;
   const signedIn = cloud.isSignedIn ? cloud.isSignedIn() : !!store.get().vault.data.cloud?.refreshToken;
-  if (signedIn && s.data.serverUrl !== 'https://cairn-browser.pplx.app/port/8787') return;
+  // The old pplx.app preview host is retired, so installs pointing there always move to the live server.
+  if (signedIn && !/pplx\.app/.test(s.data.serverUrl || '')) return;
   s.data.serverUrl = url; s.save();
   cloud.connect();
 }
 
 app.whenReady().then(async () => {
   store.init();
+  { const st = store.get().settings; if (app.isPackaged && /pplx\.app/.test(st.data.serverUrl || '')) { st.data.serverUrl = 'https://cairn-cloud.onrender.com'; st.save(); } }
   applySecureDns();
   tabsMod = require('./tabs'); cloud = require('./cloud'); llm = require('./llm'); passwords = require('./passwords'); pageTools = require('./page-tools');
   AgentCls = require('./agent/agent').Agent;

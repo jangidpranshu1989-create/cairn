@@ -70,6 +70,7 @@ object Prefs {
     var searchSuggestions by bool("searchSuggestions", true)
     var shield by bool("shield", true)                   // ad & tracker blocking
     var shieldTotal by long("shieldTotal", 0)
+    var homeAgent by bool("homeAgent", true)
     var blockThirdPartyCookies by bool("block3pCookies", true)
     var doNotTrack by bool("dnt", true)
     var javascript by bool("javascript", true)

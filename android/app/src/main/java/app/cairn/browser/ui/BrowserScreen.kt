@@ -263,7 +263,7 @@ fun NewTabPage(private: Boolean) {
         (top + defaults.filter { d -> top.none { BrowserDb.siteKey(it.second) == BrowserDb.siteKey(d.second) } }).distinctBy { BrowserDb.siteKey(it.second) }.take(8)
     }
     Column(Modifier.fillMaxSize().background(C.bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-        Spacer(Modifier.height(if (private) 72.dp else 64.dp))
+        Spacer(Modifier.height(if (private) 72.dp else 56.dp))
         if (private) {
             Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(C.surface2), contentAlignment = Alignment.Center) { Icon(Ic.VisibilityOff, null, Modifier.size(24.dp), tint = C.text) }
             Spacer(Modifier.height(20.dp))
@@ -280,81 +280,14 @@ fun NewTabPage(private: Boolean) {
             Spacer(Modifier.height(120.dp))
             return@Column
         }
-        val now = rememberNow()
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Logo(30.dp); Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                AnimatedContent(greetingFor(now), label = "greet", transitionSpec = { fadeIn(tween(400)) togetherWith fadeOut(tween(200)) }) { g ->
-                    Text(g, color = C.text, fontSize = 22.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Text(clockLine(now), color = C.faint, fontSize = 13.sp)
-            }
-            ProfileAvatar(34.dp) { Ui.profile = true }
-        }
-        Spacer(Modifier.height(24.dp))
-        // Search / ask — one box for both, with a slow agent glow so it reads as "Cairn can do this for you"
+        HomeHeader()
+        Spacer(Modifier.height(20.dp))
         val motion = android.provider.Settings.Global.getFloat(LocalContext.current.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
-        val glow = rememberGlowPhase(motion)
-        Column(Modifier.fillMaxWidth().glowBorder(motion, glow, 20.dp, 1.2.dp).clip(RoundedCornerShape(20.dp)).background(C.surface)
-            .clickable { Ui.omniboxText = null; Ui.omnibox = true }) {
-            Row(Modifier.fillMaxWidth().height(58.dp).padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Ic.Search, null, Modifier.size(18.dp), tint = C.muted); Spacer(Modifier.width(12.dp))
-                Text("Search, open a site or give Cairn a task", color = C.faint, fontSize = 15.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 42.dp) { act.listen { ask(it) } }
-            }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                quick.forEach { (ic, label, prompt) ->
-                    Row(Modifier.clip(RoundedCornerShape(50)).background(C.surface2).clickable { Haptics.tick(); ask(prompt) }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(ic, null, Modifier.size(14.dp), tint = C.agent); Spacer(Modifier.width(6.dp))
-                        Text(label, color = C.text, fontSize = 12.5.sp, maxLines = 1)
-                    }
-                }
-            }
-        }
-        // Pick up the last assistant conversation where it stopped
-        val lastChat = Chats.list.maxByOrNull { it.updated }
-        if (lastChat != null && System.currentTimeMillis() - lastChat.updated < 3 * 86_400_000L) {
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.agentSoft).clickable { Haptics.tick(); if (Agent.openChat(lastChat.id)) Ui.assistant = true }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Ic.AutoAwesome, null, Modifier.size(18.dp), tint = C.agent); Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Continue: ${lastChat.title}", color = C.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (lastChat.preview.isNotBlank()) Text(lastChat.preview, color = C.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Icon(Ic.ChevronRight, null, Modifier.size(16.dp), tint = C.muted)
-            }
-        }
-        Spacer(Modifier.height(24.dp))
-        // Favourites
-        Column(Modifier.fillMaxWidth()) {
-            sites.chunked(4).forEach { row ->
-                Row(Modifier.fillMaxWidth()) {
-                    row.forEach { (name, url) ->
-                        Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { Haptics.tick(); Browser.current?.let { Browser.load(it, url) } }.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(Modifier.size(58.dp).clip(RoundedCornerShape(18.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(18.dp)), contentAlignment = Alignment.Center) { Favicon(url, size = 30.dp, corner = 8.dp) }
-                            Spacer(Modifier.height(8.dp))
-                            Text(name, color = C.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
-                        }
-                    }
-                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
-        Spacer(Modifier.height(26.dp))
-        Text("Let Cairn handle it", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ideas.forEach { i ->
-                Column(Modifier.width(176.dp).height(146.dp).clip(RoundedCornerShape(18.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(18.dp))
-                    .clickable { Haptics.tick(); ask(i.prompt) }.padding(14.dp)) {
-                    Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(C.agentSoft), contentAlignment = Alignment.Center) { Icon(i.icon, null, Modifier.size(17.dp), tint = C.agent) }
-                    Spacer(Modifier.height(12.dp))
-                    Text(i.title, color = C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                    Spacer(Modifier.height(3.dp))
-                    Text(i.prompt, color = C.muted, fontSize = 12.5.sp, lineHeight = 17.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
+        OmniBar(motion, quick)
+        Spacer(Modifier.height(16.dp))
+        ShortcutGrid(sites)
+        JourneyRow(v)
+        BentoGrid()
         val watching = app.cairn.browser.service.PriceWatch.tracks
         LaunchedEffect(Unit) { app.cairn.browser.service.PriceWatch.load() }
         if (watching.isNotEmpty()) {
@@ -366,24 +299,6 @@ fun NewTabPage(private: Boolean) {
                     Text(watching.first().title, color = C.faint, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Icon(Ic.ChevronRight, null, Modifier.size(16.dp), tint = C.faint)
-            }
-        }
-        val recent = remember(v) { runCatching { BrowserDb.history(limit = 20).filter { !BrowserDb.isJunk(it.url, it.title) }.distinctBy { it.url.substringBefore('#') }.take(4) }.getOrDefault(emptyList()) }
-        if (recent.isNotEmpty()) {
-            Spacer(Modifier.height(26.dp))
-            Text("Jump back in", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(10.dp))
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(C.surface)) {
-                recent.forEachIndexed { i, h ->
-                    if (i > 0) HorizontalDivider(color = C.line, modifier = Modifier.padding(start = 54.dp))
-                    Row(Modifier.fillMaxWidth().clickable { Browser.current?.let { Browser.load(it, h.url) } }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Favicon(h.url, size = 22.dp, corner = 6.dp); Spacer(Modifier.width(16.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(h.title.ifBlank { hostOf(h.url) }, color = C.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(hostOf(h.url).removePrefix("www."), color = C.faint, fontSize = 12.sp, maxLines = 1)
-                        }
-                    }
-                }
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -583,10 +498,13 @@ fun Omnibox() {
     fun go(input: String) {
         if (input.isBlank()) return
         Ui.omnibox = false
+        // Agent mode (home Omni-bar) or an obvious task: hand it to the agent instead of searching.
+        if (Search.toUrl(input.trim()) == null && !input.trim().startsWith("http") && Ui.omniAgent && input.trim().contains(' ') && tab?.incognito != true) { Ui.omniAgent = false; ask(input.trim()); return }
+        Ui.omniAgent = false
         val t = Browser.current ?: Browser.newTab()
         Browser.open(input, t)
     }
-    BackHandler { Ui.omnibox = false }
+    BackHandler { Ui.omnibox = false; Ui.omniAgent = false }
     Column(Modifier.fillMaxSize().background(C.bg).statusBarsPadding().imePadding().navigationBarsPadding()) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true, contentPadding = PaddingValues(vertical = 8.dp)) {
             // reverse layout: first item sits right above the input, like a bottom-anchored address bar
@@ -628,7 +546,7 @@ fun Omnibox() {
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.text, fontSize = 15.5.sp), cursorBrush = SolidColor(C.text),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
                     keyboardActions = KeyboardActions(onGo = { go(tf.text) }),
-                    decorationBox = { inner -> if (tf.text.isEmpty()) Text(if (tab?.incognito == true) "Search privately" else "Search, ask, or type a URL", color = C.faint, fontSize = 15.5.sp); inner() })
+                    decorationBox = { inner -> if (tf.text.isEmpty()) Text(if (tab?.incognito == true) "Search privately" else if (Ui.omniAgent) "Tell Cairn what to do…" else "Search, ask, or type a URL", color = C.faint, fontSize = 15.5.sp); inner() })
                 if (tf.text.isNotEmpty()) IconBtn(Ic.Cancel, "Clear", tint = C.faint, size = 38.dp) { tf = TextFieldValue("") }
                 else IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 38.dp) { act.listen { go(it) } }
             }
@@ -702,6 +620,9 @@ fun TabSwitcher() {
 @Composable
 private fun RemoteTabsList(mod: Modifier) {
     val remote = app.cairn.browser.vault.Sync.remoteTabs
+    var waited by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(2500); waited = true }
+    if (Prefs.isSignedIn && remote.isEmpty() && !waited) { SkeletonRows(5, mod); return }
     if (!Prefs.isSignedIn || remote.isEmpty()) {
         EmptyState(Ic.Devices, if (Prefs.isSignedIn) "No tabs from other devices yet" else "Sign in to see your other devices",
             if (Prefs.isSignedIn) "Tabs open on your computer or other phones show up here." else "Your open tabs follow your Cairn account, end-to-end encrypted.", mod)

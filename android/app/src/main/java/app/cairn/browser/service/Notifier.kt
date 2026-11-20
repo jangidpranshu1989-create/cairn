@@ -58,6 +58,20 @@ object Notifier {
             .setContentIntent(open).setAutoCancel(true).build())
     }
 
+    /** NPCI rule: only the user enters the UPI PIN. Ping them loudly the moment the collect request is sent. */
+    fun upiPin(ctx: Context, amount: String, vpa: String) {
+        if (!canPost(ctx)) return
+        val upi = ctx.packageManager.getLaunchIntentForPackage("com.phonepe.app") ?: ctx.packageManager.getLaunchIntentForPackage("com.google.android.apps.nbu.paisa.user")
+            ?: ctx.packageManager.getLaunchIntentForPackage("net.one97.paytm") ?: Intent(ctx, BrowserActivity::class.java)
+        val pi = PendingIntent.getActivity(ctx, 77, upi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val text = "Approve ${amount.ifBlank { "the payment" }} sent to $vpa in your UPI app. Only you can enter the UPI PIN."
+        NotificationManagerCompat.from(ctx).notify(7701, NotificationCompat.Builder(ctx, CairnApp.CH_APPROVALS)
+            .setSmallIcon(R.drawable.ic_stat_cairn).setColor(ACCENT)
+            .setContentTitle("Enter your UPI PIN to finish").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(pi).setAutoCancel(true).build())
+    }
+
     fun cancelApproval(ctx: Context, id: String) = NotificationManagerCompat.from(ctx).cancel(approvalId(id))
 
     fun fileSaved(ctx: Context, name: String, folder: String, uri: Uri, mime: String) {

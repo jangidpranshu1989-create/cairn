@@ -48,8 +48,8 @@ object Chats {
     fun newId() = "c" + System.currentTimeMillis().toString(36) + java.util.UUID.randomUUID().toString().take(6)
 
     // ---------------- Serialising the visible conversation ----------------
-    private fun citesJson(c: List<Cite>) = JSONArray().apply { c.forEach { put(JSONObject().put("n", it.n).put("t", it.title).put("u", it.url)) } }
-    private fun citesOf(a: JSONArray?) = (0 until (a?.length() ?: 0)).mapNotNull { i -> a!!.optJSONObject(i)?.let { Cite(it.optInt("n"), it.optString("t"), it.optString("u")) } }
+    private fun citesJson(c: List<Cite>) = JSONArray().apply { c.forEach { put(JSONObject().put("n", it.n).put("t", it.title).put("u", it.url).put("s", it.snippet)) } }
+    private fun citesOf(a: JSONArray?) = (0 until (a?.length() ?: 0)).mapNotNull { i -> a!!.optJSONObject(i)?.let { Cite(it.optInt("n"), it.optString("t"), it.optString("u"), it.optString("s")) } }
 
     private fun saveImage(id: String, key: String, b: Bitmap): String {
         val f = File(dir, "${id}_${key.take(8)}.jpg")

@@ -159,7 +159,7 @@ HOW TO WORK
 - [Attached …] blocks in the user's message are photos or files the user uploaded (already read for you). Answer about them directly; search the web if the user asks about what they show (e.g. "where can I buy this", "what is this").
 - Shopping ("sabse sasta", cheapest, best price): call compare_prices with a precise product name (include storage/size if given). Product cards are shown automatically. Then recommend the cheapest TRUSTWORTHY option (trust ≥ 70, not flagged) with price, store and link, plus 1-2 alternatives. Mention flags honestly.
 - AUTONOMOUS BUYING: when the user asks to add to cart / buy / checkout / "cart mein daal ke checkout tak le jao", chain it without stopping or asking: compare_prices → add_to_cart(index of the best trustworthy pick; it opens the page, closes popups, enters the delivery PIN, picks the variant, taps Add to Cart with DOM + on-screen OCR + vision fallback and verifies) → go_to_checkout (opens the cart and taps Place Order / Proceed to Buy) → fill_profile on address steps → reach the order summary / payment page. Before each tool call write ONE short line of what you found and what you'll do next (e.g. "Lowest trusted: ₹20,999 on Flipkart → adding to cart"); it is shown live to the user.
-- If a button can't be found by id, use click_text — it heals itself with on-screen OCR and vision when the DOM selector fails.
+- If a button can't be found by id, use click_text — it heals itself with vision when the DOM selector fails.
 - Checkout: if login/OTP/CAPTCHA appears, use ask_user (the user handles it on screen, then replies "done"). On every address / contact step call fill_profile FIRST. Before paying, call find_offers and apply_coupon when a code is available.
 - PAYING: at the payment step call request_approval with the exact total (amount like "₹20,999"), merchant and item. Cairn may auto-approve it when it is within the user's UPI autopay limit; otherwise the user approves with fingerprint. Only if APPROVED: call pay_upi (selects UPI, enters the user's saved UPI ID and taps Pay — the user then enters the UPI PIN in their UPI app; you can never enter it) or, if the user prefers another method, click the final Pay button once. Never type card numbers, CVV, UPI PIN or OTPs yourself.
 - Reading aloud ("read this article to me", "padh ke sunao"): read_article (with url if given; use web_search to find it, e.g. Wikipedia) then read_aloud source=last_article. This runs in the background without touching the user's tab.
@@ -284,9 +284,8 @@ HOW TO WORK
     }
 
     /**
-     * Turns an attachment into text the agent can reason over. Images (and scanned PDF pages) are read twice:
-     * on-device OCR transcribes every word (works offline, never fails on a book page), and a cloud vision model —
-     * when the server has one — describes diagrams, photos and layout. Either alone is enough to answer.
+     * Turns an attachment into text the agent can reason over. Images (and scanned PDF pages) are read by the vision
+     * model, which transcribes the text and describes diagrams, photos and layout.
      */
     private suspend fun attachmentContext(f: Attachment, question: String): String {
         if (!f.ready) { step("file", "Reading ${f.name.take(40)}"); var w = 0; while (!f.ready && w < 200) { delay(100); w++ } }
@@ -294,17 +293,14 @@ HOW TO WORK
             step("lasso", if (f.isImage) "Looking at ${if (f.name == "Photo") "your photo" else f.name.take(40)}" else "Reading scanned pages of ${f.name.take(40)}")
             val bitmaps = if (f.isImage) listOfNotNull(f.bitmap) else f.scanned
             val parts = bitmaps.mapIndexed { i, bmp ->
-                val text = withContext(Dispatchers.Default) { Ocr.read(bmp) }
-                if (text.length > 30) step("file", "Read ${text.split(Regex("\\s+")).size} words${if (bitmaps.size > 1) " on page ${i + 1}" else ""}")
                 val b64 = jpeg(bmp, 1600)
                 val seen = runCatching {
                     Llm.vision("You are the eyes of Cairn, a browser assistant. Describe this ${if (f.isImage) "image" else "document page"} for another AI that cannot see it. " +
                         "Transcribe ALL visible text exactly (OCR), describe diagrams, tables, equations, products/brands/prices/people/places, and note anything relevant to the user's request: \"${question.ifBlank { "What is this?" }.take(400)}\". Be thorough but compact. Write in English.", b64, 1600)
                 }.getOrElse { e -> if (e is CancellationException) throw e; "" }
-                if (text.isBlank() && seen.isBlank()) return@mapIndexed ""
+                if (seen.isBlank()) return@mapIndexed ""
                 val sb = StringBuilder()
                 if (bitmaps.size > 1) sb.append("--- Page ${i + 1} ---\n")
-                if (text.isNotBlank()) sb.append("Text in the picture (exact, on-device OCR):\n").append(text.take(12000)).append('\n')
                 if (seen.isNotBlank()) sb.append("What it shows (vision):\n").append(seen).append('\n')
                 sb.toString()
             }.filter { it.isNotBlank() }
@@ -360,12 +356,10 @@ HOW TO WORK
                 Llm.vision("You are the eyes of Cairn, a browser assistant. The user circled this part of a web page and asked: \"${q.take(300)}\". " +
                     "Describe exactly what is in the image for another AI: transcribe all text, name products/brands/models/prices/people/places, describe charts or UI. Be compact. English.", b64, 900)
             }.getOrElse { e -> if (e is CancellationException) throw e; "" }
-            // On-device OCR of the circled pixels: works for text inside images, videos and canvases, and offline.
-            val ocr = if (domText.length < 40) withContext(Dispatchers.Default) { runCatching { Ocr.read(bmp) }.getOrDefault("") } else ""
-            if (seen.isBlank() && domText.isBlank() && ocr.isBlank()) throw Exception("Couldn't read your selection. Try circling a slightly bigger area, or one with text in it.")
+            if (seen.isBlank() && domText.isBlank()) throw Exception("Couldn't read your selection. Try circling a slightly bigger area, or one with text in it.")
             // 2) Answer it, with live web search when useful — as a normal agent turn, so sources and follow-ups work.
             messages.put(JSONObject().put("role", "user").put("content",
-                "[I circled part of the page]\n$pageCtx\n${if (ocr.isNotBlank()) "Text recognised in the selection (OCR): ${ocr.take(4000)}\n" else ""}${if (seen.isNotBlank()) "What the selection shows: $seen\n" else ""}\n$q\n\n(${Llm.langInstruction(q)} Search the web if facts, prices or where-to-buy matter; cite sources.)"))
+                "[I circled part of the page]\n$pageCtx\n${if (seen.isNotBlank()) "What the selection shows: $seen\n" else ""}\n$q\n\n(${Llm.langInstruction(q)} Search the web if facts, prices or where-to-buy matter; cite sources.)"))
             loop()
         }
     }
@@ -428,7 +422,7 @@ HOW TO WORK
                 when {
                     cartDone != null -> items.add(AiMsg(cartDone + (local?.let { "\n\n$it" } ?: ""), prompt = lastPrompt))
                     local != null -> items.add(AiMsg(local, prompt = lastPrompt))
-                    else -> items.add(AiMsg("Cairn's AI is busy right now${if (why != null) " ($why)" else ""}. Tap Retry in a few seconds — or add your own free AI key in Settings → AI so it never waits.", error = true, setup = true))
+                    else -> items.add(AiMsg("Cairn's AI is busy right now${if (why != null) " ($why)" else ""}. Tap Retry in a few seconds. Settings → AI → Test AI connection shows exactly which route is failing, and your own free Groq or Gemini key there makes it never wait.", error = true, setup = true))
                 }
             }
             catch (e: ApiException) { items.add(AiMsg(apiError(e), error = true, setup = e.status == 401)) }
@@ -684,7 +678,7 @@ HOW TO WORK
 
     /**
      * Self-healing click: DOM text match first; if the selector fails (dynamic / obfuscated / canvas buttons), read the
-     * screen with on-device OCR, and finally ask the vision model for the button's position. Returns the tapped label.
+     * screen with the vision model and tap the button where it says it is. Returns the tapped label.
      */
     private suspend fun smartClick(t: Tab, labels: List<String>, allowFinal: Boolean = false): String? {
         val w = t.web ?: return null
@@ -698,12 +692,7 @@ HOW TO WORK
         }
         PageJs.call(w, "overlay('remove')")
         val bmp = runCatching { PageTools.viewBitmap(w) }.getOrNull() ?: return null
-        step("eye", "Selector failed → reading the screen (OCR) for \"${labels.first()}\"")
-        Ocr.locate(bmp, labels)?.let { (x, y, txt) ->
-            step("click", "Found \"${txt.take(40)}\" on screen → tapping")
-            controlling = t; app.cairn.browser.ui.Haptics.agentTap(); tapPx(t, x, y); return txt
-        }
-        step("eye", "OCR missed it → asking vision to locate the button")
+        step("eye", "Selector failed → asking vision to find \"${labels.first()}\" on screen")
         val hit = runCatching {
             val small = android.graphics.Bitmap.createScaledBitmap(bmp, 540, (540.0 * bmp.height / bmp.width).toInt().coerceAtLeast(1), true)
             val out = java.io.ByteArrayOutputStream(); small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
@@ -725,7 +714,7 @@ HOW TO WORK
 
     /**
      * Store buy buttons via the DOM (button / a / role=button text or aria-label, including fixed bottom bars). If none is
-     * on screen, scroll 400px once and look again before falling back to OCR / vision.
+     * on screen, scroll 400px once and look again before falling back to vision.
      */
     private suspend fun buyClick(t: Tab, phrases: List<String>): String? {
         val w = t.web ?: return null
@@ -829,7 +818,7 @@ HOW TO WORK
                 if (st0?.optBoolean("goToCart") == true) { step("ok", "Already in your cart"); return "The product is already in the cart. Next: go_to_checkout." }
                 step("think", "Looking for the Add to Cart button")
                 val hit = buyClick(t, listOf("add to cart", "add to bag", "add to basket", "go to cart"))
-                    ?: smartClick(t, listOf("Add to Cart", "Add to Bag", "Add to basket", "Go to Cart")) ?: return "Couldn't find an Add to Cart button (DOM, OCR and vision tried). Use read_page and click it, or try the next store." + observe(t)
+                    ?: smartClick(t, listOf("Add to Cart", "Add to Bag", "Add to basket", "Go to Cart")) ?: return "Couldn't find an Add to Cart button (DOM and vision tried). Use read_page and click it, or try the next store." + observe(t)
                 settle(t, 5000); PageJs.call(w, "dismiss()")
                 val st = PageJs.obj(w, "cartState()")
                 val ok = st?.optBoolean("added") == true || CART_URL.containsMatchIn(t.url)
@@ -954,7 +943,7 @@ HOW TO WORK
                 if (loc == null) {
                     guardFinal(a.optString("text"), t.url)?.let { return it }
                     val before = t.url
-                    val hit = smartClick(t, listOf(a.optString("text"))) ?: return "No element with text \"${a.optString("text")}\" (DOM, OCR and vision all missed it). Use read_page."
+                    val hit = smartClick(t, listOf(a.optString("text"))) ?: return "No element with text \"${a.optString("text")}\" (DOM and vision all missed it). Use read_page."
                     return "Clicked \"${hit.take(80)}\" (found on screen).${if (t.url != before) " Navigated to ${t.url}." else ""}" + observe(t)
                 }
                 val label = loc.optString("text")

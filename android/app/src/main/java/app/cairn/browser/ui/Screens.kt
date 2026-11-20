@@ -765,6 +765,8 @@ fun AiSettings() {
             Text("Within these limits the agent approves the payment itself, chooses UPI, enters your UPI ID and taps Pay. Your bank then sends a request to your UPI app — you finish it with your UPI PIN (NPCI rules: no app can enter the PIN for you). Above the limit, Cairn always asks first.",
                 color = C.faint, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp))
         }
+        SectionLabel("AI connection")
+        AiConnectionTest()
         SectionLabel("Your free AI keys (optional)")
         Group {
             Text("Add one or more free keys. Cairn rotates between them: if one hits its limit (429), the next answers instantly. Keys stay encrypted on this phone.",
@@ -794,20 +796,21 @@ private fun KeyField(label: String, hint: String, initial: String, onSave: (Stri
 
 // ---------------------------------------------------------------- Account
 @Composable
-fun AccountScreen() {
+fun AccountScreen(embedded: Boolean = false, startMode: String? = null, prefillName: String = "", prefillEmail: String = "", onDone: (() -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
-    var mode by remember { mutableStateOf(if (LocalAccount.exists) "signup" else "signin") } // signup | signin | forgot
-    var name by remember { mutableStateOf(runCatching { org.json.JSONObject(Prefs.localAccountS).optString("name") }.getOrDefault("")) }
-    var email by remember { mutableStateOf(if (LocalAccount.exists) LocalAccount.email else "") }; var pw by remember { mutableStateOf("") }
+    var mode by remember(startMode) { mutableStateOf(startMode ?: if (LocalAccount.exists) "signup" else "signin") } // signup | signin | forgot
+    var name by remember { mutableStateOf(prefillName.ifBlank { runCatching { org.json.JSONObject(Prefs.localAccountS).optString("name") }.getOrDefault("") }) }
+    var email by remember { mutableStateOf(prefillEmail.ifBlank { if (LocalAccount.exists) LocalAccount.email else "" }) }; var pw by remember { mutableStateOf("") }
     var captcha by remember { mutableStateOf<Api.Captcha?>(null) }; var captchaAnswer by remember { mutableStateOf("") }
     var showPw by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }; var error by remember { mutableStateOf<String?>(null) }
     var dialog by remember { mutableStateOf<String?>(null) } // signout | delete | rename | password
     val local = Prefs.hasAccount && !Prefs.isSignedIn
 
-    ScreenHeader(if (Prefs.hasAccount) "Account" else "", { Ui.back() })
-    if (Prefs.hasAccount) {
+    if (embedded && Prefs.isSignedIn) { LaunchedEffect(Unit) { onDone?.invoke() }; return }
+    if (!embedded) ScreenHeader(if (Prefs.hasAccount) "Account" else "", { Ui.back() })
+    if (Prefs.hasAccount && !embedded) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(12.dp))
             Box(Modifier.size(76.dp).clip(CircleShape).background(C.accent), contentAlignment = Alignment.Center) { Text(Prefs.userName.take(1).uppercase().ifEmpty { "C" }, color = C.accentInk, fontSize = 31.sp, fontWeight = FontWeight.SemiBold) }
@@ -921,7 +924,7 @@ fun AccountScreen() {
                 kotlinx.coroutines.withTimeout(20000) { Api.signIn(email, pw, captcha?.token, captchaAnswer.takeIf { captcha != null }, name, create = mode == "signup") }
                 if (LocalAccount.exists && LocalAccount.email.equals(email.trim(), true)) LocalAccount.delete()  // moved to the Cairn Account
                 AppState.paired.value = true; SyncService.start(ctx); Prefs.syncOn = true; app.cairn.browser.vault.Sync.soon(0)
-                Haptics.confirm(); act.toast(if (mode == "signup") "Welcome to Cairn, ${name.trim().substringBefore(' ')}" else "Signed in. Your stuff is syncing."); Ui.back()
+                Haptics.confirm(); act.toast(if (mode == "signup") "Welcome to Cairn, ${name.trim().substringBefore(' ')}" else "Signed in. Your stuff is syncing."); if (onDone != null) onDone() else Ui.back()
             } catch (e: ApiException) {
                 Haptics.reject()
                 when {
@@ -934,8 +937,8 @@ fun AccountScreen() {
             finally { busy = false }
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp)) {
-        Logo(40.dp); Spacer(Modifier.height(20.dp))
+    Column(Modifier.fillMaxWidth().then(if (embedded) Modifier else Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp))) {
+        if (!embedded) { Logo(40.dp); Spacer(Modifier.height(20.dp)) }
         Text(when (mode) { "signup" -> "Create your Cairn Account"; "forgot" -> "Reset your password"; else -> "Sign in to Cairn" }, color = C.text, fontSize = 27.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 33.sp)
         Spacer(Modifier.height(6.dp))
         Text(when (mode) {
@@ -983,12 +986,14 @@ fun AccountScreen() {
                 Text("Create account", color = C.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { mode = "signup"; error = null }.padding(vertical = 8.dp))
             } else Text(if (mode == "forgot") "Back to sign in" else "I already have an account", color = C.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { mode = "signin"; error = null }.padding(vertical = 8.dp))
         }
+        if (!embedded) {
         Spacer(Modifier.height(28.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             HorizontalDivider(Modifier.weight(1f), color = C.line); Text("  or  ", color = C.faint, fontSize = 12.sp); HorizontalDivider(Modifier.weight(1f), color = C.line)
         }
         Spacer(Modifier.height(16.dp))
         SecondaryButton("Pair with your computer", Modifier.fillMaxWidth(), Ic.QrCodeScanner) { Ui.go("settings/pair") }
+        }
         Spacer(Modifier.height(20.dp))
         Text("By continuing you agree to the Terms of Service and Privacy Policy.", color = C.faint, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().clickable { openUrl("${BuildConfig.SITE}/terms.html") })
         Spacer(Modifier.height(28.dp))
@@ -1181,5 +1186,42 @@ fun AboutScreen() {
         }
         Spacer(Modifier.height(20.dp))
         Text("© 2026 Cairn. Built on Chromium and open-source software.", color = C.faint, fontSize = 12.sp)
+    }
+}
+
+/** Runs a tiny request through every AI route and lists exactly what answered and what failed (with the HTTP status). */
+@Composable
+fun AiConnectionTest() {
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    val rows = remember { mutableStateListOf<app.cairn.browser.agent.Llm.Probe>() }
+    var running by remember { mutableStateOf(false) }
+    Group {
+        Text("Checks Cairn Cloud and every backup AI from this phone. If something fails, the exact reason is shown here.",
+            color = C.faint, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 8.dp))
+        rows.forEach { p ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(if (p.ok) C.ok else C.err)); Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(p.name, color = C.text, fontSize = 13.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(p.detail.ifBlank { if (p.ok) "OK" else "failed" }, color = if (p.ok) C.muted else C.err, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Text("${p.ms} ms", color = C.faint, fontSize = 11.5.sp)
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PrimaryButton(if (running) "Testing…" else "Test AI connection", Modifier.weight(1f), busy = running, enabled = !running) {
+                running = true; rows.clear()
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { app.cairn.browser.agent.Llm.diagnose { p -> scope.launch { rows.add(p) } } }
+                    running = false
+                }
+            }
+            if (rows.isNotEmpty() && !running) SecondaryButton("Copy", Modifier.weight(.6f), Ic.ContentCopy) {
+                val rep = "Cairn ${BuildConfig.VERSION_NAME} AI test\n" + rows.joinToString("\n") { "${if (it.ok) "OK " else "ERR"} ${it.name}: ${it.detail} (${it.ms} ms)" }
+                (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Cairn AI test", rep))
+                act.toast("Copied — paste it to support")
+            }
+        }
     }
 }

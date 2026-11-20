@@ -68,98 +68,110 @@ object Weather {
 /** Agent mode on the home Omni-bar: what you type goes straight to the agent instead of a web search. */
 object HomeMode { var agent by mutableStateOf(Prefs.homeAgent) }
 
+/** Home top bar: wordmark on the left; weather and your profile on the right. */
 @Composable
 fun HomeHeader() {
     val now = rememberNow()
     LaunchedEffect(Unit) { Weather.refresh() }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            AnimatedContent(greetingFor(now), label = "greet", transitionSpec = { fadeIn(tween(400)) togetherWith fadeOut(tween(200)) }) { g ->
-                Text(g, color = C.text, fontSize = 26.sp, lineHeight = 31.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.7).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Pill(Ic.Schedule, java.text.SimpleDateFormat("EEE d MMM · h:mm a", java.util.Locale.getDefault()).format(now.time))
-                Weather.now?.let { Pill(Ic.Sun, it) }
-                val synced = Prefs.isSignedIn
-                Row(Modifier.clip(CircleShape).background(C.surface).border(1.dp, C.line, CircleShape).clickable { Ui.go("settings/account") }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(if (synced) C.ok else C.faint)); Spacer(Modifier.width(6.dp))
-                    Text(if (synced) "Synced" else "On this phone", color = C.muted, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                }
-            }
-        }
-        Spacer(Modifier.width(12.dp))
-        ProfileAvatar(40.dp) { Ui.profile = true }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Logo(22.dp); Spacer(Modifier.width(8.dp))
+        Text("cairn", color = C.text, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp)
+        Spacer(Modifier.weight(1f))
+        Weather.now?.let { Pill(Ic.Sun, it) }
+        Spacer(Modifier.width(4.dp))
+        ProfileAvatar(34.dp) { Ui.profile = true }
     }
+    Spacer(Modifier.height(30.dp))
+    AnimatedContent(greetingFor(now), label = "greet", transitionSpec = { fadeIn(tween(400)) togetherWith fadeOut(tween(200)) }) { g ->
+        Text(g, color = C.text, fontSize = 30.sp, lineHeight = 36.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+    Spacer(Modifier.height(4.dp))
+    Text(java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.getDefault()).format(now.time) + " · What can Cairn do for you?", color = C.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable
-private fun Pill(icon: ImageVector, text: String) = Row(Modifier.clip(CircleShape).background(C.surface).border(1.dp, C.line, CircleShape).padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun Pill(icon: ImageVector, text: String) = Row(Modifier.clip(CircleShape).background(C.surface).border(1.dp, C.line, CircleShape).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
     Icon(icon, null, Modifier.size(12.dp), tint = C.muted); Spacer(Modifier.width(5.dp))
     Text(text, color = C.muted, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, maxLines = 1)
 }
 
-/** Glass Omni-bar: search, open a site or hand a task to the agent; voice, camera OCR and an agent-mode toggle. */
+/** The composer: one big box to search, open a site or hand a task to the agent, with a Search / Agent switch. */
 @Composable
 fun OmniBar(motion: Boolean, quick: List<Triple<ImageVector, String, String>>) {
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
     val glow = rememberGlowPhase(motion)
-    var camUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
-        val u = camUri
-        if (ok && u != null) scope.launch {
-            val a = withContext(Dispatchers.IO) { Attachment.fromCameraFile(ctx, u) } ?: return@launch act.toast("Couldn't read that photo")
-            a.extract(ctx)
-            Ui.assistant = true
-            Agent.run("Read all the text in this photo (OCR), then explain what it says and anything useful I should do with it.", attachments = listOf(a))
-        }
-    }
-    val camPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) runCatching { Attachment.newCameraUri(ctx).also { camUri = it }.let { camera.launch(it) } }.onFailure { act.toast("Couldn't open the camera") }
-        else act.toast("Camera permission is needed to scan text")
-    }
     val agent = HomeMode.agent
     val border by animateFloatAsState(if (agent) 1f else .55f, tween(300), label = "b")
-    val shape = RoundedCornerShape(24.dp)
-    Column(Modifier.fillMaxWidth().glowBorder(motion && agent, glow, 24.dp, 1.3.dp).clip(shape)
-        .background(Brush.verticalGradient(listOf(C.surface.copy(alpha = .96f), C.surface2.copy(alpha = .82f))))
-        .border(1.dp, Brush.verticalGradient(listOf(C.line2.copy(alpha = border), C.line)), shape)) {
-        Row(Modifier.fillMaxWidth().height(60.dp).clickable { Ui.omniboxText = null; Ui.omniAgent = agent; Ui.omnibox = true }.padding(start = 18.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (agent) Ic.Sparkle else Ic.Search, null, Modifier.size(18.dp), tint = if (agent) C.agent else C.muted); Spacer(Modifier.width(12.dp))
-            Text(if (agent) "Tell Cairn what to do…" else "Search or type a URL", color = C.faint, fontSize = 15.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 42.dp) { act.listen { if (agent || Ui.looksLikeTask(it)) ask(it) else Browser.open(it, Browser.current ?: Browser.newTab()) } }
-            IconBtn(Ic.ScanText, "Scan text with camera", tint = C.muted, size = 42.dp) { Haptics.tick(); camPerm.launch(Manifest.permission.CAMERA) }
-        }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            // Agent mode toggle
-            Row(Modifier.clip(CircleShape).background(if (agent) C.agent else C.surface3).clickable { Haptics.tick(); HomeMode.agent = !agent; Prefs.homeAgent = !agent }
-                .padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Ic.Bot, null, Modifier.size(14.dp), tint = if (agent) C.accentInk else C.muted); Spacer(Modifier.width(6.dp))
-                Text(if (agent) "Agent on" else "Agent off", color = if (agent) C.accentInk else C.text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            }
-            quick.forEach { (ic, label, prompt) ->
-                Row(Modifier.clip(CircleShape).background(C.surface3.copy(alpha = .7f)).clickable { Haptics.tick(); ask(prompt) }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(ic, null, Modifier.size(14.dp), tint = C.agent); Spacer(Modifier.width(6.dp))
-                    Text(label, color = C.text, fontSize = 12.5.sp, maxLines = 1)
+    val shape = RoundedCornerShape(26.dp)
+    fun open() { Ui.omniboxText = null; Ui.omniAgent = agent; Ui.omnibox = true }
+    Column(Modifier.fillMaxWidth().glowBorder(motion && agent, glow, 26.dp, 1.3.dp).clip(shape)
+        .background(Brush.verticalGradient(listOf(C.surface, C.surface2.copy(alpha = .9f))))
+        .border(1.dp, Brush.verticalGradient(listOf(C.line2.copy(alpha = border), C.line)), shape)
+        .clickable { open() }.padding(start = 18.dp, end = 10.dp, top = 18.dp, bottom = 10.dp)) {
+        Text(if (agent) "Tell Cairn what to do…" else "Search or type a URL", color = C.faint, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(22.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Search / Agent switch
+            Row(Modifier.clip(CircleShape).background(C.surface3.copy(alpha = .8f)).padding(3.dp)) {
+                listOf(false to "Search", true to "Agent").forEach { (isAgent, label) ->
+                    val sel = agent == isAgent
+                    Row(Modifier.clip(CircleShape).background(if (sel) (if (isAgent) C.agent else C.text) else C.surface3.copy(alpha = 0f))
+                        .clickable { Haptics.tick(); HomeMode.agent = isAgent; Prefs.homeAgent = isAgent }.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (isAgent) Ic.Sparkle else Ic.Search, null, Modifier.size(13.dp), tint = if (sel) (if (isAgent) C.accentInk else C.bg) else C.muted)
+                        Spacer(Modifier.width(5.dp))
+                        Text(label, color = if (sel) (if (isAgent) C.accentInk else C.bg) else C.muted, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
                 }
             }
+            Spacer(Modifier.weight(1f))
+            IconBtn(Ic.Mic, "Voice", tint = C.muted, size = 40.dp) { act.listen { if (agent || Ui.looksLikeTask(it)) ask(it) else Browser.open(it, Browser.current ?: Browser.newTab()) } }
+            Spacer(Modifier.width(4.dp))
+            Box(Modifier.size(40.dp).clip(CircleShape).background(if (agent) C.agent else C.text).clickable { Haptics.tick(); open() }, contentAlignment = Alignment.Center) {
+                Icon(Ic.Send, if (agent) "Ask Cairn" else "Search", Modifier.size(17.dp), tint = if (agent) C.accentInk else C.bg)
+            }
         }
+    }
+    Spacer(Modifier.height(12.dp))
+    DeliveryChip()
+    Spacer(Modifier.height(12.dp))
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        quick.forEach { (ic, label, prompt) ->
+            Row(Modifier.clip(CircleShape).background(C.surface).border(1.dp, C.line, CircleShape).clickable { Haptics.tick(); ask(prompt) }.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(ic, null, Modifier.size(14.dp), tint = C.agent); Spacer(Modifier.width(7.dp))
+                Text(label, color = C.text, fontSize = 13.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** "Delivering to Kota 324005" — or a nudge to add an address so the agent can check out for you. */
+@Composable
+private fun DeliveryChip() {
+    val prof = remember(Prefs.profileJson) { runCatching { org.json.JSONObject(Prefs.profileJson.ifBlank { "{}" }) }.getOrDefault(org.json.JSONObject()) }
+    val city = prof.optString("city"); val pin = prof.optString("pin")
+    val has = pin.isNotBlank() || city.isNotBlank()
+    Row(Modifier.clip(CircleShape).clickable { Haptics.tick(); Ui.go("settings/profile") }.padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Ic.MapPin, null, Modifier.size(14.dp), tint = if (has) C.agent else C.warn); Spacer(Modifier.width(6.dp))
+        Text(if (has) "Delivering to ${listOf(city, pin).filter { it.isNotBlank() }.joinToString(" ")}" else "Add your delivery address so Cairn can check out for you",
+            color = C.muted, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Spacer(Modifier.width(6.dp))
+        Text(if (has) "Change" else "Add", color = C.text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
 /** Pinned shortcuts: top sites (one per site, never blank or error pages) topped up with defaults. */
 @Composable
 fun ShortcutGrid(sites: List<Pair<String, String>>) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(22.dp)).padding(vertical = 8.dp, horizontal = 4.dp)) {
+    Spacer(Modifier.height(26.dp))
+    SectionTitle("Shortcuts")
+    Column(Modifier.fillMaxWidth()) {
         sites.chunked(4).forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { (name, url) ->
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { Haptics.tick(); Browser.current?.let { Browser.load(it, url) } ?: Browser.newTab(url) }.padding(vertical = 8.dp),
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).clickable { Haptics.tick(); Browser.current?.let { Browser.load(it, url) } ?: Browser.newTab(url) }.padding(vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(C.bg).border(1.dp, C.line, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) { Favicon(url, size = 28.dp, corner = 7.dp) }
+                        Box(Modifier.size(56.dp).clip(RoundedCornerShape(18.dp)).background(C.surface).border(1.dp, C.line, RoundedCornerShape(18.dp)), contentAlignment = Alignment.Center) { Favicon(url, size = 28.dp, corner = 7.dp) }
                         Spacer(Modifier.height(7.dp))
-                        Text(name, color = C.muted, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
+                        Text(name, color = C.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
                     }
                 }
                 repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
@@ -183,7 +195,7 @@ fun JourneyRow(v: Int) {
     }
     if (cards.isEmpty()) return
     Spacer(Modifier.height(26.dp))
-    SectionTitle("Continue your journey")
+    SectionTitle("Continue")
     LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(cards.take(10)) { j ->
             val shape = RoundedCornerShape(18.dp)
@@ -221,42 +233,30 @@ fun SectionTitle(t: String) {
     Spacer(Modifier.height(10.dp))
 }
 
-/** Bento grid of agent abilities: one tall hero tile and smaller tiles, each starts a real task. */
+/** "Let Cairn handle it": four real tasks in an even 2 × 2 grid. */
 @Composable
 fun BentoGrid() {
-    val shield = if (Prefs.shield && Prefs.shieldTotal > 0) "%,d blocked".format(Prefs.shieldTotal) else "Ads & trackers"
     val watching = app.cairn.browser.service.PriceWatch.tracks.size
     Spacer(Modifier.height(26.dp))
     SectionTitle("Let Cairn handle it")
-    Row(Modifier.fillMaxWidth().height(250.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Hero: autonomous shopping
-        Column(Modifier.weight(1.1f).fillMaxHeight().clip(RoundedCornerShape(22.dp))
-            .background(Brush.linearGradient(listOf(C.agentSoft, C.surface))).border(1.dp, C.agent.copy(alpha = .25f), RoundedCornerShape(22.dp))
-            .clickable { Haptics.tick(); Ui.omniboxText = "Find CMF Phone 2 Pro (Black, 256 GB) from a trusted store, add it to cart and take it to payment"; Ui.omniAgent = true; Ui.omnibox = true }.padding(16.dp)) {
-            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(C.agent), contentAlignment = Alignment.Center) { Icon(Ic.ShoppingBag, null, Modifier.size(19.dp), tint = C.accentInk) }
-            Spacer(Modifier.weight(1f))
-            Text("Find → Cart → Pay", color = C.text, fontSize = 18.sp, lineHeight = 23.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp)
-            Spacer(Modifier.height(4.dp))
-            Text("Exact model only, trusted stores, your address and UPI within your limit.", color = C.muted, fontSize = 12.5.sp, lineHeight = 17.sp, maxLines = 3)
-        }
-        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Tile(Ic.Globe, "Research", "Cited answers", Modifier.weight(1f)) { ask("Research the best 5G phones under ₹25,000 right now and compare them in a table with sources") }
-            Tile(Ic.BellRing, "Price watch", if (watching > 0) "$watching watching" else "Alert on drops", Modifier.weight(1f)) { if (watching > 0) Ui.go("settings/prices") else ask("Track the price of Sony WH-1000XM5 and alert me when it drops") }
-        }
+    Row(Modifier.fillMaxWidth().height(118.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Tile(Ic.ShoppingBag, "Find → Cart → Pay", "Trusted stores, your address", Modifier.weight(1f), hero = true) {
+            Ui.omniboxText = "Find CMF Phone 2 Pro (Black, 256 GB) from a trusted store, add it to cart and take it to payment"; Ui.omniAgent = true; Ui.omnibox = true }
+        Tile(Ic.Globe, "Research", "Cited answers in a table", Modifier.weight(1f)) { ask("Research the best 5G phones under ₹25,000 right now and compare them in a table with sources") }
     }
     Spacer(Modifier.height(10.dp))
-    Row(Modifier.fillMaxWidth().height(116.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Tile(Ic.Flight, "Plan a trip", "Flights, stays, cabs", Modifier.weight(1f)) { ask("Plan a weekend in Jaipur: best flight, hotel and cab with prices") }
-        Tile(Ic.Shield, "Shield", shield, Modifier.weight(1f)) { Ui.go("settings/privacy") }
-        Tile(Ic.Headphones, "Listen", "Articles aloud", Modifier.weight(1f)) { ask("Read the Wikipedia article on the Taj Mahal aloud") }
+    Row(Modifier.fillMaxWidth().height(118.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Tile(Ic.BellRing, "Price watch", if (watching > 0) "$watching watching" else "Alert me when it drops", Modifier.weight(1f)) { if (watching > 0) Ui.go("settings/prices") else ask("Track the price of Sony WH-1000XM5 and alert me when it drops") }
+        Tile(Ic.Flight, "Plan a trip", "Flights, stays and cabs", Modifier.weight(1f)) { ask("Plan a weekend in Jaipur: best flight, hotel and cab with prices") }
     }
 }
 
 @Composable
-private fun Tile(icon: ImageVector, title: String, sub: String, modifier: Modifier, onClick: () -> Unit) {
+private fun Tile(icon: ImageVector, title: String, sub: String, modifier: Modifier, hero: Boolean = false, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
-    Column(modifier.fillMaxWidth().clip(shape).background(C.surface).border(1.dp, C.line, shape).clickable { Haptics.tick(); onClick() }.padding(14.dp)) {
-        Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(C.agentSoft), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(16.dp), tint = C.agent) }
+    Column(modifier.fillMaxHeight().clip(shape).background(if (hero) Brush.linearGradient(listOf(C.agentSoft, C.surface)) else Brush.linearGradient(listOf(C.surface, C.surface)))
+        .border(1.dp, if (hero) C.agent.copy(alpha = .25f) else C.line, shape).clickable { Haptics.tick(); onClick() }.padding(14.dp)) {
+        Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(if (hero) C.agent else C.agentSoft), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(16.dp), tint = if (hero) C.accentInk else C.agent) }
         Spacer(Modifier.weight(1f))
         Text(title, color = C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(sub, color = C.faint, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -251,6 +251,11 @@ object Llm {
         val tryCloud = System.currentTimeMillis() > cloudDownUntil
         if (tryCloud) try { return cloudChat(payload) } catch (e: Exception) {
             if (cancelled(e)) throw e
+            // Some networks/proxies answer a plain JSON POST with 404 while the streamed (text/event-stream) request that
+            // chat replies use goes through. Retry the same request streamed and rebuild the message (incl. tool calls).
+            if (e is ApiException && (e.status == 404 || e.status == 405)) try {
+                return cloudStreamMessage(body(messages, tools, tier, json, maxTokens, temperature, true).toString())
+            } catch (e2: Exception) { if (cancelled(e2)) throw e2 }
             fails += "Cairn Cloud ${reason(e)}"
             if (e is java.net.UnknownHostException || e is java.net.ConnectException) cloudDownUntil = System.currentTimeMillis() + 20_000
             warm()
@@ -264,6 +269,65 @@ object Llm {
         if (System.currentTimeMillis() - downAt > 30_000) cloudPatient(payload, fails)?.let { return it }
         downAt = System.currentTimeMillis()
         throw AiUnavailableException(fails)
+    }
+
+    /** Cairn Cloud over Server-Sent Events, assembled back into one chat message (content + tool calls). */
+    private fun cloudStreamMessage(payload: String): JSONObject {
+        val content = StringBuilder()
+        val calls = sortedMapOf<Int, JSONObject>()
+        cloudCall("/ai/chat") { header("Accept", "text/event-stream"); post(payload.toRequestBody(JSON_T)) }.use { r ->
+            if (!r.isSuccessful) throw ApiException(r.code, "stream ${r.code}")
+            val src = r.body!!.source()
+            while (!src.exhausted()) {
+                val line = src.readUtf8Line() ?: break
+                if (!line.startsWith("data:")) continue
+                val d = line.removePrefix("data:").trim()
+                if (d == "[DONE]") break
+                val delta = runCatching { JSONObject(d).getJSONArray("choices").getJSONObject(0).optJSONObject("delta") }.getOrNull() ?: continue
+                delta.optString("content").takeIf { it.isNotEmpty() && it != "null" }?.let { content.append(it) }
+                delta.optJSONArray("tool_calls")?.let { tc ->
+                    for (k in 0 until tc.length()) {
+                        val c = tc.getJSONObject(k); val i = c.optInt("index", k)
+                        val acc = calls.getOrPut(i) { JSONObject().put("id", "call_$i").put("type", "function").put("function", JSONObject().put("name", "").put("arguments", "")) }
+                        c.optString("id").takeIf { it.isNotEmpty() && it != "null" }?.let { acc.put("id", it) }
+                        c.optJSONObject("function")?.let { f ->
+                            val af = acc.getJSONObject("function")
+                            f.optString("name").takeIf { it.isNotEmpty() && it != "null" }?.let { af.put("name", af.optString("name") + it) }
+                            f.optString("arguments").takeIf { it.isNotEmpty() && it != "null" }?.let { af.put("arguments", af.optString("arguments") + it) }
+                        }
+                    }
+                }
+            }
+        }
+        val m = JSONObject().put("role", "assistant").put("content", content.toString())
+        val list = calls.values.filter { it.getJSONObject("function").optString("name").isNotBlank() }
+        if (list.isNotEmpty()) m.put("tool_calls", JSONArray(list))
+        if (content.isBlank() && list.isEmpty()) throw ApiException(204, "empty reply")
+        lastProvider = "cloud (stream)"; cloudDownUntil = 0; lastCloudOk = System.currentTimeMillis(); downAt = 0
+        return m
+    }
+
+    /** One line per AI route for Settings → AI → Test connection: what answered, how fast, or the exact failure. */
+    data class Probe(val name: String, val ok: Boolean, val detail: String, val ms: Long)
+    fun diagnose(onEach: (Probe) -> Unit) {
+        val msgs = JSONArray().put(JSONObject().put("role", "user").put("content", "Reply with the single word: ok"))
+        fun timed(name: String, block: () -> String) {
+            val t0 = System.currentTimeMillis()
+            val p = try { Probe(name, true, block().take(60), System.currentTimeMillis() - t0) }
+                catch (e: Exception) { Probe(name, false, reason(e) + ((e as? ApiException)?.message?.takeIf { !it.startsWith(EDGE) }?.let { " · " + it.take(80) } ?: ""), System.currentTimeMillis() - t0) }
+            onEach(p)
+        }
+        for (b in bases()) timed("Cairn Cloud health (${b.removePrefix("https://")})") {
+            http.newCall(Request.Builder().url("$b/api/health").header("Cache-Control", "no-cache").build()).execute().use { r ->
+                if (!r.isSuccessful) throw ApiException(r.code, if (r.header("x-render-routing") != null) EDGE + r.header("x-render-routing") else "health ${r.code}")
+                "server up"
+            }
+        }
+        val payload = body(msgs, null, "fast", false, 20, 0.0, false).toString()
+        timed("Cairn Cloud AI") { cloudChat(payload).optString("content").trim() + " · $lastProvider" }
+        timed("Cairn Cloud AI (stream)") { cloudStreamMessage(body(msgs, null, "fast", false, 20, 0.0, true).toString()).optString("content").trim() }
+        val all = directs()
+        for (d in all) timed(d.name) { directChat(d, msgs, null, "fast", false, 20, 0.0).optString("content").trim() + " · ${lastProvider.substringAfter(" · ")}" }
     }
 
     suspend fun chat(messages: JSONArray, tools: JSONArray? = null, tier: String = "smart", json: Boolean = false, maxTokens: Int = 3000, temperature: Double = 0.2): JSONObject =

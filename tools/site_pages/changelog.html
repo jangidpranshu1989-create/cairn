@@ -11,6 +11,13 @@ desc: What's new in Cairn for desktop and Cairn for Android.
 
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
+  <article><h2>v3.1.0 <span>Nov 2026</span></h2><ul>
+  <li>One-minute setup on first launch (also shown once after this update): your name, mobile and email, delivery address (type the PIN code and the city and state fill in), and a Cairn Account or an account on this phone only. Every step can be skipped.</li>
+  <li>New home screen: a personal greeting, one big composer with a Search / Agent switch, voice and send, a "Delivering to" chip, Continue cards, cleaner shortcuts and an even 2 × 2 "Let Cairn handle it" grid.</li>
+  <li>On-device OCR removed (it was unreliable). Photos, circled areas and buttons the page code can't find are now read by the vision model only. The APK no longer includes Google ML Kit.</li>
+  <li>More reliable AI: if a network answers Cairn Cloud's normal request with 404, the same request is retried as a streamed one (the route chat replies use), tool calls included.</li>
+  <li>Settings → AI → Test AI connection: checks Cairn Cloud and every backup AI from your phone, shows what answered and the exact reason for anything that failed, and copies a report.</li>
+  </ul></article>
   <article><h2>v3.0.3 <span>Nov 2026</span></h2><ul>
   <li>AI that keeps working when Cairn Cloud can't be reached: after your own keys, the phone and desktop now go straight to three keyless backups in turn: Kilo Gateway (free NVIDIA Nemotron), OVHcloud AI Endpoints (gpt-oss-120b, Qwen) and Pollinations. Each one has its own limits, so one being busy no longer stops you.</li>
   <li>LLM7 removed: since November 2026 it needs a token and answered every anonymous request with "429".</li>

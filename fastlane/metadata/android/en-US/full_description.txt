@@ -2,7 +2,7 @@
 <p>Cairn is a fast Android browser with an AI agent built in. Ask in Hindi, Hinglish or English. Cairn browses, compares prices across trusted stores, fills your cart and stops at the UPI PIN screen so you stay in control.</p>
 <p><b>What's new in 3.0</b></p>
 <ul>
-<li><b>Bento home:</b> live greeting, time and weather, a glass Omni-bar with voice, camera OCR and agent mode, clean shortcuts and "Continue your journey" cards.</li>
+<li><b>New home:</b> a personal greeting, one big composer with a Search / Agent switch and voice, your delivery address, clean shortcuts and "Continue your journey" cards.</li>
 <li><b>Exact-match shopping:</b> brand, model, storage and colour must match. Covers, chargers, keypad phones and stores with a trust score below 70 are removed.</li>
 <li><b>Checkout Magic:</b> Find → Cart → Address → UPI. Cairn fills your saved address, selects your UPI ID and pays only within the limit you set. You always enter the UPI PIN yourself.</li>
 <li><b>Rich answers:</b> comparison tables with a highlighted best pick, spec cards, code blocks with one-tap Copy, callouts, numbered citations and source cards.</li>

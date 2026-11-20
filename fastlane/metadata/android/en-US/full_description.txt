@@ -16,4 +16,4 @@
 <li>Passwords and PINs are masked from the AI. Fingerprint approvals for payments.</li>
 <li>Sync with Cairn on Windows, macOS and Linux.</li>
 </ul>
-<p>Cairn is free and open source. AI features use the Cairn Cloud service (cairn-cloud.onrender.com) or your own Groq/NVIDIA key.</p>
+<p>Cairn is free, and its source code is public on GitHub. AI features use the Cairn Cloud service (cairn-cloud.onrender.com) or your own Groq/NVIDIA key.</p>

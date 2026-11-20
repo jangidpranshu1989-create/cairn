@@ -3,6 +3,9 @@
     <string name="shortcut_new_tab">New tab</string>
     <string name="shortcut_private_tab">New private tab</string>
     <string name="shortcut_assistant">Ask Cairn</string>
+    <string name="shortcut_new_tab_long">Open a new tab</string>
+    <string name="shortcut_private_tab_long">Open a new private tab</string>
+    <string name="shortcut_assistant_long">Ask Cairn to do it for you</string>
     <string name="widget_hint">Search or ask Cairn</string>
     <string name="widget_voice">Voice search</string>
     <string name="widget_ask">Ask</string>

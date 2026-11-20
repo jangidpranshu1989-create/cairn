@@ -41,7 +41,7 @@ The server keeps a local replica and syncs with Turso every 30 s; nothing else c
    boot the server makes a private Storage bucket `cairn` (change with `SUPABASE_BUCKET`).
 
 How it works: the server runs on its fast local SQLite file and uploads a compressed snapshot to the bucket within
-15 s of any change (`SNAPSHOT_SECONDS`), plus one final snapshot when the host stops it, and keeps one dated copy per day
+5 s of any change (`SNAPSHOT_SECONDS`), plus one final snapshot when the host stops it, and keeps one dated copy per day
 in `backups/`. On every boot it restores the latest snapshot and the generated secrets (JWT / OIDC keys), so accounts,
 sync data, devices and logins survive restarts and redeploys. `/api/health` shows `"storage":"supabase"` when it is on.
 Set `SUPABASE_REQUIRED=1` to refuse to start (instead of starting empty) if Supabase can't be reached.

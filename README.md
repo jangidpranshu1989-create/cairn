@@ -11,7 +11,7 @@
 
 [Website](https://jangidpranshu1989-create.github.io/cairn/) · [Get it on Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jangidpranshu1989-create/cairn) · [Changelog](https://jangidpranshu1989-create.github.io/cairn/changelog.html) · [Release v3.0.0](https://github.com/jangidpranshu1989-create/cairn/releases/tag/v3.0.0)
 
-<img src="docs/media/gif-home.gif" width="280" alt="Cairn bento home and rich answers"> &nbsp; <img src="docs/media/gif-shop.gif" width="280" alt="Cairn exact-match shopping and payment approval">
+<img src="website/assets/media/gif-home.gif" width="280" alt="Cairn bento home and rich answers"> &nbsp; <img src="website/assets/media/gif-shop.gif" width="280" alt="Cairn exact-match shopping and payment approval">
 
 Full 30-second demos (1080x1920): [Home and answers](https://github.com/jangidpranshu1989-create/cairn/releases/download/v3.0.0/Cairn-Demo-Home.mp4) · [Shopping and Circle to Ask](https://github.com/jangidpranshu1989-create/cairn/releases/download/v3.0.0/Cairn-Demo-Shopping.mp4)
 
@@ -119,9 +119,9 @@ npm run dist:mac     # dist/Cairn-mac-arm64.dmg / Cairn-mac-x64.dmg (+ zip)
 npm run dist:linux   # dist/Cairn-linux-x64.AppImage / .deb
 ```
 
-- Packaged builds default to `https://api.cairn.app`; override with `CAIRN_SERVER=https://your-host` or in Settings → Phone & sync → Cairn Cloud URL.
+- Packaged builds default to `https://cairn-cloud.onrender.com`; override with `CAIRN_SERVER=https://your-host` or in Settings → Phone & sync → Cairn Cloud URL.
 - **Code signing:** set `CSC_LINK` / `CSC_KEY_PASSWORD` (Windows/macOS) and, for macOS notarisation, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`. Unsigned builds work but show SmartScreen / Gatekeeper warnings.
-- **Releases:** pushing a tag `v*` runs CI and publishes installers to GitHub Releases (`cairn-app/cairn` — change `build.publish` in `desktop/package.json` and the download links in `tools/build_site.py` to your repo).
+- **Releases:** pushing a tag `v*` runs CI and publishes installers to GitHub Releases (`jangidpranshu1989-create/cairn`; for a fork, change `build.publish` in `desktop/package.json` and the download links in `tools/build_site.py` to your repo).
 
 ### Android
 
@@ -155,7 +155,7 @@ python3 tools/build_site.py          # renders website/*.html from tools/site_pa
 cd website && python3 -m http.server 8080
 ```
 
-Page bodies live in `tools/site_pages/`; the shared header/footer, icons, version and release URL are in `tools/build_site.py`. The contact form and Pro waitlist post to `https://api.cairn.app/api/public/contact` (stored in the `messages` table, honeypot + rate limit) and fall back to `mailto:` if the API is unreachable.
+Page bodies live in `tools/site_pages/`; the shared header/footer, icons, version and release URL are in `tools/build_site.py`. The contact form and Pro waitlist post to `https://cairn-cloud.onrender.com/api/public/contact` (stored in the `messages` table, honeypot + rate limit) and fall back to `mailto:` if the API is unreachable.
 
 ## Configuration reference
 

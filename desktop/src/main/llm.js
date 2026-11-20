@@ -5,7 +5,8 @@
 const store = require('./store');
 const cloud = require('./cloud');
 
-const FREE_URL = 'https://text.pollinations.ai/openai';
+// Keyless OpenAI-compatible fallback (tools supported). text.pollinations.ai was retired (402/404) and is not used.
+const FREE_URL = 'https://api.llm7.io/v1/chat/completions';
 const base = () => store.get().settings.data.serverUrl.replace(/\/$/, '');
 const timeout = (signal, ms) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms));
 
@@ -43,7 +44,7 @@ async function okJson(r) {
 function status() { return { ready: true, mode: cloud.isSignedIn() ? 'account' : 'builtin', providers: ['cairn'] }; }
 
 async function freeChat(opts) {
-  const body = { model: 'openai', messages: opts.messages, temperature: opts.temperature ?? 0.2, max_tokens: opts.maxTokens ?? 4096 };
+  const body = { model: 'default', messages: opts.messages, temperature: opts.temperature ?? 0.2, max_tokens: opts.maxTokens ?? 4096 };
   if (opts.tools?.length) { body.tools = opts.tools; body.tool_choice = opts.toolChoice || 'auto'; }
   const r = await fetch(FREE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: timeout(opts.signal, 120_000) });
   const j = await okJson(r);
@@ -57,12 +58,18 @@ async function freeChat(opts) {
 async function chat(opts) {
   const { signal, ...rest } = opts;
   let cloudErr;
-  try {
-    const j = await okJson(await serverFetch('/ai/chat', { json: { ...rest, stream: false }, signal }));
-    return { message: j.choices[0].message, provider: j._provider || 'cairn', usage: j.usage };
-  } catch (e) {
-    if (signal?.aborted) throw e;
-    cloudErr = e;
+  // Cairn Cloud, retried once after a short pause when it is busy (503), cold, redeploying (404/502) or timed out.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const j = await okJson(await serverFetch('/ai/chat', { json: { ...rest, stream: false }, signal }));
+      return { message: j.choices[0].message, provider: j._provider || 'cairn', usage: j.usage };
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      cloudErr = e;
+      const transient = !e.status || e.status === 404 || e.status === 408 || e.status >= 500;
+      if (attempt === 0 && transient) { await new Promise(r => setTimeout(r, 1500)); continue; }
+      break;
+    }
   }
   if (opts.tier === 'vision' || (cloudErr.status === 429 && /daily/i.test(cloudErr.message))) throw cloudErr;
   try { return await freeChat(opts); }

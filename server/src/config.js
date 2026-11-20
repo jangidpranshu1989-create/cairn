@@ -79,7 +79,7 @@ export const config = {
   supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '',
   supabaseBucket: process.env.SUPABASE_BUCKET || 'cairn',
   supabaseRequired: process.env.SUPABASE_REQUIRED === '1',
-  snapshotSeconds: Number(process.env.SNAPSHOT_SECONDS || 15),
+  snapshotSeconds: Number(process.env.SNAPSHOT_SECONDS || 5),
   tursoToken: process.env.TURSO_AUTH_TOKEN || '',
   mailFrom: process.env.MAIL_FROM || 'Cairn <no-reply@example.com>',
   // Limits
@@ -87,6 +87,7 @@ export const config = {
   transferTtlHours: Number(process.env.TRANSFER_TTL_HOURS || 24),
   approvalTtlSec: Number(process.env.APPROVAL_TTL_SEC || 180),
   dailyAiRequestsFree: Number(process.env.DAILY_AI_FREE || 300),
-  dailyAiRequestsAnon: Number(process.env.DAILY_AI_ANON || 60),
-  dailyAiAnonGlobal: Number(process.env.DAILY_AI_ANON_GLOBAL || 3000),
+  dailyAiRequestsAnon: Number(process.env.DAILY_AI_ANON || 150),
+  dailyAiAnonPerIp: Number(process.env.DAILY_AI_ANON_PER_IP || 1500),
+  dailyAiAnonGlobal: Number(process.env.DAILY_AI_ANON_GLOBAL || 40000),
 };

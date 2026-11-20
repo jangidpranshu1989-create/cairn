@@ -18,6 +18,10 @@ val ksProps = Properties().apply {
 
 android {
     namespace = "app.cairn.browser"
+    // Plain JVM unit tests (payment gate, file chooser, shopping intent) live in src/testLogic and always run;
+    // the Paparazzi UI shots in src/test only compile when -Pshots is set.
+    sourceSets.getByName("test").java.setSrcDirs(listOf("src/testLogic/java") + if (project.hasProperty("shots")) listOf("src/test/java") else emptyList())
+    testOptions.unitTests.isReturnDefaultValues = true
     compileSdk = 35
     buildToolsVersion = "35.0.0"
 
@@ -25,8 +29,8 @@ android {
         applicationId = "app.cairn.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "3.0.0"
+        versionCode = 12
+        versionName = "3.0.1"
         // Default Cairn Cloud server; users can change it in Settings → Account (pairing QR codes carry it automatically)
         buildConfigField("String", "DEFAULT_SERVER", "\"${(project.findProperty("cairnServer") as String?) ?: "https://cairn-cloud.onrender.com"}\"")
         buildConfigField("String", "SITE", "\"${(project.findProperty("cairnSite") as String?) ?: "https://jangidpranshu1989-create.github.io/cairn"}\"")
@@ -88,4 +92,5 @@ dependencies {
     // OCR is skipped and photos go to the vision model instead.
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
     implementation("com.google.android.gms:play-services-mlkit-text-recognition-devanagari:16.0.1")
+    testImplementation("junit:junit:4.13.2")
 }

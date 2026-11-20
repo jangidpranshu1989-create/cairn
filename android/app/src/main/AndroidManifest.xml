@@ -48,7 +48,7 @@
         <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="ocr,ocr_devanagari" />
 
         <!-- Cairn uses no Google services: WebView Safe Browsing pings are turned off. -->
-        <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="false" />
+        <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="true" />
         <meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
 
         <activity

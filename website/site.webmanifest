@@ -1,0 +1,28 @@
+{
+  "name": "Cairn: AI browser",
+  "short_name": "Cairn",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0F0F0F",
+  "theme_color": "#0F0F0F",
+  "description": "The AI browser that finds, compares and checks out for you.",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

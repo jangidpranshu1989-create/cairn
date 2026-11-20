@@ -1,0 +1,1 @@
+3.0.1: fixed "AI couldn't be reached" in chat and shopping, add to cart in one go, 18 s store timeouts on mobile data, Amazon loads with Chrome's identity, image uploads on every site, autopay uses the page total (mismatch asks for your fingerprint), Safe Browsing on.

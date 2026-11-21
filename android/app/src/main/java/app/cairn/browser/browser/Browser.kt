@@ -381,6 +381,7 @@ object Browser {
             setGeolocationEnabled(true)
         }
         applyUa(w, desktop)
+        Speed.configure(w.settings, incognito)
         // Chrome doesn't send X-Requested-With: app.cairn.browser; WebView does by default, and anti-bot systems use it.
         if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST))
             runCatching { WebSettingsCompat.setRequestedWithHeaderOriginAllowList(w.settings, emptySet()) }
@@ -410,6 +411,8 @@ object Browser {
     fun prewarm() {
         if (spare != null || !::activity.isInitialized) return
         spare = WebView(activity)
+        Speed.warmUp()
+        if (Prefs.preloadPages) Speed.preconnect(Search.searchUrl("cairn"))
     }
     fun dropSpare() { spare?.let { runCatching { it.destroy() } }; spare = null }
 
@@ -452,7 +455,8 @@ object Browser {
 function up(t){if((window.scrollY||document.documentElement.scrollTop||document.body&&document.body.scrollTop||0)>0)return true;
 for(var e=t;e&&e.nodeType===1&&e!==document.documentElement;e=e.parentElement||(e.getRootNode&&e.getRootNode().host)){
 if(e.scrollTop>0&&e.scrollHeight>e.clientHeight+4){var o=getComputedStyle(e).overflowY;if(o=='auto'||o=='scroll'||o=='overlay')return true}}return false}
-addEventListener('touchstart',function(ev){try{CairnScroll.touch(up(ev.target))}catch(x){}},{capture:true,passive:true});
+addEventListener('touchstart',function(ev){try{CairnScroll.touch(up(ev.target))}catch(x){}
+try{var a=ev.target&&ev.target.closest&&ev.target.closest('a[href]');if(a&&/^https?:/.test(a.href)&&a.origin!==location.origin)CairnScroll.hint(a.origin)}catch(x){}},{capture:true,passive:true});
 addEventListener('click',function(){try{CairnScroll.tap()}catch(x){}},{capture:true,passive:true});
 var lt=0,ly=typeof WeakMap=='function'?new WeakMap():null;addEventListener('scroll',function(ev){var t=ev.target,d=(t===document||t===document.documentElement||t===document.body);
 if(!d&&!(t.clientHeight>innerHeight*0.5))return;var y=d?(window.scrollY||0):(t.scrollTop||0);
@@ -466,6 +470,8 @@ addEventListener('focusout',function(){try{CairnScroll.secure(false)}catch(x){}}
     private class ScrollBridge(val t: Tab) {
         @android.webkit.JavascriptInterface fun touch(canUp: Boolean) { t.jsCanScrollUp = canUp }
         @android.webkit.JavascriptInterface fun tap() { t.gestureAt = System.currentTimeMillis() }
+        /** A finger is on a link to another site: open the connection now, the tap lands ~100 ms later. */
+        @android.webkit.JavascriptInterface fun hint(origin: String) { if (!t.incognito && origin.length < 300) t.web?.post { Speed.preconnect(origin) } }
         @android.webkit.JavascriptInterface fun secure(on: Boolean) { t.web?.post { t.secureFocus = on } }
         @android.webkit.JavascriptInterface fun scroll(y: Int, canUp: Boolean) {
             val dy = y - t.jsScrollY; t.jsScrollY = y; t.jsCanScrollUp = canUp; t.lastScrollAt = System.currentTimeMillis()
@@ -505,14 +511,17 @@ addEventListener('focusout',function(){try{CairnScroll.secure(false)}catch(x){}}
             }
             if (t == current) app.cairn.browser.ui.Ui.collapsed = false
             app.cairn.browser.vault.WebBridge.fillOffer.value?.takeIf { it.tab == t }?.let { app.cairn.browser.vault.WebBridge.fillOffer.value = null }
-            t.loading = true; t.url = url; t.icon = favicon ?: BrowserDb.icon(url); t.blocked = 0; t.error = null; t.sensitive = false; t.secureFocus = false; t.translated = null
+            app.cairn.browser.vault.WebBridge.passkeyOffer.value?.takeIf { it.tab == t }?.let { app.cairn.browser.vault.WebBridge.passkeyOffer.value = null }
+            t.loading = true; t.url = url; t.icon = favicon; t.blocked = 0; t.error = null; t.sensitive = false; t.secureFocus = false; t.translated = null
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
+            // The saved site icon is read off the UI thread so starting a page load never waits on the database.
+            if (favicon == null) Speed.io.execute { val ic = runCatching { BrowserDb.icon(url) }.getOrNull(); if (ic != null) view.post { if (t.url == url && t.icon == null) t.icon = ic } }
         }
         override fun onPageFinished(view: WebView, url: String) {
             t.loading = false; t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
             if (isBlankUrl(url)) { if (t.popup && !view.canGoBack()) t.url = "about:blank" else { t.url = ""; t.title = "" }; return }
             t.url = url; t.title = view.title?.takeIf { it != url } ?: t.title
-            if (!t.incognito && url.startsWith("http") && t.error == null && t.unsafe == null && t.ssl == null) BrowserDb.addVisit(url, view.title ?: "")
+            if (!t.incognito && url.startsWith("http") && t.error == null && t.unsafe == null && t.ssl == null) { val title = view.title ?: ""; Speed.io.execute { runCatching { BrowserDb.addVisit(url, title) } } }
             if (!t.incognito) persist()
             view.postDelayed({ if (current == t && t.web == view) capture(t) }, 1500)
             if (url.startsWith("http")) {
@@ -599,11 +608,11 @@ addEventListener('focusout',function(){try{CairnScroll.secure(false)}catch(x){}}
     private class Chrome(val t: Tab) : WebChromeClient() {
         override fun onProgressChanged(view: WebView, p: Int) { t.progress = p; if (p == 100) t.loading = false }
         override fun onReceivedTitle(view: WebView, title: String?) {
-            if (!title.isNullOrBlank() && title != view.url) { t.title = title; if (!t.incognito && t.error == null) BrowserDb.updateTitle(view.url ?: t.url, title) }
+            if (!title.isNullOrBlank() && title != view.url) { t.title = title; if (!t.incognito && t.error == null) { val u = view.url ?: t.url; Speed.io.execute { runCatching { BrowserDb.updateTitle(u, title) } } } }
         }
         override fun onReceivedIcon(view: WebView, icon: Bitmap?) {
             if (icon == null) return
-            t.icon = icon; if (!t.incognito) view.url?.let { BrowserDb.saveIcon(it, icon); Favicons.offer(it, icon) }
+            t.icon = icon; if (!t.incognito) view.url?.let { u -> Speed.io.execute { runCatching { BrowserDb.saveIcon(u, icon) } }; Favicons.offer(u, icon) }
         }
         override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
             val site = runCatching { Uri.parse(t.url).let { "${it.scheme}://${it.authority}" } }.getOrDefault("")

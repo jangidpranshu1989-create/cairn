@@ -133,7 +133,9 @@ object Prefs {
     // ---- Account / companion ----
     var server by str("server", BuildConfig.DEFAULT_SERVER)
     var serverAuto by bool("serverAuto", true)
+    var approvalKeySent by bool("approvalKeySent", false)  // this phone's Keystore approval key is registered with the server
     var safeBrowsing by bool("safeBrowsing", true)
+    var preloadPages by bool("preloadPages", true)
     var dohMode by str("dohMode", "off")                  // off | cloudflare | google | custom
     var dohUrl by str("dohUrl", "")          // follow the published Cairn server address (server.json) unless set by hand
     var deviceIdS by str("deviceId", "")

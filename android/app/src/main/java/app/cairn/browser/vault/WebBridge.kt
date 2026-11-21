@@ -17,6 +17,8 @@ import org.json.JSONObject
 
 data class SavePrompt(val tab: Tab, val origin: String, val username: String, val password: String, val update: Boolean)
 data class FillOffer(val tab: Tab, val origin: String, val logins: List<Login>)
+/** A page is waiting for a passkey sign-in "in the background" (WebAuthn conditional mediation, like GitHub's login page). */
+data class PasskeyOffer(val tab: Tab, val origin: String, val rpId: String, val opts: JSONObject, val keys: List<Passkey>, val reqId: Int, val visible: Boolean, val reply: (JSONObject) -> Unit)
 data class AutofillOffer(val tab: Tab, val origin: String, val kind: String, val items: List<JSONObject>)
 data class AutofillSave(val tab: Tab, val origin: String, val kind: String, val data: JSONObject, val updateId: String?)
 
@@ -27,6 +29,7 @@ data class AutofillSave(val tab: Tab, val origin: String, val kind: String, val 
  */
 object WebBridge {
     val savePrompt = mutableStateOf<SavePrompt?>(null)
+    val passkeyOffer = mutableStateOf<PasskeyOffer?>(null)
     val fillOffer = mutableStateOf<FillOffer?>(null)
     val afOffer = mutableStateOf<AutofillOffer?>(null)
     val afSave = mutableStateOf<AutofillSave?>(null)
@@ -63,7 +66,7 @@ object WebBridge {
             "af-focus" -> if (!t.incognito && Prefs.autofillForms) {
                 val kind = m.optString("kind"); if (kind != "cards" && kind != "addresses") return
                 val items = Vault.autofill(kind)
-                if (items.isNotEmpty() && (afOffer.value?.tab != t || afOffer.value?.kind != kind)) afOffer.value = AutofillOffer(t, origin, kind, items)
+                if (items.isNotEmpty() && (afOffer.value?.tab != t || afOffer.value?.kind != kind)) afOffer.value = AutofillOffer(t, Vault.origin(w.url ?: ""), kind, items)
             }
             "af-save" -> if (isMain && !t.incognito && Prefs.autofillForms && origin.startsWith("https")) {
                 val kind = m.optString("kind"); val d = m.optJSONObject("data") ?: return
@@ -84,8 +87,21 @@ object WebBridge {
             "notif-request" -> if (isMain && origin.startsWith("http")) app.cairn.browser.browser.Browser.activity.onNotifyPermission(t, origin) { st -> send(JSONObject().put("state", st)) } else send(JSONObject().put("state", "denied"))
             "notif-show" -> if (origin.startsWith("http") && app.cairn.browser.data.BrowserDb.perm(origin, "notifications") == true)
                 app.cairn.browser.service.Notifier.site(app.cairn.browser.browser.Browser.activity, origin, m.optString("title").take(120), m.optString("body").take(400), t.url)
+            "pk-state" -> send(JSONObject().put("on", Prefs.cairnPasskeys && !t.incognito && isMain && origin.startsWith("https://")))
+            "pk-cond" -> {
+                // Conditional mediation: the page waits quietly; Cairn offers the passkey above the keyboard when you
+                // tap the username field, exactly like Chrome's autofill passkey suggestion.
+                if (!Prefs.cairnPasskeys || t.incognito || !isMain) { send(JSONObject().put("ok", false).put("fallback", true)); return }
+                val (rpId, keys) = runCatching { Passkeys.candidates(origin, m.getJSONObject("opts")) }.getOrNull() ?: ("" to emptyList())
+                if (keys.isEmpty()) { send(JSONObject().put("ok", false).put("fallback", true)); return }
+                passkeyOffer.value?.takeIf { it.tab == t }?.reply?.invoke(JSONObject().put("ok", false).put("name", "AbortError").put("error", "A new passkey request replaced this one"))
+                passkeyOffer.value = PasskeyOffer(t, origin, rpId, m.getJSONObject("opts"), keys, id, false) { o -> send(o) }
+            }
+            "pk-cond-show" -> passkeyOffer.value?.takeIf { it.tab == t && it.origin == origin && !it.visible }?.let { passkeyOffer.value = it.copy(visible = true) }
+            "pk-abort" -> passkeyOffer.value?.takeIf { it.tab == t && it.reqId == m.optInt("rid") }?.let { passkeyOffer.value = null }
             "pk-create", "pk-get" -> scope.launch {
-                if (!Prefs.cairnPasskeys || t.incognito) { send(JSONObject().put("ok", false).put("fallback", true)); return@launch }
+                // Sub-frames (cross-origin iframes) go to WebView's own WebAuthn, which applies the iframe permission rules.
+                if (!Prefs.cairnPasskeys || t.incognito || !isMain) { send(JSONObject().put("ok", false).put("fallback", true)); return@launch }
                 try {
                     val opts = m.getJSONObject("opts")
                     val r = if (m.optString("type") == "pk-create") Passkeys.create(origin, opts) else Passkeys.get(origin, opts)
@@ -98,14 +114,17 @@ object WebBridge {
     }
 
     /** Fills a login into the page (after the caller has verified the user). */
-    fun fill(w: WebView, l: Login) {
+    fun fill(w: WebView, l: Login, origin: String): Boolean {
+        // The page may have navigated while the fingerprint prompt was open: only fill the site the login was offered for.
+        if (origin.isEmpty() || Vault.origin(w.url ?: "") != Vault.origin(origin)) return false
         val js = "window.__cairnFill && window.__cairnFill(${JSONObject.quote(l.username)}, ${JSONObject.quote(l.password)})"
-        w.evaluateJavascript(js, null)
+        w.evaluateJavascript(js, null); return true
     }
 
     /** Fills a saved card or address into the focused form (after the caller has verified the user for cards). */
-    fun fillAutofill(w: WebView, kind: String, j: JSONObject) {
-        w.evaluateJavascript("window.__cairnAf && window.__cairnAf(${JSONObject.quote(kind)}, ${j})", null)
+    fun fillAutofill(w: WebView, kind: String, j: JSONObject, origin: String): Boolean {
+        if (origin.isEmpty() || Vault.origin(w.url ?: "") != Vault.origin(origin)) return false
+        w.evaluateJavascript("window.__cairnAf && window.__cairnAf(${JSONObject.quote(kind)}, ${j})", null); return true
     }
 
     private val SHIM = """
@@ -276,17 +295,43 @@ object WebBridge {
     return cred;
   }
   function fail(r){ var e = new Error(r.error || 'The operation either timed out or was not allowed.'); try { e = new DOMException(r.error || 'The operation either timed out or was not allowed.', r.name || 'NotAllowedError'); } catch(_){} throw e; }
+  function aborted(sig){ var r = sig && sig.reason; if (r !== undefined) return r; try { return new DOMException('The operation was aborted.', 'AbortError'); } catch(_) { return new Error('AbortError'); } }
+  // Sends a WebAuthn request to Cairn, honouring AbortSignal like Chrome; fallback() hands it to WebView's own WebAuthn.
+  function request(type, opts, sig, create, fallback){
+    if (sig && sig.aborted) return Promise.reject(aborted(sig));
+    return new Promise(function(res, rej){
+      var id = ++seq, done = false;
+      function onAbort(){ if (done) return; done = true; delete pend[id]; post('pk-abort', { rid: id }); rej(aborted(sig)); }
+      if (sig) sig.addEventListener('abort', onAbort, { once: true });
+      pend[id] = function(r){ if (done) return; done = true; if (sig) sig.removeEventListener('abort', onAbort);
+        if (r.ok) { try { res(mk(r.cred, create)); } catch(e) { rej(e); } } else if (r.fallback) res(fallback()); else { try { fail(r); } catch(e) { rej(e); } } };
+      B.postMessage(JSON.stringify({ id: id, type: type, opts: opts }));
+    });
+  }
   C.create = function(o){
     if (!o || !o.publicKey) return oCreate(o); var p = o.publicKey;
     var opts = { rp: p.rp, user: { id: b64(p.user.id), name: p.user.name, displayName: p.user.displayName }, challenge: b64(p.challenge),
       pubKeyCredParams: p.pubKeyCredParams, excludeCredentials: creds(p.excludeCredentials), authenticatorSelection: p.authenticatorSelection };
-    return call('pk-create', { opts: opts }).then(function(r){ if (r.ok) return mk(r.cred, true); if (r.fallback) return oCreate(o); fail(r); });
+    return request('pk-create', opts, o.signal, true, function(){ return oCreate(o); });
   };
   C.get = function(o){
-    if (!o || !o.publicKey || o.mediation === 'conditional') return oGet(o); var p = o.publicKey;
+    if (!o || !o.publicKey) return oGet(o); var p = o.publicKey;
     var opts = { rpId: p.rpId, challenge: b64(p.challenge), allowCredentials: creds(p.allowCredentials), userVerification: p.userVerification };
-    return call('pk-get', { opts: opts }).then(function(r){ if (r.ok) return mk(r.cred, false); if (r.fallback) return oGet(o); fail(r); });
+    var cond = o.mediation === 'conditional';
+    if (cond) document.addEventListener('focusin', function f(e){ var t = e.target; if (!t || t.tagName !== 'INPUT') return;
+      if (/webauthn|username|email/i.test(t.autocomplete || '') || /user|email|login/i.test((t.name || '') + (t.id || '')) || t.type === 'email') post('pk-cond-show'); }, true);
+    if (cond && document.activeElement && document.activeElement.tagName === 'INPUT') setTimeout(function(){ post('pk-cond-show'); }, 0);
+    return request(cond ? 'pk-cond' : 'pk-get', opts, o.signal, false, function(){ return oGet(o); });
   };
+  // Feature detection, so sites (GitHub, Google, Amazon…) offer passkeys in Cairn like they do in Chrome.
+  var K = window.PublicKeyCredential, pkOn = null;
+  function on(){ return pkOn || (pkOn = call('pk-state', {}).then(function(m){ return !!m.on; }, function(){ return false; })); }
+  function wrap(name, extra){ var orig = typeof K[name] === 'function' ? K[name].bind(K) : null;
+    try { Object.defineProperty(K, name, { configurable: true, writable: true, value: function(){ return on().then(function(v){ return extra(v, orig); }); } }); } catch(_){} }
+  wrap('isUserVerifyingPlatformAuthenticatorAvailable', function(v, o){ return v ? true : (o ? o() : false); });
+  wrap('isConditionalMediationAvailable', function(v, o){ return v ? true : (o ? o() : false); });
+  wrap('getClientCapabilities', function(v, o){ return Promise.resolve(o ? o().catch(function(){ return {}; }) : {}).then(function(c){ c = c || {};
+    if (!v) return c; var r = {}; for (var k in c) r[k] = c[k]; r.conditionalGet = true; r.passkeyPlatformAuthenticator = true; r.userVerifyingPlatformAuthenticator = true; return r; }); });
 })();
 """.trimIndent()
 }

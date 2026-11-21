@@ -24,6 +24,7 @@ jobs:
           curl -fsS http://localhost:8787/api/health
           curl -fsS http://localhost:8787/.well-known/openid-configuration
           BASE=http://localhost:8787 node test/oidc-smoke.mjs
+          BASE=http://localhost:8787 node test/security-smoke.mjs
   desktop:
     strategy:
       fail-fast: false

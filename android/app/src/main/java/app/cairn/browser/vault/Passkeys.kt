@@ -81,14 +81,24 @@ object Passkeys {
             .put("publicKey", b64u(kp.public.encoded)).put("alg", -7).put("transports", JSONArray(listOf("internal", "hybrid")))
     }
 
-    suspend fun get(origin: String, o: JSONObject): JSONObject {
+    /** The Cairn passkeys that can answer this sign-in request (rpId checked against the real page origin). */
+    fun candidates(origin: String, o: JSONObject): Pair<String, List<Passkey>> {
         val rpId = o.optString("rpId").ifEmpty { android.net.Uri.parse(origin).host.orEmpty() }
         checkRp(origin, rpId)
         val allow = o.optJSONArray("allowCredentials")?.let { a -> (0 until a.length()).map { a.getJSONObject(it).optString("id") }.toSet() } ?: emptySet()
-        val cands = Vault.passkeys(rpId).filter { allow.isEmpty() || it.credId in allow }
+        return rpId to Vault.passkeys(rpId).filter { allow.isEmpty() || it.credId in allow }
+    }
+
+    suspend fun get(origin: String, o: JSONObject): JSONObject {
+        val (rpId, cands) = candidates(origin, o)
         if (cands.isEmpty()) throw PasskeyFallback()
         val pick = if (cands.size == 1) cands[0] else choose(rpId, cands) ?: throw PasskeyFallback()
-        if (!Browser.activity.authenticate("Sign in to $rpId", "with your passkey for ${pick.userName.ifEmpty { pick.displayName }}")) throw PasskeyFallback()
+        return assert(origin, rpId, o, pick) ?: throw PasskeyFallback()
+    }
+
+    /** Asks for fingerprint / face / screen lock, then signs the sign-in challenge with [pick]. Null = user cancelled. */
+    suspend fun assert(origin: String, rpId: String, o: JSONObject, pick: Passkey): JSONObject? {
+        if (!Browser.activity.authenticate("Sign in to $rpId", "with your passkey for ${pick.userName.ifEmpty { pick.displayName }}")) return null
         val ad = authData(rpId, 0x01 or 0x04 or 0x08 or 0x10)
         val cd = clientData("webauthn.get", o.getString("challenge"), origin)
         val key = KeyFactory.getInstance("EC").generatePrivate(PKCS8EncodedKeySpec(pick.privPkcs8))

@@ -77,6 +77,7 @@ class SyncService : Service() {
                         override fun onOpen(webSocket: WebSocket, response: Response) {
                             attempt = 0; AppState.conn.value = Conn.ONLINE; AppState.lastError.value = null
                             scope.launch { catchUp() }
+                            scope.launch { runCatching { Api.ensureApprovalKey() } }
                         }
                         override fun onMessage(webSocket: WebSocket, text: String) { handle(text) }
                         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { closed.complete(Unit) }

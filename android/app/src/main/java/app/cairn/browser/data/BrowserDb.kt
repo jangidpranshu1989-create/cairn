@@ -19,7 +19,9 @@ object BrowserDb {
     private val db get() = h.writableDatabase
     /** Bumped on every change so Compose screens can re-query. */
     val version = mutableIntStateOf(0)
-    private fun changed() { version.intValue++ }
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    /** Compose state is bumped on the main thread; writes may now come from the background io thread. */
+    private fun changed() { if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) version.intValue++ else main.post { version.intValue++ } }
 
     fun init(ctx: Context) {
         h = object : SQLiteOpenHelper(ctx, "browser.db", null, 1) {

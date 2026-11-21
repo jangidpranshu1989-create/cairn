@@ -38,6 +38,8 @@ import androidx.lifecycle.lifecycleScope
 import app.cairn.browser.data.Api
 import app.cairn.browser.data.AppState
 import app.cairn.browser.data.Approval
+import app.cairn.browser.data.ApprovalKey
+import app.cairn.browser.data.Prefs
 import app.cairn.browser.service.Notifier
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -76,12 +78,12 @@ class ApproveActivity : FragmentActivity() {
         var left by remember { mutableLongStateOf(0L) }
         LaunchedEffect(a?.expiresAt) { while (a != null) { left = ((a.expiresAt - System.currentTimeMillis()) / 1000).coerceAtLeast(0); if (left == 0L && phase == Phase.REVIEW) phase = Phase.GONE; delay(1000) } }
 
-        fun decide(approve: Boolean, verified: Boolean) {
+        fun decide(approve: Boolean, verified: Boolean, signature: String? = null) {
             val id = a?.id ?: return
             phase = Phase.SENDING
             lifecycleScope.launch {
                 try {
-                    Api.decide(id, approve, verified)
+                    Api.decide(id, approve, verified, signature)
                     AppState.removeApproval(id); Notifier.cancelApproval(this@ApproveActivity, id)
                     phase = if (approve) Phase.APPROVED else Phase.DENIED
                     delay(1400); finish()
@@ -92,16 +94,31 @@ class ApproveActivity : FragmentActivity() {
             val authenticators = if (Build.VERSION.SDK_INT >= 30) BIOMETRIC_STRONG or DEVICE_CREDENTIAL else BIOMETRIC_WEAK or DEVICE_CREDENTIAL
             val can = BiometricManager.from(this).canAuthenticate(authenticators)
             if (can != BiometricManager.BIOMETRIC_SUCCESS) { error = "Set up a screen lock (fingerprint, face or PIN) on this phone to approve payments."; phase = Phase.ERROR; return }
+            // Android 11+: the fingerprint / screen lock unlocks this phone's Keystore approval key for exactly one
+            // signature, and the server checks that signature (see ApprovalKey). Older phones send the verified flag.
+            val id = a?.id
+            val signer = if (Prefs.approvalKeySent) ApprovalKey.signer() else null
+            if (Prefs.approvalKeySent && ApprovalKey.supported && signer == null) {
+                error = "This phone's approval key was reset (for example after the screen lock was removed). Pair the phone again from your computer."; phase = Phase.ERROR; return
+            }
             val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = decide(true, verified = true)
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    val unlocked = result.cryptoObject?.signature
+                    if (signer != null && id != null) {
+                        val sig = runCatching { ApprovalKey.sign(unlocked ?: signer, id) }.getOrNull()
+                        if (sig == null) { error = "Couldn't sign the approval. Try again."; return }
+                        decide(true, verified = true, signature = sig)
+                    } else decide(true, verified = true)
+                }
                 override fun onAuthenticationError(code: Int, msg: CharSequence) {
                     if (code != BiometricPrompt.ERROR_USER_CANCELED && code != BiometricPrompt.ERROR_NEGATIVE_BUTTON && code != BiometricPrompt.ERROR_CANCELED) { error = msg.toString() }
                 }
             })
-            prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
+            val info = BiometricPrompt.PromptInfo.Builder()
                 .setTitle(if (a?.kind == "payment") "Confirm payment" else "Confirm it's you")
                 .setSubtitle(listOf(a?.amount, a?.merchant).filter { !it.isNullOrEmpty() }.joinToString(" · "))
-                .setAllowedAuthenticators(authenticators).setConfirmationRequired(true).build())
+                .setAllowedAuthenticators(authenticators).setConfirmationRequired(true).build()
+            if (signer != null) prompt.authenticate(info, BiometricPrompt.CryptoObject(signer)) else prompt.authenticate(info)
         }
 
         Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp)) {

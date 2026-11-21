@@ -228,10 +228,11 @@ function makeAgent() {
 
 /** Phone-first approval; falls back to an in-browser approval card when no phone is paired/signed in. */
 async function approve(req, signal) {
-  const local = () => new Promise((resolve) => {
+  // reason: why the phone isn't used — the card says so plainly and the user must click Approve here themselves.
+  const local = (reason) => new Promise((resolve) => {
     const id = Math.random().toString(36).slice(2);
     pending.approvals.set(id, resolve);
-    send('agent:event', { type: 'approval', id, ...req, phone: false });
+    send('agent:event', { type: 'approval', id, ...req, phone: false, reason: reason || 'no-phone' });
     signal.addEventListener('abort', () => resolve('cancelled'), { once: true });
   });
   if (!cloud.isSignedIn()) return local();
@@ -239,12 +240,12 @@ async function approve(req, signal) {
     send('agent:event', { type: 'approval', id: null, ...req, phone: true });
     const r = await cloud.requestApproval(req, signal);
     send('agent:event', { type: 'approval_result', status: r.status });
-    if (r.status === 'no-phone') return local();
+    if (r.status === 'no-phone') return local('no-phone');
     return r.status;
   } catch (e) {
     if (signal.aborted) return 'cancelled';
     send('toast', { text: 'Phone approval unavailable: ' + e.message });
-    return local();
+    return local('unreachable');
   }
 }
 
@@ -353,25 +354,25 @@ function registerIpc() {
     const ids = new Set(live.map(x => x.id));
     return [...live, ...store.get().downloads.data.filter(x => !ids.has(x.id))];
   });
-  handle('downloads:cancel', (_e, id) => downloads.get(id)?.item.cancel());
-  handle('downloads:pause', (_e, id) => { const d = downloads.get(id); if (!d) return; if (d.item.isPaused()) { if (d.item.canResume()) d.item.resume(); } else d.item.pause(); d.rec.paused = d.item.isPaused(); d.rec.speed = 0; });
-  handle('downloads:clear', () => { store.get().downloads.data = []; store.get().downloads.save(); downloads = new Map([...downloads].filter(([, d]) => d.rec.state === 'progressing')); });
-  handle('file:open', (_e, f) => { if (safeFile(f)) shell.openPath(f); });
-  handle('file:reveal', (_e, f) => { if (safeFile(f)) shell.showItemInFolder(f); });
-  handle('file:toPhone', async (_e, f, folder) => { if (!safeFile(f)) throw new Error('forbidden'); return cloud.sendToPhone(f, folder); });
+  handle('downloads:cancel', (_e, id) => downloads.get(id)?.item.cancel(), { internal: true });
+  handle('downloads:pause', (_e, id) => { const d = downloads.get(id); if (!d) return; if (d.item.isPaused()) { if (d.item.canResume()) d.item.resume(); } else d.item.pause(); d.rec.paused = d.item.isPaused(); d.rec.speed = 0; }, { internal: true });
+  handle('downloads:clear', () => { store.get().downloads.data = []; store.get().downloads.save(); downloads = new Map([...downloads].filter(([, d]) => d.rec.state === 'progressing')); }, { internal: true });
+  handle('file:open', (_e, f) => { if (safeFile(f)) shell.openPath(f); }, { internal: true });
+  handle('file:reveal', (_e, f) => { if (safeFile(f)) shell.showItemInFolder(f); }, { internal: true });
+  handle('file:toPhone', async (_e, f, folder) => { if (!safeFile(f)) throw new Error('forbidden'); return cloud.sendToPhone(f, folder); }, { internal: true });
 
   // agent
-  handle('agent:run', async (_e, text) => { if (!agent) makeAgent(); agent.run(text).catch(() => {}); return true; });
-  handle('agent:stop', () => agent?.stop());
-  handle('agent:reset', () => { agent?.reset(); agentTabId = null; });
-  handle('agent:answer', (_e, id, text) => { pending.asks.get(id)?.(text); pending.asks.delete(id); });
-  handle('agent:confirm', (_e, id, ok) => { pending.confirms.get(id)?.(ok); pending.confirms.delete(id); });
-  handle('agent:approve', (_e, id, ok) => { pending.approvals.get(id)?.(ok ? 'approved' : 'denied'); pending.approvals.delete(id); });
+  handle('agent:run', async (_e, text) => { if (!agent) makeAgent(); agent.run(text).catch(() => {}); return true; }, { internal: true });
+  handle('agent:stop', () => agent?.stop(), { internal: true });
+  handle('agent:reset', () => { agent?.reset(); agentTabId = null; }, { internal: true });
+  handle('agent:answer', (_e, id, text) => { pending.asks.get(id)?.(text); pending.asks.delete(id); }, { internal: true });
+  handle('agent:confirm', (_e, id, ok) => { pending.confirms.get(id)?.(ok); pending.confirms.delete(id); }, { internal: true });
+  handle('agent:approve', (_e, id, ok) => { pending.approvals.get(id)?.(ok ? 'approved' : 'denied'); pending.approvals.delete(id); }, { internal: true });
   handle('agent:status', () => llm.status());
   handle('page:tool', (_e, kind) => runPageTool(kind));
   handle('voice:speak', async (_e, text) => llm.speech(text));
   handle('voice:transcribe', async (_e, buf, mime) => llm.transcribe(Buffer.from(buf), mime));
-  handle('open:file-url', (_e, f) => safeFile(f) ? `cairn://file?p=${encodeURIComponent(f)}` : null);
+  handle('open:file-url', (_e, f) => safeFile(f) ? `cairn://file?p=${encodeURIComponent(f)}` : null, { internal: true });
 
   // settings
   handle('settings:get', () => ({ ...store.get().settings.data, groqKey: undefined, nvidiaKey: undefined }));
@@ -391,7 +392,7 @@ function registerIpc() {
   handle('settings:pickDir', async () => { const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] }); return r.canceled ? null : r.filePaths[0]; }, { internal: true });
 
   // cloud account & phone
-  handle('cloud:session', () => cloud.publicSession());
+  handle('cloud:session', () => cloud.publicSession(), { internal: true });
   handle('sync:status', () => require('./sync').status(), { internal: true });
   handle('sync:now', () => require('./sync').syncNow(), { internal: true });
   handle('sync:setOn', (_e, on) => require('./sync').setOn(on), { internal: true });
@@ -400,7 +401,7 @@ function registerIpc() {
   handle('sync:setPassphrase', (_e, pass) => require('./sync').setPassphrase(String(pass || '')), { internal: true });
   handle('sync:removePassphrase', (_e, pw) => require('./sync').removePassphrase(String(pw || '')), { internal: true });
   handle('sync:reset', (_e, pw) => require('./sync').resetSync(String(pw || '')), { internal: true });
-  handle('vault:encrypted', () => require('electron').safeStorage.isEncryptionAvailable());
+  handle('vault:encrypted', () => require('electron').safeStorage.isEncryptionAvailable(), { internal: true });
   handle('cloud:captcha', () => cloud.captcha(), { internal: true });
   handle('cloud:login', (_e, email, pw, cap) => cloud.login(email, pw, cap), { internal: true });
   handle('cloud:signup', (_e, payload) => cloud.signup(payload), { internal: true });

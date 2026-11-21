@@ -69,22 +69,55 @@ object Api {
         val msg = runCatching { JSONObject(it.body!!.string()).optString("error") }.getOrNull()
         throw ApiException(it.code, msg?.ifEmpty { null } ?: "Server error ${it.code}") }; it.body!!.string() }
 
-    suspend fun completePairing(server: String, code: String): Unit = withContext(Dispatchers.IO) {
-        if (server != Prefs.server) Prefs.serverAuto = false
-        Prefs.server = server
+    /**
+     * Checks a server address from a pairing QR / link or typed by hand. Only https is accepted (plain http only for
+     * this phone itself or the Android emulator host, for development). Returns the normalised origin or null.
+     */
+    fun normalizeServer(raw: String): String? {
+        val u = runCatching { java.net.URI(raw.trim().trimEnd('/')) }.getOrNull() ?: return null
+        val host = u.host?.lowercase() ?: return null
+        val scheme = u.scheme?.lowercase()
+        val devHttp = scheme == "http" && (host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2")
+        if (scheme != "https" && !devHttp) return null
+        if (u.userInfo != null || (u.path ?: "").trim('/').isNotEmpty() || u.query != null || u.fragment != null) return null
+        return "$scheme://$host" + if (u.port > 0) ":${u.port}" else ""
+    }
+    fun hostOfServer(s: String) = runCatching { java.net.URI(s).host }.getOrNull().orEmpty()
+
+    /**
+     * Pairs this phone with the account that showed [code] (and, from a QR code, its 256-bit [secret]). The request
+     * goes to [server] directly; the saved server address and session are only replaced once pairing succeeded, so a
+     * bad link can never leave the phone pointed at a server it didn't pair with.
+     */
+    suspend fun completePairing(server: String, code: String, secret: String? = null): Unit = withContext(Dispatchers.IO) {
+        val base = normalizeServer(server) ?: throw ApiException(400, "That server address isn't valid. Cairn only connects to https:// servers.")
         val body = JSONObject().put("code", code).put("name", "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}".take(80))
-        val r = exec(Request.Builder().url(ep("/devices/pair/complete")).post(body.toString().toRequestBody(JSON)).build())
+        if (!secret.isNullOrBlank()) body.put("secret", secret)
+        ApprovalKey.publicKey()?.let { body.put("approvalKey", it) }
+        val r = exec(Request.Builder().url("$base/api/devices/pair/complete").post(body.toString().toRequestBody(JSON)).build())
         val j = JSONObject(r.json())
+        if (base != Prefs.server) Prefs.serverAuto = false
+        Prefs.server = base
         Prefs.deviceId = j.getString("deviceId"); Prefs.userJson = j.getJSONObject("user").toString()
         Prefs.accessToken = j.getString("accessToken"); Prefs.refreshToken = j.getString("refreshToken")
+        Prefs.approvalKeySent = body.has("approvalKey")
+    }
+
+    /** Phones paired before 3.4 register their approval key once (the server never lets it be replaced). */
+    suspend fun ensureApprovalKey() = withContext(Dispatchers.IO) {
+        if (!Prefs.isPaired || Prefs.approvalKeySent) return@withContext
+        val k = ApprovalKey.publicKey() ?: return@withContext
+        val r = authed { url(ep("/devices/me")).patch(JSONObject().put("approvalKey", k).toString().toRequestBody(JSON)) }
+        r.use { if (it.isSuccessful || it.code == 409) Prefs.approvalKeySent = true }
     }
 
     suspend fun pendingApprovals(): List<Approval> = withContext(Dispatchers.IO) {
         val a = JSONArray(authed { url(ep("/approvals/pending")) }.json()); (0 until a.length()).map { Approval.from(a.getJSONObject(it)) }
     }
 
-    suspend fun decide(id: String, approve: Boolean, verified: Boolean) = withContext(Dispatchers.IO) {
-        authed { url(ep("/approvals/$id/decision")).post(JSONObject().put("approve", approve).put("verified", verified).toString().toRequestBody(JSON)) }.json()
+    suspend fun decide(id: String, approve: Boolean, verified: Boolean, signature: String? = null) = withContext(Dispatchers.IO) {
+        val b = JSONObject().put("approve", approve).put("verified", verified); signature?.let { b.put("signature", it) }
+        authed { url(ep("/approvals/$id/decision")).post(b.toString().toRequestBody(JSON)) }.json()
     }
 
     suspend fun pendingTransfers(): List<Transfer> = withContext(Dispatchers.IO) {
@@ -100,7 +133,7 @@ object Api {
     suspend fun unpair() = withContext(Dispatchers.IO) {
         runCatching { Prefs.deviceId?.let { d -> authed { url(ep("/devices/$d")).delete() }.close() } }
         runCatching { authed { url(ep("/auth/logout")).post("{}".toRequestBody(JSON)) }.close() }
-        Prefs.clearAccount()
+        Prefs.clearAccount(); Prefs.approvalKeySent = false; ApprovalKey.wipe()
     }
 
     data class Captcha(val svg: String, val token: String, val devAnswer: String?)
@@ -130,10 +163,13 @@ object Api {
         val start = JSONObject(exec(Request.Builder().url(ep("/devices/pair/start")).header("Authorization", "Bearer $at")
             .post("{}".toRequestBody(JSON)).build()).json())
         val pairBody = JSONObject().put("code", start.getString("code")).put("name", "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}".take(80))
+        runCatching { android.net.Uri.parse(start.optString("payload")).getQueryParameter("s") }.getOrNull()?.let { pairBody.put("secret", it) }
+        ApprovalKey.publicKey()?.let { pairBody.put("approvalKey", it) }
         val d = JSONObject(exec(Request.Builder().url(ep("/devices/pair/complete")).post(pairBody.toString().toRequestBody(JSON)).build()).json())
         runCatching { exec(Request.Builder().url(ep("/auth/logout")).header("Authorization", "Bearer $at").post("{}".toRequestBody(JSON)).build()).close() }
         Prefs.deviceId = d.getString("deviceId"); Prefs.userJson = d.getJSONObject("user").toString()
         Prefs.accessToken = d.getString("accessToken"); Prefs.refreshToken = d.getString("refreshToken")
+        Prefs.approvalKeySent = pairBody.has("approvalKey")
         // Unlock end-to-end encrypted sync with a key derived from the password (never sent anywhere).
         runCatching { app.cairn.browser.vault.Sync.setupKey(email, password) }.onFailure { app.cairn.browser.vault.Sync.status.value = it.message ?: "Sync is locked" }
         if (rt.isEmpty()) Unit

@@ -172,6 +172,11 @@ const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name)
 if (!cols('sessions').includes('prev_hash')) db.exec('ALTER TABLE sessions ADD COLUMN prev_hash TEXT');
 if (!cols('sessions').includes('auth_at')) db.exec('ALTER TABLE sessions ADD COLUMN auth_at INTEGER');
 if (!cols('sync_meta').includes('kcv')) db.exec('ALTER TABLE sync_meta ADD COLUMN kcv TEXT');
+// Pairing QR secret (256-bit, so QR pairing can't be guessed) and the phone's approval-signing key (Android Keystore,
+// fingerprint/screen-lock bound). Payment approvals from a device with a key must carry a valid signature.
+if (!cols('pair_codes').includes('secret')) db.exec('ALTER TABLE pair_codes ADD COLUMN secret TEXT');
+if (!cols('pair_codes').includes('created_at')) db.exec('ALTER TABLE pair_codes ADD COLUMN created_at INTEGER');
+if (!cols('devices').includes('approval_key')) db.exec('ALTER TABLE devices ADD COLUMN approval_key TEXT');
 
 export const now = () => Date.now();
 export function audit(userId, action, meta = {}) {

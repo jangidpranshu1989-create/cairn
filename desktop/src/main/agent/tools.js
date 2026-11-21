@@ -73,6 +73,23 @@ async function guardFinal(ctx, label, w) {
   return `BLOCKED: "${(label || 'this button').slice(0, 60)}" ${finalLabel ? 'looks like placing an order or paying' : 'is on a checkout/payment page and may place the order'}. Call request_approval first (with the exact amount shown on the page, merchant, item), then retry this click only if approved.`;
 }
 
+/** Enter / submit on a checkout page can place the order just like the Pay button, so it needs the same approval. */
+async function guardEnter(ctx, w) {
+  if (!(await onPaymentPage(w))) return null;
+  if (ctx.approved) { ctx.approved = false; return null; }
+  return 'BLOCKED: pressing Enter on this checkout/payment page may place the order or pay. Call request_approval first (with the exact amount shown on the page, merchant, item), then retry only if approved.';
+}
+
+/** The agent may only send files Cairn created or downloaded, never arbitrary files from the computer. */
+function sendableFile(f) {
+  const path = require('path'); const fs = require('fs'); const { app } = require('electron');
+  if (!f || typeof f !== 'string') return false;
+  let real; try { real = fs.realpathSync(path.resolve(f)); } catch { return false; }
+  const roots = [pageTools.outDir(), app.getPath('downloads'), store.get().settings.data.downloadDir].filter(Boolean)
+    .map(d => { try { return fs.realpathSync(d); } catch { return path.resolve(d); } });
+  return roots.some(r => { const rel = path.relative(r, real); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); });
+}
+
 async function webSearch(query) { return require('../search').results(query); }
 
 async function execute(name, args, ctx) {
@@ -145,6 +162,7 @@ async function execute(name, args, ctx) {
       const w = wc();
       const loc = await dom.locate(w, args.id);
       if (!loc) return `Element ${args.id} not found.`;
+      if (args.submit) { const blocked = await guardEnter(ctx, w); if (blocked) return blocked; }
       ctx.step('type', `Typing "${loc.type === 'password' ? '••••' : String(args.text).slice(0, 40)}"`);
       await mouseClick(ctx, w, loc.x, loc.y, 'typing');
       await dom.focus(w, args.id, true);
@@ -154,7 +172,10 @@ async function execute(name, args, ctx) {
     }
     case 'select_option': return dom.select(wc(), args.id, args.option);
     case 'scroll': { ctx.step('scroll', `Scrolling ${args.direction}`); const y = await dom.scroll(wc(), args.direction); await new Promise(r => setTimeout(r, 500)); return `Scrolled to y=${y}`; }
-    case 'press_key': { await pressKey(wc(), args.key); await settle(wc()); return `Pressed ${args.key}`; }
+    case 'press_key': {
+      if (/^(enter|return|numpadenter)$/i.test(String(args.key || '').trim())) { const blocked = await guardEnter(ctx, wc()); if (blocked) return blocked; }
+      await pressKey(wc(), args.key); await settle(wc()); return `Pressed ${args.key}`;
+    }
     case 'go_back': { if (wc().navigationHistory.canGoBack()) wc().navigationHistory.goBack(); await settle(wc()); return `Back at ${wc().getURL()}`; }
     case 'wait': { await new Promise(r => setTimeout(r, Math.min(8, Math.max(1, args.seconds || 2)) * 1000)); return 'Waited.'; }
     case 'read_article': {
@@ -207,6 +228,7 @@ async function execute(name, args, ctx) {
     case 'send_to_phone': {
       const file = args.file === 'last' || !args.file ? ctx.lastFile : args.file;
       if (!file) return 'No file yet. Create one first (save_pdf / screenshot / download_file).';
+      if (file !== ctx.lastFile && !sendableFile(file)) return 'That file is outside Cairn\'s Downloads folder, so it can\'t be sent. Only files Cairn saved or downloaded can be sent to the phone.';
       if (!cloud.isSignedIn()) return 'User is not signed in to Cairn account, so the phone cannot be reached. Tell them to sign in and pair their phone (Settings → Phone).';
       ctx.step('phone', `Sending to phone → ${args.folder || 'Cairn'}`);
       const r = await cloud.sendToPhone(file, args.folder);

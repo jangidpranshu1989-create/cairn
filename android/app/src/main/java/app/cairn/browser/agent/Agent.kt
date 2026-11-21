@@ -1111,12 +1111,14 @@ HOW TO WORK
             "fill_login" -> {
                 val t = tab(); val w = web(); controlling = t
                 val logins = app.cairn.browser.vault.Vault.loginsFor(t.url)
+                val loginOrigin = app.cairn.browser.vault.Vault.origin(t.url)
                 if (logins.isEmpty()) return "No saved login for ${t.host}. Use ask_user so the user signs in on screen, then continue."
                 val l = if (logins.size == 1) logins[0] else logins.maxBy { it.updated }
                 step("lock", "Waiting for you to confirm sign-in as ${l.username.ifEmpty { "your saved account" }}")
                 val ok = withContext(Dispatchers.Main) { Browser.activity.authenticate("Let Cairn sign you in", "${l.username.ifEmpty { "Saved login" }} on ${t.host}") }
                 if (!ok) return "The user did not confirm. Ask them how to proceed."
-                withContext(Dispatchers.Main) { app.cairn.browser.vault.WebBridge.fill(w, l) }
+                val filled = withContext(Dispatchers.Main) { app.cairn.browser.vault.WebBridge.fill(w, l, loginOrigin) }
+                if (!filled) return "The page changed to a different site while waiting, so the password was not filled. Check where you are and try again."
                 step("fill", "Filled your saved login")
                 return "Filled username ${l.username.ifEmpty { "(none)" }} and password. Now click the sign-in / continue button."
             }

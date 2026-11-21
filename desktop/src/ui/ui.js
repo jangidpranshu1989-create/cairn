@@ -470,7 +470,10 @@
       ${d.amount ? `<div class="amt">${esc(d.amount)}</div>` : ''}
       <div style="color:var(--muted);font-size:12.5px">${esc([d.item, d.merchant].filter(Boolean).join(' · '))}</div>
       ${ev.phone ? `<div class="phone"><span class="pring">${icon('phone')}</span><div><b>Check your phone</b><br><span style="color:var(--muted)">Approve with fingerprint, face or PIN in the Cairn app.</span></div></div>`
-        : `<div style="font-size:12px;color:var(--muted);margin-top:8px">No phone paired — confirm here. Pair your phone in Settings → Phone for biometric approvals.</div>
+        : ev.reason === 'unreachable'
+          ? `<div style="font-size:12px;color:var(--err);margin-top:8px;font-weight:600">Your phone couldn't be reached, so this approval is NOT protected by your fingerprint. Only approve if you are sitting at this computer and started this task yourself.</div>`
+          : `<div style="font-size:12px;color:var(--muted);margin-top:8px">No phone paired — confirm here. Pair your phone in Settings → Phone for biometric approvals.</div>`}
+        ${ev.phone ? '' : `
            <div class="acts"><button class="btn danger" data-a="deny">Deny</button><button class="btn primary" data-a="ok">${icon('check', 12)} Approve</button></div>`}`;
     c.onclick = (e) => {
       const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;

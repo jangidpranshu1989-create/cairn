@@ -25,7 +25,7 @@ Full 30-second demos (1080x1920): [Home and answers](https://github.com/jangidpr
 - **Autonomous checkout with a hard stop** — Cairn adds to cart and fills delivery details, then waits for your fingerprint before any payment or UPI step.
 - **Circle to Ask** — circle anything on a page and ask about it.
 - **Rich answers** — tables, comparisons and numbered citations with a sources sheet.
-- **Free and made in India** — no ads, bring your own free Groq key or use Cairn Cloud.
+- **Free and made in India** — no ads, no API key needed: AI runs through Cairn Cloud.
 
 ## Inside this repo
 
@@ -48,15 +48,16 @@ This repository contains the complete product:
  │   click, type, select_option, scroll, read_article, read_aloud,│
  │   summarize_page, make_mindmap, save_pdf, screenshot,          │
  │   send_to_phone, request_approval, ask_user, …                 │
- │ LLM client ── Groq (gpt-oss-120b / 20b, Whisper, Orpheus TTS)  │
- │            └─ NVIDIA NIM (Nemotron 3.5) with automatic fallback│
- │ Local vault: passwords + API keys encrypted via OS keychain    │
- └───────────────▲───────────────────────────────▲────────────────┘
-                 │ HTTPS + WSS                     │ BYOK: direct to
-                 ▼                                 │ Groq / NVIDIA
- ┌──────── Cairn Cloud (server/) ────────┐       │
- │ auth (bcrypt, JWT + rotating refresh,   │───────┘ (optional
- │ CAPTCHA, lockout, passkeys/WebAuthn)    │   hosted AI proxy)
+ │ LLM client ── Cairn Cloud AI proxy (no keys on the device)     │
+ │ Local vault: passwords + passkeys encrypted via OS keychain    │
+ └───────────────▲────────────────────────────────────────────────┘
+                 │ HTTPS + WSS
+                 ▼
+ ┌──────── Cairn Cloud (server/) ────────┐
+ │ AI proxy: Groq → NVIDIA → Gemini →      │
+ │ OpenRouter → Kilo / OVH / Pollinations  │
+ │ auth (bcrypt, JWT + rotating refresh,   │
+ │ CAPTCHA, lockout, passkeys/WebAuthn)    │
  │ device pairing (QR), approvals (3 min), │
  │ transfers (≤100 MB, 24 h), sync blobs   │
  └───────────────▲─────────────────────────┘
@@ -177,7 +178,7 @@ All server settings are in `server/.env.example`. Desktop settings are stored pe
 - **Read aloud in Hindi** uses the operating system's voices (Windows/macOS include Hindi; many Linux distros don't). The cloud TTS fallback (Groq `canopylabs/orpheus-v1-english`) is English only.
 - **Passkeys inside Electron** rely on the OS authenticator: they work best on Windows (Windows Hello) and macOS; most Linux desktops have no platform authenticator, so use email + password there.
 - **Android background delivery** uses a foreground WebSocket service (`remoteMessaging|dataSync` foreground-service types). For very large user bases switch to Firebase Cloud Messaging for wake-ups.
-- **No API keys are bundled.** Users bring their own Groq/NVIDIA keys, or you set server keys for Cairn Cloud mode.
+- **No API keys are bundled.** Apps never hold AI keys; set `GROQ_API_KEY` / `NVIDIA_API_KEY` (optional) on the server. Without them Cairn Cloud uses the keyless Kilo, OVHcloud and Pollinations gateways.
 - **Domain:** `cairn.app` belongs to someone else. The website lives at https://jangidpranshu1989-create.github.io/cairn (GitHub Pages, `.github/workflows/pages.yml`; `vercel.json` also works). Buy your own domain (e.g. a `.in`) and pass `-PcairnSite=https://your.domain` to the Android build when you do.
 - Assumptions to change before launch: Pro price ₹199/month, contact goes to GitHub issues until you have a domain email, governing law (Jaipur, India) in the Terms. Have a lawyer review `privacy.html` and `terms.html`.
 

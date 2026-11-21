@@ -1,6 +1,6 @@
 {
   "name": "cairn-browser",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -15,8 +15,8 @@
     "name": "Cairn",
     "email": "jangidpranshu1989-create@users.noreply.github.com"
   },
-  "license": "UNLICENSED",
-  "description": "Cairn \u2014 the agentic browser that shops, reads and works for you.",
+  "license": "Apache-2.0",
+  "description": "Cairn — the agentic browser that shops, reads and works for you.",
   "devDependencies": {
     "electron": "^45.4.1",
     "electron-builder": "^26.18.0"
@@ -30,7 +30,7 @@
   "build": {
     "appId": "app.cairn.browser",
     "productName": "Cairn",
-    "copyright": "\u00a9 2026 Cairn",
+    "copyright": "© 2026 Cairn",
     "directories": {
       "output": "dist",
       "buildResources": "build"

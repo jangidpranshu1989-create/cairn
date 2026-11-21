@@ -61,6 +61,17 @@
 
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
+  <article><h2>v3.2.1 <span>Nov 2026</span></h2><ul>
+  <li>Pages open straight away: the Safe Browsing check now runs alongside the page instead of before it, and pauses for a minute if the server can't be reached.</li>
+  <li>Sites using Google Tag Manager or Google Analytics no longer hang on links or stay blank for a few seconds while Shield is on.</li>
+  <li>Payment, UPI, WhatsApp and Play Store links that arrive through a redirect now open their app after you tap.</li>
+  <li>Payment pop-ups (bank and gateway windows) show their page instead of the new tab page. Bank 3-D Secure and "Sign in with Google" work again: third-party cookies are allowed by default.</li>
+  <li>Fewer accidental refreshes when swiping carousels or flinging to the top; the page no longer jumps when a load finishes.</li>
+  <li>Background tabs free their memory and reload (with history) when you return. Lighter work after each page load.</li>
+  <li>Secure DNS falls back to your network's DNS if the DoH server is unreachable, and caches answers.</li>
+  <li>New: turn Shield off for a single site from the menu or Site settings.</li>
+  <li>Cairn is now open source under the Apache License 2.0.</li>
+  </ul></article>
   <article><h2>v3.2.0 <span>Nov 2026</span></h2><ul>
   <li>Cairn stops where you asked: "add to cart" now ends at the cart. "Buy now" is skipped, and the payment approval card appears only when you ask to pay, on the checkout or payment page.</li>
   <li>One amount everywhere: the approval card shows a single total, taken from the checkout page when Cairn can read it. If the AI's figure is different, Cairn says so in the steps.</li>

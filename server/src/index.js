@@ -18,6 +18,7 @@ import { attachHub } from './hub.js';
 import { syncRouter } from './sync.js';
 import { oidcRouter, oauthApi } from './oidc.js';
 import { safetyRouter, startSafety } from './safety.js';
+import { statsRouter } from './stats.js';
 import { readFileSync } from 'node:fs';
 
 const VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version; } catch { return '0.0.0'; } })();
@@ -46,6 +47,7 @@ app.use(['/api/v1/ai', '/api/chat', '/v1', '/api/v1'], (req, _res, next) => { if
 app.use('/api/sync/v2', syncRouter);
 app.use('/api/oauth', oauthApi);
 app.use('/api/safety', safetyRouter);
+app.use('/api/admin', statsRouter);
 startSafety();
 app.use('/', oidcRouter);
 

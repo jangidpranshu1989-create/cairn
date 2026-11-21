@@ -22,7 +22,7 @@ The problem I kept hitting: search "iPhone 16" on any store and half the results
 - It checks trusted stores, keeps only the exact model, and shows a trust score next to each listing
 - It can add to cart and fill your address, but it always stops at payment and asks for your fingerprint. Your UPI PIN is always typed by you.
 
-Also in 3.0: a new bento home, Circle to Ask (circle anything on a page and ask about it), comparison tables with cited sources, camera OCR and read-aloud.
+Also in 3.0: a new bento home, Circle to Ask (circle anything on a page and ask about it), comparison tables with cited sources and read-aloud.
 
 30-second demo: https://github.com/jangidpranshu1989-create/cairn/releases/download/v3.0.0/Cairn-Demo-Shopping.mp4
 Android APK (10 MB, no Play Store yet): https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk
@@ -32,7 +32,7 @@ Code: https://github.com/jangidpranshu1989-create/cairn
 It's free with no ads. I'd really like honest feedback, especially on which stores and categories you'd want it to handle next.
 ```
 
-[Open pre-filled post on r/IndiaTech](https://www.reddit.com/r/IndiaTech/submit?title=I%20built%20a%20free%20AI%20browser%20for%20India%20that%20finds%20the%20exact%20product%20at%20the%20lowest%20price%20and%20stops%20before%20you%20pay&text=Hi%20r/IndiaTech.%20I%27m%20a%20solo%20developer%20from%20Kota%2C%20Rajasthan%20and%20I%27ve%20been%20building%20Cairn%2C%20a%20browser%20with%20an%20AI%20agent%20inside%20it%2C%20for%20the%20past%20few%20months.%20Version%203.0%20is%20out%20today.%0A%0AThe%20problem%20I%20kept%20hitting%3A%20search%20%22iPhone%2016%22%20on%20any%20store%20and%20half%20the%20results%20are%20covers%2C%20keypad%20phones%20or%20listings%20with%20a%20fake%20MRP.%20So%20Cairn%20does%20it%20like%20this%3A%0A%0A-%20You%20type%20or%20say%20%22sabse%20sasta%20iPhone%2016%20dhoondo%22%20%28Hindi%2C%20Hinglish%20or%20English%20all%20work%29%0A-%20It%20checks%20trusted%20stores%2C%20keeps%20only%20the%20exact%20model%2C%20and%20shows%20a%20trust%20score%20next%20to%20each%20listing%0A-%20It%20can%20add%20to%20cart%20and%20fill%20your%20address%2C%20but%20it%20always%20stops%20at%20payment%20and%20asks%20for%20your%20fingerprint.%20Your%20UPI%20PIN%20is%20always%20typed%20by%20you.%0A%0AAlso%20in%203.0%3A%20a%20new%20bento%20home%2C%20Circle%20to%20Ask%20%28circle%20anything%20on%20a%20page%20and%20ask%20about%20it%29%2C%20comparison%20tables%20with%20cited%20sources%2C%20camera%20OCR%20and%20read-aloud.%0A%0A30-second%20demo%3A%20https%3A//github.com/jangidpranshu1989-create/cairn/releases/download/v3.0.0/Cairn-Demo-Shopping.mp4%0AAndroid%20APK%20%2810%20MB%2C%20no%20Play%20Store%20yet%29%3A%20https%3A//github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk%0AWebsite%3A%20https%3A//jangidpranshu1989-create.github.io/cairn/%0ACode%3A%20https%3A//github.com/jangidpranshu1989-create/cairn%0A%0AIt%27s%20free%20with%20no%20ads.%20I%27d%20really%20like%20honest%20feedback%2C%20especially%20on%20which%20stores%20and%20categories%20you%27d%20want%20it%20to%20handle%20next.)
+[Open pre-filled post on r/IndiaTech](https://www.reddit.com/r/IndiaTech/submit?title=I%20built%20a%20free%20AI%20browser%20for%20India%20that%20finds%20the%20exact%20product%20at%20the%20lowest%20price%20and%20stops%20before%20you%20pay&text=Hi%20r/IndiaTech.%20I%27m%20a%20solo%20developer%20from%20Kota%2C%20Rajasthan%20and%20I%27ve%20been%20building%20Cairn%2C%20a%20browser%20with%20an%20AI%20agent%20inside%20it%2C%20for%20the%20past%20few%20months.%20Version%203.0%20is%20out%20today.%0A%0AThe%20problem%20I%20kept%20hitting%3A%20search%20%22iPhone%2016%22%20on%20any%20store%20and%20half%20the%20results%20are%20covers%2C%20keypad%20phones%20or%20listings%20with%20a%20fake%20MRP.%20So%20Cairn%20does%20it%20like%20this%3A%0A%0A-%20You%20type%20or%20say%20%22sabse%20sasta%20iPhone%2016%20dhoondo%22%20%28Hindi%2C%20Hinglish%20or%20English%20all%20work%29%0A-%20It%20checks%20trusted%20stores%2C%20keeps%20only%20the%20exact%20model%2C%20and%20shows%20a%20trust%20score%20next%20to%20each%20listing%0A-%20It%20can%20add%20to%20cart%20and%20fill%20your%20address%2C%20but%20it%20always%20stops%20at%20payment%20and%20asks%20for%20your%20fingerprint.%20Your%20UPI%20PIN%20is%20always%20typed%20by%20you.%0A%0AAlso%20in%203.0%3A%20a%20new%20bento%20home%2C%20Circle%20to%20Ask%20%28circle%20anything%20on%20a%20page%20and%20ask%20about%20it%29%2C%20comparison%20tables%20with%20cited%20sources%20and%20read-aloud.%0A%0A30-second%20demo%3A%20https%3A//github.com/jangidpranshu1989-create/cairn/releases/download/v3.0.0/Cairn-Demo-Shopping.mp4%0AAndroid%20APK%20%2810%20MB%2C%20no%20Play%20Store%20yet%29%3A%20https%3A//github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk%0AWebsite%3A%20https%3A//jangidpranshu1989-create.github.io/cairn/%0ACode%3A%20https%3A//github.com/jangidpranshu1989-create/cairn%0A%0AIt%27s%20free%20with%20no%20ads.%20I%27d%20really%20like%20honest%20feedback%2C%20especially%20on%20which%20stores%20and%20categories%20you%27d%20want%20it%20to%20handle%20next.)
 
 ## r/IndianDevelopers
 
@@ -122,10 +122,10 @@ It can fill your cart and address by itself, but payment is a hard stop. Your fi
 **4/5**
 
 ```
-Also new: bento home, Circle to Ask on any page, comparison tables with cited sources, camera OCR, and read-aloud in Hindi.
+Also new: bento home, Circle to Ask on any page, comparison tables with cited sources, and read-aloud in Hindi.
 ```
 
-[Open tweet 4 in X](https://twitter.com/intent/tweet?text=Also%20new%3A%20bento%20home%2C%20Circle%20to%20Ask%20on%20any%20page%2C%20comparison%20tables%20with%20cited%20sources%2C%20camera%20OCR%2C%20and%20read-aloud%20in%20Hindi.)
+[Open tweet 4 in X](https://twitter.com/intent/tweet?text=Also%20new%3A%20bento%20home%2C%20Circle%20to%20Ask%20on%20any%20page%2C%20comparison%20tables%20with%20cited%20sources%2C%20and%20read-aloud%20in%20Hindi.)
 
 **5/5**
 

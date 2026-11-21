@@ -153,7 +153,8 @@ fun BrowserScreen(webHost: FrameLayout, bgHost: FrameLayout) {
             else -> act.moveTaskToBack(true)
         }
     }
-    val hidden = Ui.collapsed && tab != null && !tab.isNtp && !tab.loading && !Ui.find && !ReadAloud.active && Agent.controlling != tab
+    // Not tied to tab.loading: flipping the dock when a load finished resized the page and made it jump.
+    val hidden = Ui.collapsed && tab != null && !tab.isNtp && !Ui.find && !ReadAloud.active && Agent.controlling != tab
     Column(Modifier.fillMaxSize().background(C.chrome).statusBarsPadding().imePadding()) {
         // The page gets its own area. The dock sits *below* it in the layout (never over it), so nothing on the page is
         // hidden or unclickable behind the bar. While you scroll down the dock folds into a slim strip and the page grows.
@@ -745,6 +746,15 @@ fun MainMenu() {
                     Icon(Ic.DesktopWindows, null, Modifier.size(20.dp), tint = C.muted); Spacer(Modifier.width(20.dp))
                     Text("Desktop site", color = C.text, fontSize = 15.sp, modifier = Modifier.weight(1f))
                     CairnSwitch(tab!!.desktop) { Browser.setDesktop(tab, it); close() }
+                }
+                if (Prefs.shield) {
+                    val site = remember(tab.url) { runCatching { android.net.Uri.parse(tab.url).let { "${it.scheme}://${it.authority}" } }.getOrDefault("") }
+                    var shieldOn by remember(site) { mutableStateOf(!Browser.isShieldOff(site)) }
+                    Row(Modifier.fillMaxWidth().clickable { shieldOn = !shieldOn; Browser.setShieldOff(site, !shieldOn); close(); Browser.reload(tab) }.padding(horizontal = 20.dp).height(50.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Ic.Shield, null, Modifier.size(20.dp), tint = C.muted); Spacer(Modifier.width(20.dp))
+                        Text("Shield on this site", color = C.text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                        CairnSwitch(shieldOn) { shieldOn = it; Browser.setShieldOff(site, !it); close(); Browser.reload(tab) }
+                    }
                 }
                 MenuRow(Ic.AddToHomeScreen, "Add to Home screen") { close(); addToHome(ctx, tab) }
                 MenuRow(Ic.FileDownload, "Download page") { close(); Agent.quick("pdf") }

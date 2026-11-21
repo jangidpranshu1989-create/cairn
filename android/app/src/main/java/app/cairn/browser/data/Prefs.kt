@@ -71,7 +71,7 @@ object Prefs {
     var shield by bool("shield", true)                   // ad & tracker blocking
     var shieldTotal by long("shieldTotal", 0)
     var homeAgent by bool("homeAgent", true)
-    var blockThirdPartyCookies by bool("block3pCookies", true)
+    var blockThirdPartyCookies by bool("block3pCookies", false)   // off by default: blocking broke bank 3-D Secure, UPI and "Sign in with Google" frames; Shield already blocks tracker hosts
     var doNotTrack by bool("dnt", true)
     var javascript by bool("javascript", true)
     var popups by bool("popups", false)                  // allow sites to open windows without a tap

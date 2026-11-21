@@ -56,6 +56,14 @@ class Tab(val id: Long, val incognito: Boolean, initialUrl: String = "") {
     var translated by mutableStateOf<String?>(null)
     var lastActive = System.currentTimeMillis()
     var opener: Tab? = null
+    /** Opened by window.open(): an about:blank popup is a real page here (payment gateways write into it), not the NTP. */
+    var popup = false
+    /** Last tap on the page; lets an app link that arrives via redirect right after a tap open the app. */
+    @Volatile var gestureAt = 0L
+    /** Last time the page content scrolled; pull-to-refresh is ignored right after a scroll/fling. */
+    @Volatile var lastScrollAt = 0L
+    /** Back/forward list saved when the tab's WebView was discarded to free memory. */
+    var saved: android.os.Bundle? = null
     /**
      * True while the content under the finger can still scroll up. Many sites (YouTube, Instagram, web apps) scroll an
      * inner element instead of the page, so WebView.scrollY stays 0 there — the page script reports the real state.
@@ -65,7 +73,7 @@ class Tab(val id: Long, val incognito: Boolean, initialUrl: String = "") {
     /** Root view for this tab: SwipeRefreshLayout wrapping the WebView. */
     var view: SwipeRefreshLayout? = null
     var web: WebView? = null
-    val isNtp get() = url.isEmpty() || url == NTP
+    val isNtp get() = url.isEmpty() || url == NTP || (url == "about:blank" && !popup)
     val secure get() = url.startsWith("https://")
     val host get() = app.cairn.browser.data.hostOf(url)
 }
@@ -106,6 +114,57 @@ object Browser {
         t.lastActive = System.currentTimeMillis()
         current = t
         if (::activity.isInitialized) activity.refreshContainer()
+        trimLiveTabs()
+    }
+
+    // ---------------- Per-site Shield ----------------
+    private val shieldOffCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    /** True when the user switched Shield off for [site] (an origin like https://example.com). Cached: called per request. */
+    fun isShieldOff(site: String): Boolean {
+        if (site.isEmpty()) return false
+        return shieldOffCache.getOrPut(site) { runCatching { BrowserDb.perm(site, "shield") == false }.getOrDefault(false) }
+    }
+    fun setShieldOff(site: String, off: Boolean) {
+        if (off) BrowserDb.setPerm(site, "shield", false) else BrowserDb.clearPerm(site, "shield")
+        shieldOffCache.clear()
+    }
+    fun shieldPermsChanged() = shieldOffCache.clear()
+
+    // ---------------- Memory ----------------
+    /** How many tabs may keep a live WebView. Every WebView costs tens of MB; older tabs are reloaded when shown again. */
+    private val maxLive by lazy {
+        val am = runCatching { activity.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager }.getOrNull()
+        when { am == null -> 5; am.isLowRamDevice || am.memoryClass <= 192 -> 3; am.memoryClass <= 256 -> 5; else -> 7 }
+    }
+
+    private fun discardable(t: Tab): Boolean {
+        val cur = current
+        return t != cur && t.web != null && app.cairn.browser.agent.Agent.controlling != t &&
+            // Keep popup <-> opener pairs alive: payment and login popups talk to the page that opened them.
+            !(t.popup && t.opener == cur) && cur?.opener != t
+    }
+
+    /** Frees the WebView of a background tab but keeps its URL, title, thumbnail and back/forward history. */
+    fun discard(t: Tab) {
+        val w = t.web ?: return
+        runCatching { capture(t) }
+        runCatching { t.saved = android.os.Bundle().also { b -> w.saveState(b) } }
+        val url = t.url; val title = t.title
+        // Detach callbacks first, otherwise the about:blank we load while destroying would overwrite the tab's URL.
+        runCatching { w.webViewClient = WebViewClient(); w.webChromeClient = null; w.setOnScrollChangeListener(null) }
+        destroy(t)
+        t.url = url; t.title = title; t.loading = false; t.progress = 100
+    }
+
+    /** Keeps at most [maxLive] tabs alive (least-recently used go first). [all] = drop every background tab. */
+    fun trimLiveTabs(all: Boolean = false) {
+        if (app.cairn.browser.agent.Agent.running) return
+        runCatching {
+            val live = tabs.filter { it.web != null }
+            val keep = if (all) 1 else maxLive
+            if (live.size <= keep) return
+            live.filter { discardable(it) }.sortedBy { it.lastActive }.take(live.size - keep).forEach { discard(it) }
+        }
     }
 
     fun close(t: Tab) {
@@ -142,7 +201,7 @@ object Browser {
     /** Saves open (non-private) tabs so they come back after the app restarts. */
     fun persist() {
         val a = JSONArray()
-        normalTabs().filter { !it.isNtp }.take(60).forEach { a.put(JSONObject().put("u", it.url).put("t", it.title)) }
+        normalTabs().filter { !it.isNtp && !isBlankUrl(it.url) }.take(60).forEach { a.put(JSONObject().put("u", it.url).put("t", it.title)) }
         Prefs.tabsJson = JSONObject().put("tabs", a).put("cur", normalTabs().indexOf(current).coerceAtLeast(0)).toString()
     }
 
@@ -159,7 +218,11 @@ object Browser {
 
     /** Restored tabs only get a WebView when first shown. */
     fun ensureLoaded(t: Tab) {
-        if (t.web == null && !t.isNtp) { ensureView(t); t.web?.loadUrl(t.url, headers()) }
+        if (t.web != null || t.isNtp) return
+        ensureView(t)
+        val b = t.saved; t.saved = null
+        val restored = b != null && runCatching { t.web?.restoreState(b) != null }.getOrDefault(false)
+        if (!restored) t.web?.loadUrl(t.url, headers())
     }
 
     // ---------------- Navigation ----------------
@@ -249,7 +312,10 @@ object Browser {
     fun loadThumb(t: Tab) { if (t.thumb == null) thumbFile(t.url)?.takeIf { it.exists() }?.let { f -> android.graphics.BitmapFactory.decodeFile(f.path)?.let { t.thumb = it } } }
 
     /** Persist cookies/logins immediately so Amazon, Flipkart etc. stay signed in across restarts. */
-    fun flushCookies() { runCatching { CookieManager.getInstance().flush() } }
+    fun flushCookies() { lastFlush = System.currentTimeMillis(); runCatching { CookieManager.getInstance().flush() } }
+    private var lastFlush = 0L
+    /** Page loads flush at most every 10 s: flush() is disk I/O on the UI thread. onPause/onStop always flush. */
+    private fun maybeFlushCookies() { if (System.currentTimeMillis() - lastFlush > 10_000) flushCookies() }
 
     // ---------------- WebView factory ----------------
     private val chromeVersion by lazy {
@@ -263,7 +329,32 @@ object Browser {
     /** Request headers a real Chrome sends for a store page (language first, so Indian stores serve INR prices). */
     fun storeHeaders(): Map<String, String> = headers() + mapOf("Accept-Language" to "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,hi;q=0.6")
     fun desktopUa(): String = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion.substringBefore('.')}.0.0.0 Safari/537.36"
-    private fun applyUa(w: WebView, desktop: Boolean) { w.settings.userAgentString = if (desktop) desktopUa() else mobileUa() }
+    private fun applyUa(w: WebView, desktop: Boolean) {
+        w.settings.userAgentString = if (desktop) desktopUa() else mobileUa()
+        applyUaMetadata(w, desktop)
+    }
+
+    /**
+     * Client hints (Sec-CH-UA*, navigator.userAgentData) must match the Chrome user agent above. Without this WebView
+     * reports itself as "Android WebView" in the hints while the UA says Chrome, which anti-bot systems (Cloudflare,
+     * Akamai, Google sign-in) treat as a red flag and answer with endless checks or blank pages.
+     */
+    private fun applyUaMetadata(w: WebView, desktop: Boolean) {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) return
+        runCatching {
+            val major = chromeVersion.substringBefore('.')
+            val brands = listOf(
+                androidx.webkit.UserAgentMetadata.BrandVersion.Builder().setBrand("Chromium").setMajorVersion(major).setFullVersion(chromeVersion).build(),
+                androidx.webkit.UserAgentMetadata.BrandVersion.Builder().setBrand("Not_A Brand").setMajorVersion("24").setFullVersion("24.0.0.0").build())
+            val md = androidx.webkit.UserAgentMetadata.Builder()
+                .setBrandVersionList(brands).setFullVersion(chromeVersion)
+                .setPlatform(if (desktop) "Linux" else "Android")
+                .setPlatformVersion(if (desktop) "" else (android.os.Build.VERSION.RELEASE ?: "10"))
+                .setMobile(!desktop).setModel("").setArchitecture(if (desktop) "x86" else "").setBitness(if (desktop) 64 else androidx.webkit.UserAgentMetadata.BITNESS_DEFAULT)
+                .build()
+            WebSettingsCompat.setUserAgentMetadata(w.settings, md)
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     fun configure(w: WebView, incognito: Boolean, desktop: Boolean = false) {
@@ -281,7 +372,9 @@ object Browser {
             mediaPlaybackRequiresUserGesture = true
             setSupportMultipleWindows(true)
             javaScriptCanOpenWindowsAutomatically = Prefs.popups
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW // like Chrome: no http:// scripts/images inside https pages
+            // Like Chrome: insecure scripts/iframes are blocked, but old http:// images/media inside https pages still
+            // load (NEVER_ALLOW broke many Indian government, bank and news sites that still serve images over http).
+            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             allowFileAccess = false; allowContentAccess = true
             safeBrowsingEnabled = Prefs.safeBrowsing // WebView's on-device Safe Browsing list (hash prefixes, URLs never leave the phone) on top of Cairn Guard
             cacheMode = if (incognito && !profilesSupported) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
@@ -337,13 +430,15 @@ object Browser {
             setColorSchemeColors(0xFFB89A6A.toInt())
             setProgressBackgroundColorSchemeColor(if (app.cairn.browser.ui.C.dark) 0xFF2B2B2F.toInt() else 0xFFFFFFFF.toInt())
             // Pull-to-refresh only when the page is genuinely at the top — for the document *and* any inner scroller.
-            setOnChildScrollUpCallback { _, _ -> !Prefs.pullToRefresh || w.scrollY > 0 || t.jsCanScrollUp || w.canScrollVertically(-1) }
+            // Also ignored for a moment after any scroll, so a fast fling back to the top doesn't reload the page.
+            setOnChildScrollUpCallback { _, _ -> !Prefs.pullToRefresh || w.scrollY > 0 || t.jsCanScrollUp || w.canScrollVertically(-1) ||
+                System.currentTimeMillis() - t.lastScrollAt < 350 }
             setDistanceToTriggerSync((resources.displayMetrics.density * 110).toInt())
         }
         w.addJavascriptInterface(ScrollBridge(t), "CairnScroll")
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT))
             runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, SCROLL_JS, setOf("*")) }
-        w.setOnScrollChangeListener { _, _, y, _, oldY -> activity.onPageScrolled(t, y - oldY, y) }
+        w.setOnScrollChangeListener { _, _, y, _, oldY -> if (y != oldY) t.lastScrollAt = System.currentTimeMillis(); activity.onPageScrolled(t, y - oldY, y) }
         w.webViewClient = Client(t)
         w.webChromeClient = Chrome(t)
         w.setDownloadListener { url, ua, cd, mime, len -> Downloads.start(ctx, t, url, ua, cd, mime, len) }
@@ -358,9 +453,11 @@ function up(t){if((window.scrollY||document.documentElement.scrollTop||document.
 for(var e=t;e&&e.nodeType===1&&e!==document.documentElement;e=e.parentElement||(e.getRootNode&&e.getRootNode().host)){
 if(e.scrollTop>0&&e.scrollHeight>e.clientHeight+4){var o=getComputedStyle(e).overflowY;if(o=='auto'||o=='scroll'||o=='overlay')return true}}return false}
 addEventListener('touchstart',function(ev){try{CairnScroll.touch(up(ev.target))}catch(x){}},{capture:true,passive:true});
-var lt=0;addEventListener('scroll',function(ev){var t=ev.target,d=(t===document||t===document.documentElement||t===document.body);
-if(!d&&!(t.clientHeight>innerHeight*0.5))return;var y=d?(window.scrollY||0):(t.scrollTop||0);var n=Date.now();
-if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePixelRatio||1)),y>0)}catch(x){}},{capture:true,passive:true});
+addEventListener('click',function(){try{CairnScroll.tap()}catch(x){}},{capture:true,passive:true});
+var lt=0,ly=typeof WeakMap=='function'?new WeakMap():null;addEventListener('scroll',function(ev){var t=ev.target,d=(t===document||t===document.documentElement||t===document.body);
+if(!d&&!(t.clientHeight>innerHeight*0.5))return;var y=d?(window.scrollY||0):(t.scrollTop||0);
+if(!d&&ly){var k=ly.get(t);ly.set(t,y);if(k===y)return;}
+var n=Date.now();if(n-lt<60&&y>0)return;lt=n;try{CairnScroll.scroll(Math.round(y*(window.devicePixelRatio||1)),y>0)}catch(x){}},{capture:true,passive:true});
 function sec(e){if(!e||e.tagName!='INPUT')return false;var t=(e.type||'').toLowerCase(),a=(e.autocomplete||'').toLowerCase(),n=((e.name||'')+' '+(e.id||'')+' '+(e.placeholder||'')).toLowerCase();
 return t=='password'||/password|one-time-code|cc-number|cc-csc/.test(a)||/\b(pin|otp|cvv|cvc|passcode|mpin|upi ?pin)\b/.test(n)}
 addEventListener('focusin',function(ev){try{CairnScroll.secure(sec(ev.target))}catch(x){}},true);
@@ -368,17 +465,22 @@ addEventListener('focusout',function(){try{CairnScroll.secure(false)}catch(x){}}
 
     private class ScrollBridge(val t: Tab) {
         @android.webkit.JavascriptInterface fun touch(canUp: Boolean) { t.jsCanScrollUp = canUp }
+        @android.webkit.JavascriptInterface fun tap() { t.gestureAt = System.currentTimeMillis() }
         @android.webkit.JavascriptInterface fun secure(on: Boolean) { t.web?.post { t.secureFocus = on } }
         @android.webkit.JavascriptInterface fun scroll(y: Int, canUp: Boolean) {
-            val dy = y - t.jsScrollY; t.jsScrollY = y; t.jsCanScrollUp = canUp
+            val dy = y - t.jsScrollY; t.jsScrollY = y; t.jsCanScrollUp = canUp; t.lastScrollAt = System.currentTimeMillis()
             // Inner-scroller sites never move WebView.scrollY, so drive the dock from the page's own scroll too.
             t.web?.let { w -> if (w.scrollY == 0) w.post { activity.onPageScrolled(t, dy, y) } }
         }
     }
 
     private class Client(val t: Tab) : WebViewClient() {
+        /** Origin of the page being loaded in this tab (set from the main-frame request, read on the network thread). */
+        @Volatile var pageSite = ""
+        private fun shieldOff(): Boolean = isShieldOff(pageSite)
         override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
             val u = req.url; val s = u.scheme?.lowercase() ?: return false
+            if (req.hasGesture()) t.gestureAt = System.currentTimeMillis()
             if ((s == "http" || s == "https") && app.cairn.browser.ui.OneTap.intercept(t, u, req.isForMainFrame)) return true
             if (s == "http" || s == "https" || s == "about" || s == "data" || s == "blob" || s == "javascript") return false
             if (s == "cairn" && u.host == "ask") {
@@ -388,59 +490,76 @@ addEventListener('focusout',function(){try{CairnScroll.secure(false)}catch(x){}}
                 if (q.isNotBlank()) app.cairn.browser.agent.Agent.run(q) else app.cairn.browser.ui.Ui.assistantDraft = ""
                 return true
             }
-            return activity.openExternal(u, req.isForMainFrame && req.hasGesture())
+            // Payment/UPI/WhatsApp links usually arrive through a redirect, which never carries the gesture flag.
+            // Treat anything within a few seconds of the user's tap as user-initiated (as Chrome does).
+            val recentTap = System.currentTimeMillis() - t.gestureAt < 5000
+            return activity.openExternal(u, req.isForMainFrame && (req.hasGesture() || recentTap))
         }
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
             // about:blank is how a tab shows the New Tab page. Going back onto it must show the NTP, not an empty
             // white WebView (that looked like a crash).
-            if (isBlankUrl(url)) { t.url = ""; t.title = ""; t.loading = false; t.error = null; t.progress = 100; t.sensitive = false; t.secureFocus = false; return }
+            if (isBlankUrl(url)) {
+                if (t.popup && !view.canGoBack()) { t.url = "about:blank"; t.loading = true; t.error = null; return }
+                t.url = ""; t.title = ""; t.loading = false; t.error = null; t.progress = 100; t.sensitive = false; t.secureFocus = false; return
+            }
+            if (t == current) app.cairn.browser.ui.Ui.collapsed = false
             app.cairn.browser.vault.WebBridge.fillOffer.value?.takeIf { it.tab == t }?.let { app.cairn.browser.vault.WebBridge.fillOffer.value = null }
             t.loading = true; t.url = url; t.icon = favicon ?: BrowserDb.icon(url); t.blocked = 0; t.error = null; t.sensitive = false; t.secureFocus = false; t.translated = null
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
         }
         override fun onPageFinished(view: WebView, url: String) {
             t.loading = false; t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
-            if (isBlankUrl(url)) { t.url = ""; t.title = ""; return }
+            if (isBlankUrl(url)) { if (t.popup && !view.canGoBack()) t.url = "about:blank" else { t.url = ""; t.title = "" }; return }
             t.url = url; t.title = view.title?.takeIf { it != url } ?: t.title
             if (!t.incognito && url.startsWith("http") && t.error == null && t.unsafe == null && t.ssl == null) BrowserDb.addVisit(url, view.title ?: "")
             if (!t.incognito) persist()
-            view.postDelayed({ if (current == t) capture(t) }, 450)
-            view.postDelayed({ if (current == t && !t.loading) capture(t) }, 2200)
+            view.postDelayed({ if (current == t && t.web == view) capture(t) }, 1500)
             if (url.startsWith("http")) {
-                flushCookies()
+                maybeFlushCookies()
                 t.jsCanScrollUp = false; t.jsScrollY = 0
                 if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) view.evaluateJavascript(SCROLL_JS, null)
                 view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nreturn JSON.stringify(window.${app.cairn.browser.agent.PageJs.ns}.guard())})()") { r ->
                     t.sensitive = runCatching { JSONObject(org.json.JSONTokener(r).nextValue() as String).optBoolean("sensitive") }.getOrDefault(false)
                 }
-                if (!t.incognito && Prefs.memory) view.postDelayed({
+                if (!t.incognito && Prefs.memory) view.postDelayed(object : Runnable { var tries = 0; override fun run() {
                     // Never index login, OTP, card or checkout pages into on-device memory
-                    if (t.web != view || view.url != url || t.sensitive || app.cairn.browser.data.Recall.isPrivateUrl(url)) return@postDelayed
+                    if (t.web != view || view.url != url || t.sensitive || app.cairn.browser.data.Recall.isPrivateUrl(url)) return
+                    // Reading the article forces a layout; don't do it while the user is scrolling (that was a visible stutter).
+                    if (System.currentTimeMillis() - t.lastScrollAt < 1000 && tries++ < 5) { view.postDelayed(this, 1500); return }
                     view.evaluateJavascript("(function(){${app.cairn.browser.agent.PageJs.script}\nvar a=window.${app.cairn.browser.agent.PageJs.ns}.article();return JSON.stringify({t:a.title,x:a.text})})()") { r ->
                         runCatching { val j = JSONObject(org.json.JSONTokener(r).nextValue() as String); val title = j.optString("t"); val text = j.optString("x")
                             Thread { runCatching { app.cairn.browser.data.Recall.index(url, title, text) } }.start() }
                     }
-                }, 2500)
+                } }, 4000)
             }
         }
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
-            t.url = if (isBlankUrl(url)) "" else url
+            t.url = if (isBlankUrl(url)) (if (t.popup && !view.canGoBack()) "about:blank" else "") else url
             t.canBack = view.canGoBack(); t.canForward = view.canGoForward()
         }
         override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
             if (req.url.host == app.cairn.browser.data.CairnSearch.HOST) return app.cairn.browser.data.CairnSearch.intercept(req, app.cairn.browser.ui.C.dark)
             if (req.isForMainFrame && (req.url.scheme == "http" || req.url.scheme == "https")) {
-                // Runs on WebView's network thread, so the page never starts loading if it's dangerous.
-                SafeBrowsing.check(req.url.host)?.let { kind ->
-                    val u = req.url.toString()
+                val u = req.url.toString(); val host = req.url.host
+                // A known-dangerous host (cached verdict) never starts loading.
+                SafeBrowsing.cached(host)?.let { kind ->
                     view.post { t.unsafe = UnsafeSite(u, kind); t.loading = false; t.progress = 100 }
                     return WebResourceResponse("text/html", "utf-8", java.io.ByteArrayInputStream("<!doctype html><title>Dangerous site</title>".toByteArray()))
                 }
+                // Otherwise the page loads straight away and the lookup runs alongside it. Waiting for the server here
+                // used to add up to 2 s to every new site (and pages "didn't open" when the server was slow or asleep).
+                SafeBrowsing.checkAsync(host) { kind ->
+                    view.post {
+                        if (t.web != view || app.cairn.browser.data.hostOf(t.url) != app.cairn.browser.data.hostOf(u)) return@post
+                        view.stopLoading(); t.unsafe = UnsafeSite(u, kind); t.loading = false; t.progress = 100
+                    }
+                }
+                pageSite = runCatching { "${req.url.scheme}://${req.url.authority}" }.getOrDefault("")
             }
-            if (Prefs.shield && !req.isForMainFrame && Shield.isBlocked(req.url.host)) {
+            if (Prefs.shield && !req.isForMainFrame && Shield.isBlocked(req.url.host) && !shieldOff()) {
                 view.post { t.blocked++; shieldSession++; Prefs.shieldTotal = Prefs.shieldTotal + 1 }
-                return Shield.empty()
+                return Shield.blocked(req.url)
             }
             return null
         }
@@ -489,8 +608,11 @@ addEventListener('focusout',function(){try{CairnScroll.secure(false)}catch(x){}}
             val site = runCatching { Uri.parse(t.url).let { "${it.scheme}://${it.authority}" } }.getOrDefault("")
             val allowed = BrowserDb.perm(site, "popups") ?: Prefs.popups
             if (!isUserGesture && !allowed) { activity.toast("Pop-up blocked · allow it in Site settings"); return false }
-            val nt = newTab(NTP, t.incognito, foreground = !Prefs.openLinksInBackground || !isUserGesture, opener = t)
+            val nt = Tab(ids.incrementAndGet(), t.incognito, "about:blank").apply { popup = true; opener = t; desktop = t.desktop }
+            val idx = (tabs.indexOf(t) + 1 + tabs.count { o -> o.opener == t }).coerceAtMost(tabs.size)
+            tabs.add(idx, nt)
             ensureView(nt)
+            if (!Prefs.openLinksInBackground || !isUserGesture) select(nt)
             (resultMsg.obj as WebView.WebViewTransport).webView = nt.web
             resultMsg.sendToTarget()
             activity.refreshContainer()

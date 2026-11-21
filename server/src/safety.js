@@ -51,7 +51,8 @@ export function startSafety() {
 }
 
 export const safetyRouter = Router();
-safetyRouter.use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: true, legacyHeaders: false }));
+safetyRouter.use(rateLimit({ windowMs: 60_000, limit: Number(process.env.SAFETY_RATE_PER_MIN || 3000), // high: mobile users share IPs (CGNAT)
+   standardHeaders: true, legacyHeaders: false }));
 safetyRouter.use((_req, res, next) => { res.set('Access-Control-Allow-Origin', '*'); res.set('Cache-Control', 'private, max-age=600'); next(); });
 // GET /api/safety/lookup?p=ab12cd34,ef567890  -> { matches: [{ hash, kind }] }
 safetyRouter.get('/lookup', (req, res) => {

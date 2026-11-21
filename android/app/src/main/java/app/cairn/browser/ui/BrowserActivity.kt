@@ -124,6 +124,17 @@ class BrowserActivity : FragmentActivity() {
 
     override fun onStop() { super.onStop(); Browser.flushCookies() }
 
+    /** Under memory pressure free background tabs (they reload when shown) instead of letting Android kill the app. */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        @Suppress("DEPRECATION")
+        when {
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL && level < android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> { Browser.trimLiveTabs(all = true); Browser.dropSpare() }
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> { Browser.trimLiveTabs(all = true); Browser.dropSpare() }
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> Browser.trimLiveTabs()
+        }
+    }
+
     override fun onDestroy() { runCatching { Browser.dropSpare() }; super.onDestroy() }
 
     override fun onResume() {
@@ -208,8 +219,12 @@ class BrowserActivity : FragmentActivity() {
         try {
             if (s == "intent") {
                 val intent = Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME).apply { addCategory(Intent.CATEGORY_BROWSABLE); component = null; selector = null }
-                if (intent.resolveActivity(packageManager) != null && userGesture) { startActivity(intent); return true }
-                intent.getStringExtra("browser_fallback_url")?.let { f -> Browser.current?.let { Browser.load(it, f) }; return true }
+                // Don't ask resolveActivity() first: on Android 11+ package visibility makes it return null for most apps
+                // (WhatsApp, Paytm, PhonePe...), so app links always fell back to the web page or the Play Store.
+                if (userGesture) {
+                    try { startActivity(intent); return true } catch (_: android.content.ActivityNotFoundException) {} catch (_: SecurityException) {}
+                }
+                intent.getStringExtra("browser_fallback_url")?.takeIf { it.startsWith("http") }?.let { f -> Browser.current?.let { Browser.load(it, f) }; return true }
                 intent.`package`?.let { pkg -> if (userGesture) startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))) }
                 return true
             }

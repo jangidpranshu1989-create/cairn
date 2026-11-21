@@ -39,14 +39,14 @@ Body:
 Rules: read each sub's self-promo rules first; reply to every comment in the first 2 hours; put the link in a comment if the sub prefers.
 
 ### r/AndroidApps / r/browsers
-Title: Cairn — open-source Android browser with an AI agent (price compare across stores, circle-to-ask, on-device OCR, Shield)
+Title: Cairn — open-source Android browser with an AI agent (price compare across stores, circle-to-ask, Shield)
 
 ### r/SideProject / r/selfhosted
 Lead with: the server is self-hostable (Docker, Render/Koyeb free, Turso DB), no API keys bundled, Groq/Gemini free keys.
 
 ### Show HN
 Title: Show HN: Cairn – an agentic Android browser that compares stores and asks before paying
-First comment: what it does, the architecture (Kotlin/Compose WebView + Node server, tools-based agent loop, on-device ML Kit OCR), what's hard (store markup, bot blocking), and what you want feedback on.
+First comment: what it does, the architecture (Kotlin/Compose WebView + Node server, tools-based agent loop, vision model for screenshots), what's hard (store markup, bot blocking), and what you want feedback on.
 
 ### Product Hunt
 Tagline: "The AI browser that shops, reads and explains — and asks before you pay."

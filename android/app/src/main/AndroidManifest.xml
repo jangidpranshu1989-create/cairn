@@ -45,7 +45,7 @@
         android:supportsRtl="true"
         tools:targetApi="35">
 
-        <!-- Cairn uses no Google services: WebView Safe Browsing pings are turned off. -->
+        <!-- Safe Browsing stays ON (like Chrome) so phishing and malware pages are blocked; WebView usage metrics are opted out. -->
         <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="true" />
         <meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
 

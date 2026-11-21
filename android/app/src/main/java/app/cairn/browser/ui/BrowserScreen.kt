@@ -489,12 +489,25 @@ fun Omnibox() {
         remote = emptyList()
         if (q.length >= 2 && Prefs.searchSuggestions && tab?.incognito != true && q != start) { delay(140); remote = runCatching { Search.suggestions(q) }.getOrDefault(emptyList()) }
     }
-    val local = remember(q) {
-        if (q.isEmpty() || q == start) emptyList() else {
+    // History/bookmark matches are read off the UI thread so typing never stutters.
+    val local by produceState(emptyList<Sugg>(), q) {
+        value = if (q.isEmpty() || q == start) emptyList() else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val b = runCatching { BrowserDb.bookmarks(q).take(3) }.getOrDefault(emptyList()).map { Sugg("bookmark", it.title, it.url, it.url) }
             val h = runCatching { BrowserDb.history(q, 6) }.getOrDefault(emptyList()).filter { x -> b.none { it.url == x.url } }.take(4).map { Sugg("history", it.title.ifBlank { it.url }, it.url, it.url) }
             b + h
         }
+    }
+    // Chrome-style speed-ups while typing: connect to the search engine as soon as the omnibox opens, to a typed
+    // address as soon as it looks like one, and fetch the page you are clearly typing from history in advance.
+    LaunchedEffect(Unit) { if (tab?.incognito != true) app.cairn.browser.browser.Speed.preconnect(Search.searchUrl("cairn")) }
+    LaunchedEffect(q, local) {
+        if (tab?.incognito == true || q.isEmpty() || q == start) return@LaunchedEffect
+        delay(150)
+        Search.toUrl(q)?.let { app.cairn.browser.browser.Speed.preconnect(it) }
+        val top = local.firstOrNull()?.url ?: return@LaunchedEffect
+        val bare = top.substringAfter("://").removePrefix("www.")
+        if (q.length >= 3 && bare.startsWith(q.removePrefix("www."), ignoreCase = true)) app.cairn.browser.browser.Speed.prefetch(top)
+        else app.cairn.browser.browser.Speed.preconnect(top)
     }
     val clip = remember {
         runCatching { (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString()?.trim() }.getOrNull()

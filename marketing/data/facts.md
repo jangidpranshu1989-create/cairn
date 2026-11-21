@@ -6,7 +6,7 @@ Update this file whenever a release changes features. Anything not here must not
 Cairn is a free AI browser for Android (desktop beta) that understands Hindi, Hinglish and English, browses and compares prices for you, fills the cart, and stops before payment until you approve with your fingerprint.
 
 ## Status (Nov 2026)
-- Current version: **3.3.0** (Android APK ~10 MB, Android 8+). Desktop: Windows / macOS / Linux, **unsigned beta** (SmartScreen/Gatekeeper warning) → market Android first.
+- Current version: **3.4.0** (Android APK ~10 MB, Android 8+). Desktop: Windows / macOS / Linux, **unsigned beta** (SmartScreen/Gatekeeper warning) → market Android first.
 - Price: free, no ads. AI runs via Cairn Cloud (free daily quota) or the user's own free Groq key (BYOK).
 - License: **open source, Apache-2.0**. Repo: https://github.com/jangidpranshu1989-create/cairn
 - Not on Play Store yet. Install via website download page (GitHub release APK) or Obtainium.

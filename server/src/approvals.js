@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import { db, now, audit } from './db.js';
 import { config } from './config.js';
@@ -56,15 +57,20 @@ approvalsRouter.get('/:id/wait', requireAuth, (req, res) => {
 
 // Phone (or desktop fallback dialog) decides
 approvalsRouter.post('/:id/decision', requireAuth, (req, res) => {
-  const p = z.object({ approve: z.boolean(), verified: z.boolean().default(false) }).safeParse(req.body);
+  const p = z.object({ approve: z.boolean(), verified: z.boolean().default(false), signature: z.string().max(400).optional() }).safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: 'invalid' });
   const a = db.prepare('SELECT * FROM approvals WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
   if (!a) return res.status(404).json({ error: 'not found' });
   if (a.status !== 'pending' || a.expires_at < now()) return res.status(409).json({ error: 'This request is no longer pending' });
   // Payment approvals must come from a paired phone after biometric/device-credential verification
-  const phone = req.user.deviceId && db.prepare("SELECT 1 FROM devices WHERE id=? AND user_id=? AND kind='android'").get(req.user.deviceId, req.user.id);
-  if (p.data.approve && (a.kind === 'payment' || a.kind === 'purchase') && (!phone || !p.data.verified))
-    return res.status(403).json({ error: 'Payment approval must be confirmed on your paired phone with fingerprint/face/PIN' });
+  const phone = req.user.deviceId && db.prepare("SELECT approval_key FROM devices WHERE id=? AND user_id=? AND kind='android'").get(req.user.deviceId, req.user.id);
+  if (p.data.approve && (a.kind === 'payment' || a.kind === 'purchase')) {
+    if (!phone) return res.status(403).json({ error: 'Payment approval must be confirmed on your paired phone with fingerprint/face/PIN' });
+    // Phones with a Keystore key prove the fingerprint/screen lock cryptographically: the key only signs after the
+    // user authenticates, so a stolen session token alone can't approve a payment. Older phones fall back to the flag.
+    if (phone.approval_key) { if (!verifyApproval(phone.approval_key, a.id, p.data.signature)) return res.status(403).json({ error: 'Approval signature missing or invalid. Approve again with your fingerprint.' }); }
+    else if (!p.data.verified) return res.status(403).json({ error: 'Payment approval must be confirmed on your paired phone with fingerprint/face/PIN' });
+  }
   const status = p.data.approve ? 'approved' : 'denied';
   db.prepare('UPDATE approvals SET status=?, decided_by=?, decided_at=? WHERE id=?').run(status, req.user.deviceId || 'desktop', now(), a.id);
   const out = shape(db.prepare('SELECT * FROM approvals WHERE id=?').get(a.id));
@@ -74,3 +80,13 @@ approvalsRouter.post('/:id/decision', requireAuth, (req, res) => {
   audit(req.user.id, 'approval_' + status, { aid: a.id });
   res.json(out);
 });
+
+/** The exact bytes a phone signs to approve [id] (binds the decision to this approval; its details live on the server). */
+export const approvalMessage = (id) => `cairn-approval-v1:${id}:approve`;
+export function verifyApproval(keyB64, aid, sigB64) {
+  if (!sigB64) return false;
+  try {
+    const key = crypto.createPublicKey({ key: Buffer.from(keyB64, 'base64'), format: 'der', type: 'spki' });
+    return crypto.verify('sha256', Buffer.from(approvalMessage(aid)), key, Buffer.from(sigB64, 'base64'));
+  } catch { return false; }
+}

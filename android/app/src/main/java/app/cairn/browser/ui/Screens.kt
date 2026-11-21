@@ -537,6 +537,7 @@ fun PrivacySettings() {
             Toggle(Ic.DoNotDisturbOn, "Send “Do Not Track” and GPC", "Ask sites not to sell or share your data", Prefs.doNotTrack) { Prefs.doNotTrack = it }; Divider()
             Toggle(Ic.Info, "Share anonymous usage stats", "Counts like app opens and Cairn version. Never sites, searches or anything you type", Prefs.usageStats) { Prefs.usageStats = it }; Divider()
             Toggle(Ic.History, "Save browsing history", "Turn off to never record history, even in normal tabs", Prefs.saveHistory) { Prefs.saveHistory = it }; Divider()
+            Toggle(Ic.Speed, "Preload pages", "Like Chrome: connects to sites early and loads likely next pages in advance so they open instantly", Prefs.preloadPages) { Prefs.preloadPages = it }; Divider()
             Toggle(Ic.Login, "Stay signed in to sites", "Keep logins (Amazon, Flipkart…) after restarting, so you aren't asked for OTPs again", Prefs.keepSignedIn) { Prefs.keepSignedIn = it }; Divider()
             Row2(Ic.Brain, "Recall memory", if (Prefs.memory) "On · stored only on this phone" else "Off", onClick = { Ui.go("settings/recall") })
         }
@@ -1072,18 +1073,45 @@ fun PairScreen() {
     var showServer by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    fun pair(c: String, s: String) {
+    // A pairing request that needs the user's OK first (any link from outside the app, or a QR for another server).
+    var confirm by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
+    fun pair(c: String, s: String, secret: String? = null) {
         if (busy) return
+        val base = Api.normalizeServer(s)
+        if (base == null) { error = "That server address isn't valid. Cairn only connects to https:// servers."; return }
         busy = true; error = null
         scope.launch {
-            try { Api.completePairing(s.trim().trimEnd('/'), c); AppState.paired.value = true; SyncService.start(ctx) }
+            try { Api.completePairing(base, c, secret); AppState.paired.value = true; SyncService.start(ctx) }
             catch (e: Exception) { error = when { e is ApiException -> e.message; e is java.net.UnknownHostException || e is java.net.ConnectException -> "Can't reach the server. Check your internet or the server address."; else -> e.message ?: "Pairing failed" } }
             finally { busy = false }
         }
     }
-    fun handle(u: Uri) { if (u.scheme == "cairn" && u.host == "pair") { val c = u.getQueryParameter("code") ?: return; val s = u.getQueryParameter("server") ?: server; code = c; server = s; pair(c, s) } }
-    LaunchedEffect(Ui.pairLink) { Ui.pairLink?.let { handle(it); Ui.pairLink = null } }
-    val scan = rememberLauncherForActivityResult(ScanContract()) { r -> r.contents?.let { runCatching { handle(Uri.parse(it)) } } }
+    /**
+     * [external] = the link came from outside this screen (a web page, another app or a notification). Those never pair
+     * on their own: a malicious page could otherwise pair this phone to someone else's account or server. The user
+     * always sees which server it is and confirms. In-app QR scans for the usual server pair straight away.
+     */
+    fun handle(u: Uri, external: Boolean) {
+        if (u.scheme != "cairn" || u.host != "pair") return
+        val c = u.getQueryParameter("code")?.takeIf { it.matches(Regex("\\d{6}")) } ?: run { error = "This pairing code isn't valid."; return }
+        val secret = u.getQueryParameter("s")?.takeIf { it.length in 20..100 }
+        val target = u.getQueryParameter("server")?.let { Api.normalizeServer(it) ?: run { error = "This pairing link points to an invalid server address."; return } } ?: (Api.normalizeServer(server) ?: Prefs.server)
+        code = c
+        if (external || Api.hostOfServer(target) != Api.hostOfServer(Prefs.server)) { confirm = Triple(c, target, secret); return }
+        server = target; pair(c, target, secret)
+    }
+    LaunchedEffect(Ui.pairLink) { Ui.pairLink?.let { handle(it, external = true); Ui.pairLink = null } }
+    confirm?.let { (c, target, secret) ->
+        val host = Api.hostOfServer(target)
+        val usual = host == Api.hostOfServer(BuildConfig.DEFAULT_SERVER)
+        AlertDialog(onDismissRequest = { confirm = null }, containerColor = C.surface2,
+            title = { Text("Pair this phone?", color = C.text) },
+            text = { Text((if (usual) "This connects your phone to the Cairn account that showed code $c on $host." else "This connects your phone to a different server: $host. Only continue if you set up this server yourself.") +
+                "\n\nOnly continue if you just started pairing on your own computer. Never pair from a link someone sent you.", color = C.muted, fontSize = 14.sp, lineHeight = 20.sp) },
+            confirmButton = { TextButton(onClick = { confirm = null; server = target; pair(c, target, secret) }) { Text("Pair", color = C.agent) } },
+            dismissButton = { TextButton(onClick = { confirm = null; code = "" }) { Text("Cancel", color = C.muted) } })
+    }
+    val scan = rememberLauncherForActivityResult(ScanContract()) { r -> r.contents?.let { runCatching { handle(Uri.parse(it), external = false) } } }
 
     ScreenHeader("Phone and computer", { Ui.back() })
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(bottom = 28.dp)) {

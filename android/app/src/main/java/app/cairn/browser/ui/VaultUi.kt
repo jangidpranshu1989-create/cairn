@@ -46,8 +46,35 @@ private fun vaultSite(origin: String) = runCatching { Uri.parse(origin).host.orE
 @Composable
 fun VaultBar(tab: Tab?) {
     val save = WebBridge.savePrompt.value?.takeIf { it.tab == tab }
+    val pk = WebBridge.passkeyOffer.value?.takeIf { it.tab == tab && it.visible && save == null }
     val fill = WebBridge.fillOffer.value?.takeIf { it.tab == tab && save == null }
     val scope = rememberCoroutineScope()
+    // Passkey suggestions first (like Chrome), then saved passwords.
+    AnimatedVisibility(pk != null, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) {
+        val o = pk ?: return@AnimatedVisibility
+        androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            items(o.keys) { k ->
+                Row(Modifier.clip(RoundedCornerShape(18.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(18.dp)).clickable {
+                    scope.launch {
+                        val w = o.tab.web ?: return@launch
+                        if (Vault.origin(w.url ?: "") != Vault.origin(o.origin)) { WebBridge.passkeyOffer.value = null; return@launch }
+                        val r = runCatching { app.cairn.browser.vault.Passkeys.assert(o.origin, o.rpId, o.opts, k) }
+                        val cred = r.getOrNull() ?: return@launch // cancelled: keep the suggestion, like Chrome
+                        if (WebBridge.passkeyOffer.value?.reqId != o.reqId) return@launch
+                        WebBridge.passkeyOffer.value = null; WebBridge.fillOffer.value = null
+                        o.reply(org.json.JSONObject().put("ok", true).put("cred", cred)); Haptics.confirm()
+                    }
+                }.padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Ic.Fingerprint, null, Modifier.size(15.dp), tint = C.agent); Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text(k.userName.ifEmpty { k.displayName.ifEmpty { "Passkey" } }, color = C.text, fontSize = 13.5.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                        Text("Passkey · Cairn", color = C.faint, fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+            }
+            item { Box(Modifier.size(32.dp).clip(CircleShape).clickable { WebBridge.passkeyOffer.value = o.copy(visible = false) }, contentAlignment = Alignment.Center) { Icon(Ic.Close, "Dismiss", Modifier.size(15.dp), tint = C.faint) } }
+        }
+    }
     AnimatedVisibility(save != null, enter = fadeIn() + expandVertically(cairnSpring()), exit = fadeOut() + shrinkVertically()) {
         val s = save ?: return@AnimatedVisibility
         Bar(Ic.Key, if (s.update) "Update password for ${vaultSite(s.origin)}?" else "Save password for ${vaultSite(s.origin)}?",
@@ -66,7 +93,7 @@ fun VaultBar(tab: Tab?) {
                 Row(Modifier.clip(RoundedCornerShape(18.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(18.dp)).clickable {
                     scope.launch {
                         if (act.authenticate("Fill password", "${l.username.ifEmpty { "Saved login" }} on ${vaultSite(f.origin)}")) {
-                            f.tab.web?.let { WebBridge.fill(it, l) }; WebBridge.fillOffer.value = null; Haptics.confirm()
+                            f.tab.web?.let { WebBridge.fill(it, l, f.origin) }; WebBridge.fillOffer.value = null; Haptics.confirm()
                         }
                     }
                 }.padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -108,7 +135,7 @@ fun AutofillBar(tab: Tab?) {
                     scope.launch {
                         // Cards need your fingerprint, face or screen lock, like Chrome. Addresses fill straight away.
                         if (!card || act.authenticate("Fill card", app.cairn.browser.vault.Autofill.cardLabel(j))) {
-                            o.tab.web?.let { WebBridge.fillAutofill(it, o.kind, j) }; WebBridge.afOffer.value = null; Haptics.confirm()
+                            o.tab.web?.let { WebBridge.fillAutofill(it, o.kind, j, o.origin) }; WebBridge.afOffer.value = null; Haptics.confirm()
                         }
                     }
                 }.padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {

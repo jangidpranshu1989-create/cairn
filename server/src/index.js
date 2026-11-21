@@ -33,7 +33,11 @@ app.use(helmet({ contentSecurityPolicy: {
 app.use(securityHeaders);
 // Bearer-token API (no cookies): strict origin allowlist, public OIDC endpoints get '*' without credentials.
 app.use(strictCors);
-app.use(express.json({ limit: '4mb' }));
+// 4 MB for every JSON body except sync uploads, which parse their own larger bodies (20 MB batch, 10 MB per kind).
+// A global parser here used to run first and reject anything over 4 MB, so big syncs failed with 413.
+const json4mb = express.json({ limit: '4mb' });
+const bigSync = (req) => (req.method === 'POST' && req.path === '/api/sync/v2/changes') || (req.method === 'PUT' && /^\/api\/sync\/(?!v2\/)[^/]+$/.test(req.path));
+app.use((req, res, next) => (bigSync(req) ? next() : json4mb(req, res, next)));
 // Safety lookups and analytics pings have their own (higher) limits: many phones share one carrier IP.
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, skip: (req) => /^\/(t|safety)(\/|$)/.test(req.path) }));
 

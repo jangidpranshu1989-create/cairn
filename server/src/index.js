@@ -28,7 +28,7 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: {
   directives: { defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'https:'], styleSrc: ["'self'", "'unsafe-inline'", 'https://api.fontshare.com'],
-    fontSrc: ["'self'", 'https://cdn.fontshare.com'], scriptSrc: ["'self'"], connectSrc: ["'self'"], frameAncestors: ["'none'"] } },
+    fontSrc: ["'self'", 'https://cdn.fontshare.com'], scriptSrc: ["'self'"], connectSrc: ["'self'", 'https://api.github.com'], frameAncestors: ["'none'"] } },
   frameguard: { action: 'deny' }, crossOriginEmbedderPolicy: { policy: 'credentialless' }, crossOriginOpenerPolicy: { policy: 'same-origin' } }));
 app.use(securityHeaders);
 // Bearer-token API (no cookies): strict origin allowlist, public OIDC endpoints get '*' without credentials.

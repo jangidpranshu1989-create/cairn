@@ -152,7 +152,7 @@ let ghCache = { at: 0, data: null };
 async function githubDownloads() {
   if (Date.now() - ghCache.at < 10 * 60_000 && ghCache.data) return ghCache.data;
   try {
-    const r = await fetch('https://api.github.com/repos/jangidpranshu1989-create/cairn/releases?per_page=50', { headers: { 'User-Agent': 'cairn-server', Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(6000) });
+    const r = await fetch('https://api.github.com/repos/jangidpranshu1989-create/cairn/releases?per_page=50', { headers: { 'User-Agent': 'cairn-server', Accept: 'application/vnd.github+json', ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) }, signal: AbortSignal.timeout(6000) });
     if (!r.ok) throw new Error('github ' + r.status);
     const rel = await r.json();
     const kind = (n) => /\.apk$/i.test(n) ? 'android' : /\.(exe|msi)$/i.test(n) ? 'windows' : /\.(dmg|zip)$/i.test(n) && /mac/i.test(n) ? 'mac' : /\.(AppImage|deb|rpm)$/i.test(n) ? 'linux' : null;

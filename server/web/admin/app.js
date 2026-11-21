@@ -59,11 +59,32 @@
       data = await r.json(); lastOk = Date.now();
       host?.saveKey?.(key, api);
       try { host?.push?.(JSON.stringify({ realtime: data.realtime && { active: data.realtime.active, apps: data.realtime.apps, web: data.realtime.web }, kpis: data.kpis })); } catch {}
+      if (!data.github || data.github.error) data.github = await githubDirect() || data.github;
       render(data); setStatus(true);
     } catch (e) {
       setStatus(false, e.name === 'TimeoutError' ? 'Server is waking up, retrying' : (e.message || 'Offline'));
       if (!$('#login').hidden && !data) $('#loginErr').textContent = 'Could not reach the server.';
     } finally { busy = false; $('#refreshBtn').classList.remove('spin'); }
+  }
+
+  // The server shares an IP with other apps on Render, so GitHub's anonymous rate limit can run out there; ask GitHub directly then.
+  let ghCache = null;
+  async function githubDirect() {
+    if (ghCache && Date.now() - ghCache.at < 10 * 60_000) return ghCache.data;
+    try {
+      const r = await fetch('https://api.github.com/repos/jangidpranshu1989-create/cairn/releases?per_page=50', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return null;
+      const kind = (n) => /\.apk$/i.test(n) ? 'android' : /\.(exe|msi)$/i.test(n) ? 'windows' : /\.(dmg|zip)$/i.test(n) && /mac/i.test(n) ? 'mac' : /\.(AppImage|deb|rpm)$/i.test(n) ? 'linux' : null;
+      const totals = { android: 0, windows: 0, mac: 0, linux: 0 }; const releases = [];
+      for (const x of await r.json()) {
+        if (x.draft || /^analytics/i.test(x.tag_name)) continue;
+        const row = { tag: x.tag_name, android: 0, windows: 0, mac: 0, linux: 0 };
+        for (const a of x.assets || []) { const k = kind(a.name); if (k) { row[k] += a.download_count; totals[k] += a.download_count; } }
+        releases.push(row);
+      }
+      ghCache = { at: Date.now(), data: { totals, total: Object.values(totals).reduce((a, b) => a + b, 0), releases: releases.slice(0, 12) } };
+      return ghCache.data;
+    } catch { return null; }
   }
   function setStatus(ok, msg) {
     $('#liveDot').className = 'dot ' + (ok ? 'on' : 'off');

@@ -13,12 +13,12 @@
 <meta property="og:description" content="What's new in Cairn for desktop and Cairn for Android.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://jangidpranshu1989-create.github.io/cairn/changelog.html">
-<meta property="og:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.2.0">
-<meta property="og:image:secure_url" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.2.0">
+<meta property="og:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.4.0">
+<meta property="og:image:secure_url" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.4.0">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Cairn 3.2.0: the AI browser that finds, compares and checks out for you">
+<meta property="og:image:alt" content="Cairn 3.4.0: the AI browser that finds, compares and checks out for you">
 <meta property="og:video" content="https://jangidpranshu1989-create.github.io/cairn/assets/media/cairn-demo-shopping-web.mp4">
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="540">
@@ -26,13 +26,13 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Changelog — Cairn">
 <meta name="twitter:description" content="What's new in Cairn for desktop and Cairn for Android.">
-<meta name="twitter:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.2.0">
-<meta name="twitter:image:alt" content="Cairn 3.2.0: the AI browser that finds, compares and checks out for you">
+<meta name="twitter:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.4.0">
+<meta name="twitter:image:alt" content="Cairn 3.4.0: the AI browser that finds, compares and checks out for you">
 <link rel="canonical" href="https://jangidpranshu1989-create.github.io/cairn/changelog.html">
 <link rel="icon" href="favicon.ico" sizes="48x48">
-<link rel="icon" href="assets/favicon.svg?v=3.2.0" type="image/svg+xml">
-<link rel="icon" href="assets/favicon-32.png?v=3.2.0" type="image/png" sizes="32x32">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=3.2.0" sizes="180x180">
+<link rel="icon" href="assets/favicon.svg?v=3.4.0" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png?v=3.4.0" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=3.4.0" sizes="180x180">
 <link rel="manifest" href="site.webmanifest">
 <link rel="preload" href="fonts/InterDisplay-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
@@ -61,6 +61,30 @@
 
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
+  <article><h2>v3.4.0 <span>Nov 2026</span></h2><ul>
+  <li>Chrome-speed page loads on Android: Back and Forward open instantly from memory (back/forward cache), links that sites mark for prerendering open instantly, and Cairn connects to a site early while you type in the address bar or touch a link. The page process starts with the app. Turn it off in Settings → Privacy → Preload pages.</li>
+  <li>Smoother loading: history, titles and site icons are saved in the background instead of on the screen thread, and address bar suggestions no longer read the database while you type.</li>
+  <li>Passkeys like Chrome: sites such as GitHub now see that Cairn supports passkeys, show "Sign in with a passkey", and your Cairn passkey appears above the keyboard when you tap the username field. Cancelled or timed-out sign-ins are handled correctly.</li>
+  <li>Download manager: big files download over 4 parallel connections, resumes check that the file on the server hasn't changed, network drops are retried automatically and paused downloads carry on when the network is back, even after a restart.</li>
+  <li>Security: pairing links and QR codes carry a one-time secret, links from web pages always ask before pairing and only https servers are accepted. Payment approvals on Android 11+ are signed by a key in the phone's secure hardware that only your fingerprint, face or screen lock can unlock. Saved passwords and cards are only filled if the page is still the same site.</li>
+  <li>Desktop: the agent can't press Enter on a checkout page without your approval, can only send files from Cairn's Downloads folder to your phone, and an approval shown on the computer because your phone is unreachable is clearly marked.</li>
+  <li>Cairn Cloud: big sync uploads work again, and guessing pairing codes is blocked.</li>
+  </ul></article>
+  <article><h2>v3.3.0 <span>Nov 2026</span></h2><ul>
+  <li>Anonymous usage stats on Android and desktop: a random install id plus counts like app opened, search made or agent started, with Cairn version, OS version, language and time zone. Never the sites you visit, page titles, searches or anything you type. Turn it off in Settings → Privacy → Share anonymous usage stats.</li>
+  <li>The website counts visits itself with no cookies and no third-party scripts, and skips counting when your browser sends Do Not Track or Global Privacy Control.</li>
+  </ul></article>
+  <article><h2>v3.2.1 <span>Nov 2026</span></h2><ul>
+  <li>Pages open straight away: the Safe Browsing check now runs alongside the page instead of before it, and pauses for a minute if the server can't be reached.</li>
+  <li>Sites using Google Tag Manager or Google Analytics no longer hang on links or stay blank for a few seconds while Shield is on.</li>
+  <li>Payment, UPI, WhatsApp and Play Store links that arrive through a redirect now open their app after you tap.</li>
+  <li>Payment pop-ups (bank and gateway windows) show their page instead of the new tab page. Bank 3-D Secure and "Sign in with Google" work again: third-party cookies are allowed by default.</li>
+  <li>Fewer accidental refreshes when swiping carousels or flinging to the top; the page no longer jumps when a load finishes.</li>
+  <li>Background tabs free their memory and reload (with history) when you return. Lighter work after each page load.</li>
+  <li>Secure DNS falls back to your network's DNS if the DoH server is unreachable, and caches answers.</li>
+  <li>New: turn Shield off for a single site from the menu or Site settings.</li>
+  <li>Cairn is now open source under the Apache License 2.0.</li>
+  </ul></article>
   <article><h2>v3.2.0 <span>Nov 2026</span></h2><ul>
   <li>Cairn stops where you asked: "add to cart" now ends at the cart. "Buy now" is skipped, and the payment approval card appears only when you ask to pay, on the checkout or payment page.</li>
   <li>One amount everywhere: the approval card shows a single total, taken from the checkout page when Cairn can read it. If the AI's figure is different, Cairn says so in the steps.</li>
@@ -328,7 +352,7 @@
     <div><h4>Company</h4><ul><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li><li><a href="security.html">Security</a></li></ul></div>
     <div><h4>Legal</h4><ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of service</a></li><li><a href="security.html#disclosure">Responsible disclosure</a></li></ul></div>
   </div>
-  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v3.2.0 · Built with Groq &amp; NVIDIA NIM</span></div>
+  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v3.4.0 · Built with Groq &amp; NVIDIA NIM</span></div>
 </div></footer>
 <script src="assets/site.js" defer></script>
 </body>

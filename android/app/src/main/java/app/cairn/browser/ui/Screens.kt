@@ -535,6 +535,7 @@ fun PrivacySettings() {
         Group {
             Toggle(Ic.Cookie, "Block third-party cookies", "Stops sites from following you across the web. Can break bank payments and some logins", Prefs.blockThirdPartyCookies) { Prefs.blockThirdPartyCookies = it; Browser.applySettings() }; Divider()
             Toggle(Ic.DoNotDisturbOn, "Send “Do Not Track” and GPC", "Ask sites not to sell or share your data", Prefs.doNotTrack) { Prefs.doNotTrack = it }; Divider()
+            Toggle(Ic.Info, "Share anonymous usage stats", "Counts like app opens and Cairn version. Never sites, searches or anything you type", Prefs.usageStats) { Prefs.usageStats = it }; Divider()
             Toggle(Ic.History, "Save browsing history", "Turn off to never record history, even in normal tabs", Prefs.saveHistory) { Prefs.saveHistory = it }; Divider()
             Toggle(Ic.Login, "Stay signed in to sites", "Keep logins (Amazon, Flipkart…) after restarting, so you aren't asked for OTPs again", Prefs.keepSignedIn) { Prefs.keepSignedIn = it }; Divider()
             Row2(Ic.Brain, "Recall memory", if (Prefs.memory) "On · stored only on this phone" else "Off", onClick = { Ui.go("settings/recall") })

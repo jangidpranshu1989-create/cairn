@@ -261,6 +261,7 @@ HOW TO WORK
     // ---------------- Entry points ----------------
     fun run(text: String, mentions: List<Tab> = emptyList(), attachments: List<Attachment> = emptyList()) {
         if (running) return
+        app.cairn.browser.data.Telemetry.event("agent_run")
         val tab = Browser.current
         agentTab = tab
         cites.clear(); lastPrompt = text; lastMentions = mentions

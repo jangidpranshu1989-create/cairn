@@ -89,4 +89,22 @@
   }
 
   $$('[data-year]').forEach(el => el.textContent = new Date().getFullYear());
+
+  // First-party, cookie-free visit counter (see privacy.html). Skipped when the browser sends Do Not Track / GPC.
+  try {
+    if (navigator.doNotTrack !== '1' && !navigator.globalPrivacyControl && location.hostname !== 'localhost') {
+      let vid = localStorage.getItem('cairn_vid');
+      if (!vid) { const b = new Uint8Array(12); crypto.getRandomValues(b); vid = btoa(String.fromCharCode(...b)).replace(/[+/=]/g, (c) => ({ '+': '-', '/': '_', '=': '' })[c]); localStorage.setItem('cairn_vid', vid); }
+      const q = new URLSearchParams(location.search);
+      let ref = ''; try { const r = new URL(document.referrer); if (r.hostname !== location.hostname) ref = r.hostname.replace(/^www\./, ''); } catch {}
+      const base = { i: vid, p: 'web', tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || ''), dev: /Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop' };
+      const ping = (o) => { const body = JSON.stringify({ ...base, ...o }); if (!(navigator.sendBeacon && navigator.sendBeacon(API + '/api/t', new Blob([body], { type: 'text/plain' })))) fetch(API + '/api/t', { method: 'POST', body, keepalive: true, headers: { 'Content-Type': 'text/plain' } }).catch(() => {}); };
+      ping({ e: 'web_view', path: location.pathname.replace(/^\/cairn/, '') || '/', ref, utm: [q.get('utm_source'), q.get('utm_campaign')].filter(Boolean).join('/') || q.get('ref') || '' });
+      document.addEventListener('click', (ev) => {
+        const a = ev.target.closest && ev.target.closest('a[href]'); if (!a) return;
+        const h = a.getAttribute('href') || '';
+        if (a.dataset.dl || /releases\/(latest\/)?download|\.apk$|obtainium/i.test(h)) ping({ e: 'web_download', k: a.dataset.dl || (/apk/i.test(h) ? 'android' : /exe/i.test(h) ? 'windows' : /dmg|mac/i.test(h) ? 'mac' : /AppImage|deb/i.test(h) ? 'linux' : /obtainium/i.test(h) ? 'obtainium' : 'other') });
+      }, { capture: true, passive: true });
+    }
+  } catch {}
 })();

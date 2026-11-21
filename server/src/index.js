@@ -19,6 +19,7 @@ import { syncRouter } from './sync.js';
 import { oidcRouter, oauthApi } from './oidc.js';
 import { safetyRouter, startSafety } from './safety.js';
 import { statsRouter } from './stats.js';
+import { ingestRouter } from './analytics.js';
 import { readFileSync } from 'node:fs';
 
 const VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version; } catch { return '0.0.0'; } })();
@@ -33,7 +34,8 @@ app.use(securityHeaders);
 // Bearer-token API (no cookies): strict origin allowlist, public OIDC endpoints get '*' without credentials.
 app.use(strictCors);
 app.use(express.json({ limit: '4mb' }));
-app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
+// Safety lookups and analytics pings have their own (higher) limits: many phones share one carrier IP.
+app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, skip: (req) => /^\/(t|safety)(\/|$)/.test(req.path) }));
 
 app.get('/api/health', (_req, res) => res.set('Cache-Control', 'no-store').json({ ok: true, time: now(), uptime: Math.round(process.uptime()), version: VERSION, storage: config.tursoUrl ? 'turso' : supabaseEnabled() ? 'supabase' : 'local' }));
 app.use('/api/auth', authRouter);
@@ -48,6 +50,7 @@ app.use('/api/sync/v2', syncRouter);
 app.use('/api/oauth', oauthApi);
 app.use('/api/safety', safetyRouter);
 app.use('/api/admin', statsRouter);
+app.use('/api/t', express.text({ type: 'text/plain', limit: '64kb' }), (req, _res, next) => { if (typeof req.body === 'string') { try { req.body = JSON.parse(req.body); } catch { req.body = {}; } } next(); }, ingestRouter);
 startSafety();
 app.use('/', oidcRouter);
 

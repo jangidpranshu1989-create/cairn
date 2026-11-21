@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Cairn Analytics</string>
+    <string name="widget_name">Cairn live users</string>
+    <string name="widget_desc">Live users, today, new installs and progress to 10k</string>
+</resources>

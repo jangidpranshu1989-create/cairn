@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+        <TextView android:id="@+id/title" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:text="Cairn · live now" android:textColor="#9A9A96" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/updated" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="" android:textColor="#6E6E6A" android:textSize="11sp" android:maxLines="1" />
+        <ImageView android:id="@+id/refresh" android:layout_width="28dp" android:layout_height="28dp" android:layout_marginStart="4dp"
+            android:padding="5dp" android:src="@drawable/ic_refresh" android:contentDescription="Refresh" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:orientation="horizontal">
+        <TextView android:id="@+id/active" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="–" android:textColor="#D4B483" android:textSize="36sp" android:fontFamily="sans-serif-medium" android:includeFontPadding="false" />
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="16dp" android:orientation="vertical">
+            <TextView android:id="@+id/today" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Today –" android:textColor="#EDEDEB" android:textSize="13sp" android:maxLines="1" />
+            <TextView android:id="@+id/fresh" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="New –" android:textColor="#EDEDEB" android:textSize="13sp" android:maxLines="1" />
+            <TextView android:id="@+id/web" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Website –" android:textColor="#9A9A96" android:textSize="12sp" android:maxLines="1" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView android:id="@+id/goal" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Open the app and enter your key" android:textColor="#9A9A96" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
+    <ProgressBar android:id="@+id/progress" style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="4dp"
+        android:max="1000" android:progress="0" android:progressDrawable="@drawable/progress_track" />
+</LinearLayout>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.CairnAnalytics" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+    <color name="bg">#161618</color>
+    <color name="card">#1F1F22</color>
+    <color name="text">#EDEDEB</color>
+    <color name="muted">#9A9A96</color>
+    <color name="accent">#D4B483</color>
+    <color name="good">#8DB38B</color>
+</resources>

@@ -73,6 +73,8 @@ object Prefs {
     var homeAgent by bool("homeAgent", true)
     var blockThirdPartyCookies by bool("block3pCookies", false)   // off by default: blocking broke bank 3-D Secure, UPI and "Sign in with Google" frames; Shield already blocks tracker hosts
     var doNotTrack by bool("dnt", true)
+    var usageStats by bool("usageStats", true)            // anonymous counts only, see Telemetry
+    var telemetryId by str("telemetryId", "")
     var javascript by bool("javascript", true)
     var popups by bool("popups", false)                  // allow sites to open windows without a tap
     var desktopDefault by bool("desktopDefault", false)

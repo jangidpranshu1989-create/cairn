@@ -141,6 +141,7 @@ export function record(req, b) {
 export const ingestRouter = Router();
 ingestRouter.use(rateLimit({ windowMs: 60_000, limit: Number(process.env.ANALYTICS_RATE_PER_MIN || 3000), standardHeaders: true, legacyHeaders: false }));
 ingestRouter.post('/', (req, res) => {
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin'); // the website and apps post here from other origins
   // Accepts a single event or { batch: [...] } (apps queue events while offline).
   const items = Array.isArray(req.body?.batch) ? req.body.batch.slice(0, 50) : [req.body || {}];
   let ok = 0; for (const it of items) if (it && typeof it === 'object' && record(req, it)) ok++;

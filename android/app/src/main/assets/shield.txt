@@ -190,7 +190,6 @@ statcounter.com
 histats.com
 clicky.com
 woopra.com
-optimizely.com
 crashlytics.com
 bugsnag.com
 sentry-cdn.com

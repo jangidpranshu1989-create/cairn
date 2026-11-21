@@ -533,7 +533,7 @@ fun PrivacySettings() {
         }
         SectionLabel("Tracking")
         Group {
-            Toggle(Ic.Cookie, "Block third-party cookies", "Stops sites from following you across the web", Prefs.blockThirdPartyCookies) { Prefs.blockThirdPartyCookies = it; Browser.applySettings() }; Divider()
+            Toggle(Ic.Cookie, "Block third-party cookies", "Stops sites from following you across the web. Can break bank payments and some logins", Prefs.blockThirdPartyCookies) { Prefs.blockThirdPartyCookies = it; Browser.applySettings() }; Divider()
             Toggle(Ic.DoNotDisturbOn, "Send “Do Not Track” and GPC", "Ask sites not to sell or share your data", Prefs.doNotTrack) { Prefs.doNotTrack = it }; Divider()
             Toggle(Ic.History, "Save browsing history", "Turn off to never record history, even in normal tabs", Prefs.saveHistory) { Prefs.saveHistory = it }; Divider()
             Toggle(Ic.Login, "Stay signed in to sites", "Keep logins (Amazon, Flipkart…) after restarting, so you aren't asked for OTPs again", Prefs.keepSignedIn) { Prefs.keepSignedIn = it }; Divider()
@@ -583,7 +583,7 @@ fun SiteSettings() {
                     Favicon(origin, size = 20.dp); Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text(hostOf(origin), color = C.text, fontSize = 14.5.sp)
-                        Text(ps.joinToString(" · ") { p -> "${PERMS.firstOrNull { it.first == p.second }?.second ?: p.second.replace("+", " & ").replaceFirstChar { c -> c.uppercase() }}: ${if (p.third) "Allowed" else "Blocked"}" }, color = C.faint, fontSize = 12.sp, maxLines = 2)
+                        Text(ps.joinToString(" · ") { p -> if (p.second == "shield") "Shield: ${if (p.third) "On" else "Off"}" else "${PERMS.firstOrNull { it.first == p.second }?.second ?: p.second.replace("+", " & ").replaceFirstChar { c -> c.uppercase() }}: ${if (p.third) "Allowed" else "Blocked"}" }, color = C.faint, fontSize = 12.sp, maxLines = 2)
                     }
                     IconBtn(Ic.Delete, "Reset", tint = C.faint) { BrowserDb.clearPerms(origin) }
                 }
@@ -619,6 +619,13 @@ fun SiteDetail() {
                     BrowserDb.clearPerm(origin, "camera+microphone")
                     when (pick) { "allow" -> BrowserDb.setPerm(origin, k, true); "block" -> BrowserDb.setPerm(origin, k, false); else -> BrowserDb.clearPerm(origin, k) }
                 }, icon)
+            }
+        }
+        SectionLabel("Cairn Shield")
+        Group {
+            val off = remember(v) { BrowserDb.perm(origin, "shield") == false }
+            Toggle(Ic.Shield, "Block ads and trackers", if (off) "Off for this site" else "On (recommended). Turn off if the site doesn't work properly", !off) {
+                app.cairn.browser.browser.Browser.setShieldOff(origin, !it)
             }
         }
         Spacer(Modifier.height(16.dp))

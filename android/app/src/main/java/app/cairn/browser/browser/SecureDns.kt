@@ -51,7 +51,7 @@ object SecureDns {
 
     /** Applies the current setting. Safe to call repeatedly (e.g. from Settings). */
     @Synchronized fun apply() {
-        resolver = build()
+        resolver = build(); dnsCache.clear()
         if (resolver == null) { stopProxy(); return }
         if (!supported) return
         val port = startProxy()
@@ -73,9 +73,32 @@ object SecureDns {
         return ss.localPort
     }
 
-    private fun resolve(host: String): InetAddress {
-        if (Regex("^[\\d.]+$|:").containsMatchIn(host)) return InetAddress.getByName(host)
-        return (resolver?.lookup(host)?.firstOrNull()) ?: InetAddress.getByName(host)
+    private val dnsCache = java.util.concurrent.ConcurrentHashMap<String, Pair<List<InetAddress>, Long>>()
+    private const val DNS_TTL = 5 * 60_000L
+
+    /**
+     * DoH first; if the DoH server is unreachable (some networks block it) fall back to the normal resolver instead of
+     * failing the page. Answers are cached for 5 minutes so every new connection doesn't pay for an extra HTTPS lookup.
+     */
+    private fun resolveAll(host: String): List<InetAddress> {
+        if (Regex("^[\\d.]+$|:").containsMatchIn(host)) return listOf(InetAddress.getByName(host))
+        val key = host.lowercase()
+        dnsCache[key]?.takeIf { System.currentTimeMillis() - it.second < DNS_TTL }?.let { return it.first }
+        val viaDoh = runCatching { resolver?.lookup(host) }.getOrNull().orEmpty()
+        val list = viaDoh.ifEmpty { InetAddress.getAllByName(host).toList() }
+        if (list.isNotEmpty()) { if (dnsCache.size > 2000) dnsCache.clear(); dnsCache[key] = list to System.currentTimeMillis() }
+        return list
+    }
+
+    /** Connects to the first address that answers (a dead IP in the DNS answer no longer fails the whole page). */
+    private fun connect(host: String, port: Int): Socket {
+        var last: Exception? = null
+        for (addr in resolveAll(host).take(4)) {
+            val s = Socket()
+            try { s.connect(InetSocketAddress(addr, port), 10000); return s } catch (e: Exception) { last = e; runCatching { s.close() } }
+        }
+        dnsCache.remove(host.lowercase())
+        throw last ?: java.net.UnknownHostException(host)
     }
 
     private fun readLine(i: InputStream): String {
@@ -100,12 +123,12 @@ object SecureDns {
             val upstream: Socket
             if (method.equals("CONNECT", true)) {
                 val host = target.substringBeforeLast(':'); val port = target.substringAfterLast(':').toIntOrNull() ?: 443
-                upstream = Socket().apply { connect(InetSocketAddress(resolve(host.trim('[', ']')), port), 15000) }
+                upstream = connect(host.trim('[', ']'), port)
                 cout.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray()); cout.flush()
             } else {
                 // Plain http:// request in absolute form: rewrite to origin form and forward.
                 val u = java.net.URI(target); val port = if (u.port > 0) u.port else 80
-                upstream = Socket().apply { connect(InetSocketAddress(resolve(u.host), port), 15000) }
+                upstream = connect(u.host, port)
                 val path = (u.rawPath?.ifEmpty { "/" } ?: "/") + (u.rawQuery?.let { "?$it" } ?: "")
                 val out = StringBuilder("$method $path ${first.substringAfterLast(' ')}\r\n")
                 headers.filterNot { it.startsWith("Proxy-", true) || it.startsWith("Connection:", true) }.forEach { out.append(it).append("\r\n") }

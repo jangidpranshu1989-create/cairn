@@ -6,10 +6,10 @@
 
 **Just say it. Cairn gets it done.** Ask in English, Hindi, Hinglish or any language. Cairn browses, compares prices across trusted stores, fills your cart and stops at payment so you approve it with your fingerprint.
 
-[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.0%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
+[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.2%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
 [![Download Desktop](https://img.shields.io/badge/Download%20Desktop-Windows%20·%20macOS%20·%20Linux-EEEDEA?style=for-the-badge&logo=googlechrome&logoColor=161618&labelColor=D9C3A0)](https://jangidpranshu1989-create.github.io/cairn/download.html#desktop)
 
-[Website](https://jangidpranshu1989-create.github.io/cairn/) · [Get it on Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jangidpranshu1989-create/cairn) · [Changelog](https://jangidpranshu1989-create.github.io/cairn/changelog.html) · [Release v3.0.0](https://github.com/jangidpranshu1989-create/cairn/releases/tag/v3.0.0)
+[Website](https://jangidpranshu1989-create.github.io/cairn/) · [Get it on Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jangidpranshu1989-create/cairn) · [Changelog](https://jangidpranshu1989-create.github.io/cairn/changelog.html) · [Latest release](https://github.com/jangidpranshu1989-create/cairn/releases/latest)
 
 <img src="website/assets/media/gif-home.gif" width="280" alt="Cairn bento home and rich answers"> &nbsp; <img src="website/assets/media/gif-shop.gif" width="280" alt="Cairn exact-match shopping and payment approval">
 
@@ -183,4 +183,4 @@ All server settings are in `server/.env.example`. Desktop settings are stored pe
 
 ## License
 
-Proprietary © 2026 Cairn. Third-party components (Electron/Chromium, AndroidX, etc.) are under their own licenses.
+Cairn is open source under the [Apache License 2.0](LICENSE). Copyright © 2026 Cairn contributors. Third-party components (Electron/Chromium, AndroidX, etc.) are under their own licenses. The Cairn name and logo are not covered by the license.

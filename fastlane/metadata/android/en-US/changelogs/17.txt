@@ -1,0 +1,1 @@
+3.2.1: Faster, steadier browsing. Pages no longer wait for the safety check before opening. Sites that use Google Tag Manager stop hanging or showing blank. Payment, UPI and WhatsApp links open their app, bank payment pages and payment pop-ups work, fewer accidental refreshes, no page jump when a load finishes, and old tabs free memory. New: turn Shield off for one site.

@@ -102,7 +102,7 @@ object PageTools {
             w.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, u: String) { if (u != "about:blank") { live.firstOrNull { it.web == w }?.url = u; loaded.complete(Unit) } }
                 override fun shouldInterceptRequest(view: WebView, req: android.webkit.WebResourceRequest) =
-                    if (!req.isForMainFrame && app.cairn.browser.browser.Shield.isBlocked(req.url.host)) app.cairn.browser.browser.Shield.empty() else null
+                    if (!req.isForMainFrame && app.cairn.browser.browser.Shield.isBlocked(req.url.host)) app.cairn.browser.browser.Shield.blocked(req.url) else null
                 override fun shouldOverrideUrlLoading(view: WebView, req: android.webkit.WebResourceRequest) = !(req.url.scheme ?: "").startsWith("http")
             }
             w.loadUrl(url, headers)

@@ -1,21 +1,26 @@
 // Private growth stats for the owner: how many installs (anonymous AI device tokens), accounts and active users.
-// Counts only — no IPs, emails or ids leave this endpoint. Disabled unless ADMIN_TOKEN is set.
+// Counts only — no IPs, emails or ids leave this endpoint. Needs the owner key (see authorized()).
 //   curl -H "Authorization: Bearer $ADMIN_TOKEN" https://<server>/api/admin/stats
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from './db.js';
+import { overview } from './analytics.js';
 
 export const statsRouter = Router();
 statsRouter.use(rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false }));
 
-function authorized(req) {
+// The owner's dashboard key. ADMIN_TOKEN (env) works if set; otherwise the key whose SHA-256 is below.
+// Only the hash is public, and the key is 256 random bits, so it can't be guessed from it.
+const BUILTIN_HASH = process.env.ADMIN_TOKEN_SHA256 || 'c5ca4cade272cb918879edcc129fdd3a92a9551563a79e5baf221238a63be8cf';
+const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+export function authorized(req) {
+  const got = String(req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (got.length < 16) return false;
   const want = process.env.ADMIN_TOKEN || '';
-  if (want.length < 16) return false;
-  const got = String(req.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  const a = Buffer.from(crypto.createHash('sha256').update(got).digest('hex'));
-  const b = Buffer.from(crypto.createHash('sha256').update(want).digest('hex'));
-  return crypto.timingSafeEqual(a, b);
+  const eq = (x, y) => crypto.timingSafeEqual(Buffer.from(x), Buffer.from(y));
+  if (want.length >= 16 && eq(sha(got), sha(want))) return true;
+  return /^[a-f0-9]{64}$/.test(BUILTIN_HASH) && eq(sha(got), BUILTIN_HASH);
 }
 
 const DAY = 86_400_000;
@@ -50,4 +55,10 @@ export function computeStats(days = 30, at = Date.now()) {
 statsRouter.get('/stats', (req, res) => {
   if (!authorized(req)) return res.status(404).json({ error: 'Not found' });
   res.set('Cache-Control', 'no-store').json(computeStats(req.query.days));
+});
+
+// Full dashboard payload (real-time, users, retention, website, downloads).
+statsRouter.get('/analytics', async (req, res, next) => {
+  if (!authorized(req)) return res.status(401).json({ error: 'Wrong dashboard key' });
+  try { res.set('Cache-Control', 'no-store').json(await overview(req.query.days)); } catch (e) { next(e); }
 });

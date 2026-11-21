@@ -66,6 +66,7 @@ const DEFAULT_SETTINGS = {
   speechRate: 1,
   serverAuto: true,
   safeBrowsing: true,
+  usageStats: true,              // anonymous counts only (telemetry.js)
   dohMode: 'off',
   dohUrl: '',
   serverUrl: process.env.CAIRN_SERVER || (app.isPackaged ? 'https://cairn-cloud.onrender.com' : 'http://localhost:8787'),

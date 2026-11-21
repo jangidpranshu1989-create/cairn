@@ -684,6 +684,7 @@ app.whenReady().then(async () => {
   applyTheme();
   setupSession().catch(e => console.error(e));
   cloud.connect();
+  try { require('./telemetry').start(); } catch (e) { console.error('telemetry', e); }
   discoverServer().catch(() => {});
   const sync = require('./sync');
   sync.init(cloud, tabs);

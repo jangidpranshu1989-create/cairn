@@ -1,0 +1,1 @@
+3.3.0: Anonymous usage stats help us see how many people use Cairn and which features matter, so we can improve faster. Only a random install id and counts like app opened or search made are sent, with Cairn version and language. Never the sites you visit, searches or anything you type. Turn it off any time in Settings → Privacy → Share anonymous usage stats.

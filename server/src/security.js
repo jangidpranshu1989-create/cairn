@@ -18,7 +18,7 @@ export const isAllowedOrigin = (o) =>
 
 // Public, cookie-less endpoints that third-party apps call cross-origin (OIDC discovery, JWKS,
 // userinfo, token, revoke) plus the embeddable SDK and public safety lists.
-const OPEN = [/^\/\.well-known\/openid-configuration$/, /^\/oauth\/(jwks|userinfo|token|revoke)$/, /^\/sdk(\/|$)/, /^\/api\/safety(\/|$)/];
+const OPEN = [/^\/\.well-known\/openid-configuration$/, /^\/oauth\/(jwks|userinfo|token|revoke)$/, /^\/sdk(\/|$)/, /^\/api\/safety(\/|$)/, /^\/api\/t\/?$/, /^\/api\/admin(\/|$)/];
 export const isOpenPath = (p) => OPEN.some(r => r.test(p));
 
 const ALLOW_HEADERS = 'Authorization, Content-Type, X-Device-Id, X-Requested-With';

@@ -125,7 +125,7 @@ object Browser {
         return shieldOffCache.getOrPut(site) { runCatching { BrowserDb.perm(site, "shield") == false }.getOrDefault(false) }
     }
     fun setShieldOff(site: String, off: Boolean) {
-        if (off) BrowserDb.setPerm(site, "shield", false) else BrowserDb.clearPerm(site, "shield")
+        if (off) { BrowserDb.setPerm(site, "shield", false); app.cairn.browser.data.Telemetry.event("shield_off") } else BrowserDb.clearPerm(site, "shield")
         shieldOffCache.clear()
     }
     fun shieldPermsChanged() = shieldOffCache.clear()
@@ -231,7 +231,7 @@ object Browser {
     /** Opens what the user typed: URL, or a web search. */
     fun open(input: String, t: Tab? = current) {
         val tab = t ?: newTab()
-        val url = Search.toUrl(input) ?: Search.searchUrl(input)
+        val url = Search.toUrl(input) ?: Search.searchUrl(input).also { app.cairn.browser.data.Telemetry.event("search") }
         load(tab, url)
     }
 
@@ -516,6 +516,7 @@ addEventListener('focusout',function(){try{CairnScroll.secure(false)}catch(x){}}
             if (!t.incognito) persist()
             view.postDelayed({ if (current == t && t.web == view) capture(t) }, 1500)
             if (url.startsWith("http")) {
+                app.cairn.browser.data.Telemetry.event("page_load")
                 maybeFlushCookies()
                 t.jsCanScrollUp = false; t.jsScrollY = 0
                 if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) view.evaluateJavascript(SCROLL_JS, null)

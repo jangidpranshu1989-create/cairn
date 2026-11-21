@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#161618">
+<title>Cairn Analytics</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="login" class="login" hidden>
+  <form id="loginForm" class="login-card" autocomplete="off">
+    <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4 6 12l3 2 7-5 7 5 3-2Zm-6 12 6-4 6 4-6 4Zm-3 5 9 7 9-7-3-2-6 4-6-4Z" fill="currentColor"/></svg><span>Cairn Analytics</span></div>
+    <p class="muted">Enter your dashboard key. It stays on this device.</p>
+    <label for="keyInput">Dashboard key</label>
+    <input id="keyInput" type="password" required minlength="16" placeholder="Paste key" spellcheck="false">
+    <details class="adv"><summary>Server</summary>
+      <label for="apiInput">API base URL</label>
+      <input id="apiInput" type="url" placeholder="https://cairn-cloud.onrender.com">
+    </details>
+    <button class="btn primary" type="submit">Open dashboard</button>
+    <p id="loginErr" class="err" role="alert"></p>
+  </form>
+</div>
+
+<div id="app" class="app" hidden>
+  <header class="top">
+    <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4 6 12l3 2 7-5 7 5 3-2Zm-6 12 6-4 6 4-6 4Zm-3 5 9 7 9-7-3-2-6 4-6-4Z" fill="currentColor"/></svg><span>Cairn Analytics</span></div>
+    <div class="status"><span id="liveDot" class="dot"></span><span id="updated" class="muted">Loading</span></div>
+    <div class="actions">
+      <div class="seg" role="group" aria-label="Date range">
+        <button data-days="7">7d</button><button data-days="30" class="on">30d</button><button data-days="90">90d</button>
+      </div>
+      <button id="refreshBtn" class="icon-btn" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button id="logoutBtn" class="icon-btn" title="Sign out" aria-label="Sign out"><svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="card rt span-2">
+      <div class="card-h"><h2>Right now</h2><span class="pill live">Live</span></div>
+      <div class="rt-body">
+        <div class="rt-main">
+          <div class="big" id="rtActive">0</div>
+          <div class="muted">active in the last 5 minutes</div>
+          <div class="rt-split"><span><b id="rtApps">0</b> in apps</span><span><b id="rtWeb">0</b> on website</span></div>
+        </div>
+        <div class="rt-chart"><div class="muted sm">Active per minute, last 30 minutes</div><div id="rtBars" class="chart-sm"></div></div>
+      </div>
+      <div class="rt-lists">
+        <div><h3>Countries</h3><ul id="rtCountry" class="bars"></ul></div>
+        <div><h3>Platform</h3><ul id="rtPlatform" class="bars"></ul></div>
+        <div><h3>Version</h3><ul id="rtVersion" class="bars"></ul></div>
+      </div>
+    </section>
+
+    <section class="card goal">
+      <div class="card-h"><h2>Goal: 10,000 users</h2></div>
+      <div class="big" id="goalNow">0</div>
+      <div class="muted"><span id="goalPct">0%</span> of 10,000 installs</div>
+      <div class="progress"><span id="goalBar"></span></div>
+      <dl class="mini">
+        <div><dt>GitHub downloads</dt><dd id="ghTotal">0</dd></div>
+        <div><dt>Accounts</dt><dd id="kAccounts">0</dd></div>
+        <div><dt>AI devices</dt><dd id="kAiDevices">0</dd></div>
+        <div><dt>AI users today</dt><dd id="kAiToday">0</dd></div>
+      </dl>
+    </section>
+
+    <section class="kpis span-3" id="kpis"></section>
+
+    <section class="card span-2">
+      <div class="card-h"><h2>Daily users</h2><div class="legend" id="usersLegend"></div></div>
+      <div id="usersChart" class="chart"></div>
+    </section>
+    <section class="card">
+      <div class="card-h"><h2>Platforms</h2></div>
+      <ul id="bPlatform" class="bars"></ul>
+      <h3>Countries</h3><ul id="bCountry" class="bars"></ul>
+    </section>
+
+    <section class="card span-2">
+      <div class="card-h"><h2>Website visitors and download clicks</h2><div class="legend" id="webLegend"></div></div>
+      <div id="webChart" class="chart"></div>
+    </section>
+    <section class="card">
+      <div class="card-h"><h2>Download clicks</h2></div>
+      <ul id="wDownloads" class="bars"></ul>
+      <h3>Devices</h3><ul id="wDevices" class="bars"></ul>
+    </section>
+
+    <section class="card"><div class="card-h"><h2>Top pages</h2></div><ul id="wPages" class="bars"></ul></section>
+    <section class="card"><div class="card-h"><h2>Referrers</h2></div><ul id="wRefs" class="bars"></ul></section>
+    <section class="card"><div class="card-h"><h2>Campaigns</h2></div><ul id="wUtm" class="bars"></ul></section>
+
+    <section class="card span-2">
+      <div class="card-h"><h2>Sessions and minutes</h2><div class="legend" id="sessLegend"></div></div>
+      <div id="sessChart" class="chart"></div>
+    </section>
+    <section class="card"><div class="card-h"><h2>Feature usage</h2></div><ul id="events" class="bars"></ul></section>
+
+    <section class="card"><div class="card-h"><h2>Versions</h2></div><ul id="bVersion" class="bars"></ul></section>
+    <section class="card"><div class="card-h"><h2>OS</h2></div><ul id="bOs" class="bars"></ul></section>
+    <section class="card"><div class="card-h"><h2>Languages</h2></div><ul id="bLocale" class="bars"></ul></section>
+
+    <section class="card span-2">
+      <div class="card-h"><h2>Retention</h2><span class="muted sm">New installs per day and how many came back</span></div>
+      <div class="table-wrap"><table id="cohorts"><thead><tr><th>Install day</th><th>New</th><th>Day 1</th><th>Day 7</th></tr></thead><tbody></tbody></table></div>
+    </section>
+    <section class="card">
+      <div class="card-h"><h2>GitHub downloads</h2></div>
+      <div class="table-wrap"><table id="ghTable"><thead><tr><th>Release</th><th>APK</th><th>Win</th><th>Mac</th><th>Linux</th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </main>
+  <footer class="foot muted sm">Anonymous counts only. Apps send a random install id, never browsing history. Data refreshes every 15 seconds.</footer>
+</div>
+<div id="tip" class="tip" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

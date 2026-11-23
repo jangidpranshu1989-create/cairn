@@ -2,7 +2,7 @@
   const { api, store, esc, say } = window.Cairn;
   const $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
-  const handoff = params.get('handoff') === 'desktop';
+  const handoff = ['desktop', 'android'].includes(params.get('handoff')) ? params.get('handoff') : '';
   // After sign-in, go back to the consent screen (same-origin relative path only).
   const ret = (() => { const r = params.get('return') || ''; return /^(consent\.html\?\S*|\.\.\/developers\/)$/.test(r) ? r : ''; })();
   let mode = params.get('mode') === 'signup' ? 'signup' : 'signin';
@@ -26,11 +26,49 @@
     $('switchLink').textContent = s ? 'Sign in' : 'Create an account';
     if (s) loadCaptcha(); else $('captcha').classList.remove('show');
   }
-  function finish(data) {
+  // ---------- Passkey right after sign-up ----------
+  const canPasskey = () => !!window.PublicKeyCredential && !!window.SimpleWebAuthnBrowser;
+  function showPasskeySetup(after, { fromApp = false } = {}) {
+    ['auth', 'profile'].forEach(id => $(id).classList.add('hidden'));
+    $('pkSetup').classList.remove('hidden'); say($('msg3'), '');
+    const done = (ok) => {
+      if (fromApp) {
+        $('pkTitle').textContent = ok ? 'Passkey ready' : 'You can add a passkey later';
+        $('pkSub').textContent = ok ? 'Next time you sign in to Cairn, choose "Sign in with a passkey" and use your fingerprint, face or screen lock. You can close this tab and go back to Cairn.'
+          : 'Open Account → Manage passkeys in Cairn whenever you want to sign in without a password.';
+        $('pkCreate').classList.add('hidden'); $('pkSkip').textContent = 'Close'; $('pkSkip').onclick = () => { window.close(); history.length > 1 ? history.back() : location.replace('./'); };
+        return;
+      }
+      $('pkSetup').classList.add('hidden'); after();
+    };
+    $('pkCreate').classList.remove('hidden');
+    $('pkCreate').onclick = async () => {
+      const b = $('pkCreate'); b.disabled = true; say($('msg3'), '');
+      try {
+        const opts = await api('/passkeys/register/options', { method: 'POST' });
+        const response = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: opts });
+        await api('/passkeys/register/verify', { method: 'POST', body: { response, name: passkeyName() } });
+        say($('msg3'), 'Passkey created. You can now sign in without a password.', true);
+        setTimeout(() => done(true), fromApp ? 0 : 900);
+      } catch (err) { say($('msg3'), err.name === 'NotAllowedError' ? 'Passkey setup was cancelled. Try again or choose Not now.' : err.name === 'InvalidStateError' ? 'This device already has a passkey for your account.' : err.message); }
+      finally { b.disabled = false; }
+    };
+    $('pkSkip').textContent = 'Not now'; $('pkSkip').onclick = () => done(false);
+  }
+  function passkeyName() {
+    const ua = navigator.userAgent;
+    const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iPhone / iPad' : /Windows/i.test(ua) ? 'Windows' : /Mac OS/i.test(ua) ? 'Mac' : /Linux/i.test(ua) ? 'Linux' : '';
+    return ((/Cairn/i.test(ua) ? 'Cairn' : 'Browser') + (os ? ' on ' + os : '')).slice(0, 60);
+  }
+
+  function finish(data, { signedUp = false } = {}) {
     store.set({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user });
+    // New account: offer a passkey straight away so the next sign-in needs no password.
+    if (signedUp && canPasskey()) return showPasskeySetup(() => finish(data));
     if (handoff) {
       const h = new URLSearchParams({ access: data.accessToken, refresh: data.refreshToken, user: JSON.stringify(data.user) });
       location.href = 'cairn://auth-callback#' + h.toString();
+      if (handoff === 'android') setTimeout(() => { say($('msg'), 'Signed in. Go back to Cairn.', true); }, 800);
       return;
     }
     if (ret) { location.href = ret; return; }
@@ -45,7 +83,7 @@
       if ($('captcha').classList.contains('show')) Object.assign(body, { captchaToken, captchaAnswer: $('captchaAnswer').value });
       if (mode === 'signup') body.name = $('name').value;
       const data = await api(mode === 'signup' ? '/auth/signup' : '/auth/login', { method: 'POST', body, noAuth: true });
-      finish(data);
+      finish(data, { signedUp: mode === 'signup' });
     } catch (err) {
       say($('msg'), err.message);
       if (err.data?.captcha || mode === 'signup') loadCaptcha();
@@ -121,7 +159,7 @@
     try {
       const opts = await api('/passkeys/register/options', { method: 'POST' });
       const response = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: opts });
-      await api('/passkeys/register/verify', { method: 'POST', body: { response, name: navigator.userAgentData?.platform || navigator.platform || 'Passkey' } });
+      await api('/passkeys/register/verify', { method: 'POST', body: { response, name: passkeyName() } });
       say($('msg2'), 'Passkey added. You can now sign in without a password.', true); showProfile();
     } catch (err) { say($('msg2'), err.name === 'NotAllowedError' ? 'Passkey setup was cancelled' : err.message); }
   };
@@ -135,5 +173,22 @@
   if (params.get('verified')) say($('msg'), 'Email verified. Thank you.', true);
   if (params.get('signout')) { (async () => { try { await api('/auth/logout', { method: 'POST' }); } catch {} store.clear(); })(); }
   render();
+  // Opened from the Cairn app right after sign-up (or "Manage passkeys"): sign this page in with the one-time code
+  // from the URL fragment, then go straight to passkey setup.
+  const setupCode = params.get('passkey') === 'setup' ? new URLSearchParams(location.hash.slice(1)).get('code') : null;
+  if (setupCode) {
+    history.replaceState(null, '', location.pathname + (params.get('view') === 'security' ? '' : '?passkey=setup&from=' + encodeURIComponent(params.get('from') || 'app')));
+    (async () => {
+      try {
+        const data = await api('/passkeys/setup-link/redeem', { method: 'POST', body: { code: setupCode }, noAuth: true });
+        store.set({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user });
+        // "Manage passkeys" from the app: open the signed-in Security tab instead of the setup prompt.
+        if (params.get('view') === 'security') { await showProfile(); document.querySelector('[data-tab=security]')?.click(); return; }
+        if (!canPasskey()) { say($('msg'), 'Passkeys are not supported in this browser.'); return showProfile(); }
+        showPasskeySetup(() => showProfile(), { fromApp: true });
+      } catch (e) { say($('msg'), e.message); }
+    })();
+    return;
+  }
   if (store.get() && !handoff && !params.get('signout')) { if (ret) location.href = ret; else showProfile(); }
 })();

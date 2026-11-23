@@ -516,6 +516,8 @@ fun Omnibox() {
     fun go(input: String) {
         if (input.isBlank()) return
         Ui.omnibox = false
+        // Chrome-style internal pages: cairn://downloads (also chrome://downloads), history, bookmarks, settings
+        Regex("^(?:cairn|chrome)://(downloads|history|bookmarks|settings)/?$", RegexOption.IGNORE_CASE).find(input.trim())?.let { Ui.go(it.groupValues[1].lowercase()); return }
         // Agent mode (home Omni-bar) or an obvious task: hand it to the agent instead of searching.
         if (Search.toUrl(input.trim()) == null && !input.trim().startsWith("http") && Ui.omniAgent && input.trim().contains(' ') && tab?.incognito != true) { Ui.omniAgent = false; ask(input.trim()); return }
         Ui.omniAgent = false

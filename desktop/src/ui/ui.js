@@ -219,7 +219,7 @@
     }
     el.appendChild(h('div', 'sep'));
     const all = h('div', 'opt', `<span class="oi">${icon('folder')}</span><span class="ot">Show all downloads</span>`);
-    all.onclick = () => { closePopover(); S.invoke('tabs:new', 'cairn://downloads'); };
+    all.onclick = () => { closePopover(); S.invoke('downloads:show'); };
     el.appendChild(all);
   }
   const fmtBytes = (b) => !b ? '' : b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';

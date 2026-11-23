@@ -132,5 +132,8 @@ async function oauthApprove(url, approve) {
   return (await api('/oauth/approve', { method: 'POST', body: { ...params, approve, via: 'desktop' } })).redirect;
 }
 
-module.exports = { isAuthorizeUrl, oauthRequest, oauthApprove, events, api, isSignedIn, publicSession, login, signup, captcha, logout, handleAuthCallback, connect,
+/** One-time link that signs the hosted account page in and opens passkey setup (or the passkey list). */
+async function passkeySetupLink(view) { return (await api('/passkeys/setup-link', { method: 'POST', body: { from: 'desktop', ...(view ? { view } : {}) } })).url; }
+
+module.exports = { passkeySetupLink, isAuthorizeUrl, oauthRequest, oauthApprove, events, api, isSignedIn, publicSession, login, signup, captcha, logout, handleAuthCallback, connect,
   requestApproval, decideLocally, sendToPhone, devices, pairStart, removeDevice, deleteAccount, base };

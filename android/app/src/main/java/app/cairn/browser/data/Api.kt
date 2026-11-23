@@ -159,7 +159,27 @@ object Api {
         }
         val j = JSONObject(raw)
         val at = j.getString("accessToken"); val rt = j.getString("refreshToken")
-        // Turn the account session into a device session (same flow as scanning the desktop QR code)
+        adopt(at)
+        // Unlock end-to-end encrypted sync with a key derived from the password (never sent anywhere).
+        runCatching { app.cairn.browser.vault.Sync.setupKey(email, password) }.onFailure { app.cairn.browser.vault.Sync.status.value = it.message ?: "Sync is locked" }
+        if (rt.isEmpty()) Unit
+    }
+
+    /** Signed in with a passkey on the Cairn Account page: turn that web session into this phone's device session. */
+    suspend fun signInWithSession(accessToken: String): Unit = withContext(Dispatchers.IO) {
+        adopt(accessToken)
+        // A passkey proves who you are but doesn't carry the sync key; sync unlocks the first time the password is entered.
+        if (app.cairn.browser.vault.Sync.status.value.isBlank()) app.cairn.browser.vault.Sync.status.value = "Signed in with a passkey. Enter your password once in Sync to unlock your synced data."
+    }
+
+    /** One-time link that opens the Cairn Account page signed in, at passkey setup (or at the passkey list). */
+    suspend fun passkeySetupLink(view: String? = null): String = withContext(Dispatchers.IO) {
+        val b = JSONObject().put("from", "android"); if (view != null) b.put("view", view)
+        JSONObject(authed { url(ep("/passkeys/setup-link")).post(b.toString().toRequestBody(JSON)) }.json()).getString("url")
+    }
+
+    /** Turns an account session into a device session (same flow as scanning the desktop QR code). */
+    private fun adopt(at: String) {
         val start = JSONObject(exec(Request.Builder().url(ep("/devices/pair/start")).header("Authorization", "Bearer $at")
             .post("{}".toRequestBody(JSON)).build()).json())
         val pairBody = JSONObject().put("code", start.getString("code")).put("name", "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}".take(80))
@@ -170,9 +190,6 @@ object Api {
         Prefs.deviceId = d.getString("deviceId"); Prefs.userJson = d.getJSONObject("user").toString()
         Prefs.accessToken = d.getString("accessToken"); Prefs.refreshToken = d.getString("refreshToken")
         Prefs.approvalKeySent = pairBody.has("approvalKey")
-        // Unlock end-to-end encrypted sync with a key derived from the password (never sent anywhere).
-        runCatching { app.cairn.browser.vault.Sync.setupKey(email, password) }.onFailure { app.cairn.browser.vault.Sync.status.value = it.message ?: "Sync is locked" }
-        if (rt.isEmpty()) Unit
     }
 
     suspend fun me(): JSONObject = withContext(Dispatchers.IO) { JSONObject(authed { url(ep("/auth/me")) }.json()).also { Prefs.userJson = (it.optJSONObject("user") ?: it).toString() } }

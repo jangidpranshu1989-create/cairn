@@ -505,6 +505,7 @@ addEventListener('focusout',function(){try{CairnScroll.secure(false)}catch(x){}}
             if (req.hasGesture()) t.gestureAt = System.currentTimeMillis()
             if ((s == "http" || s == "https") && app.cairn.browser.ui.OneTap.intercept(t, u, req.isForMainFrame)) return true
             if (s == "http" || s == "https" || s == "about" || s == "data" || s == "blob" || s == "javascript") return false
+            if (s == "cairn" && u.host == "auth-callback") return app.cairn.browser.ui.PasskeyLogin.callback(t, u)
             if (s == "cairn" && u.host == "ask") {
                 // "Ask a follow-up" from a Cairn Search page continues in the assistant, with that page as context.
                 val q = u.getQueryParameter("q").orEmpty()

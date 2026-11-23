@@ -88,3 +88,5 @@ pre code{background:none;padding:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .grow{flex:1;min-width:0}
+
+.pkicon{width:60px;height:60px;border-radius:18px;display:grid;place-items:center;margin:0 0 14px;background:var(--surface-2, rgba(127,127,127,.12));color:var(--accent, currentColor)}

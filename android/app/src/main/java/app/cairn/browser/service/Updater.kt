@@ -20,6 +20,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.*
 import app.cairn.browser.BuildConfig
+import app.cairn.browser.agent.Agent
 import app.cairn.browser.CairnApp
 import app.cairn.browser.R
 import okhttp3.OkHttpClient
@@ -120,7 +121,7 @@ object Updater {
         return true
     }
 
-    private fun busy() = app.cairn.browser.agent.Agent.running || runCatching { Downloader.active }.getOrDefault(false)
+    private fun busy() = Agent.running || runCatching { Downloader.active }.getOrDefault(false)
 
     private fun installIfIdle(ctx: Context, force: Boolean = false) {
         val f = ready ?: return

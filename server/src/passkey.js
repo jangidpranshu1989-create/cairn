@@ -80,6 +80,27 @@ passkeyRouter.post('/login/verify', async (req, res) => {
   } catch (e) { res.status(401).json({ error: 'Passkey sign-in failed: ' + e.message }); }
 });
 
+// One-time link that signs the hosted account page in and opens passkey setup. Apps call this right after sign-up
+// (and from "Manage passkeys"), because a passkey for this server can only be created on the server's own origin.
+// The code travels in the URL fragment (never sent to any server or logged), works once and expires in 3 minutes.
+passkeyRouter.post('/setup-link', requireAuth, (req, res) => {
+  const code = crypto.randomBytes(24).toString('base64url');
+  db.prepare('INSERT OR REPLACE INTO challenges (key, value, expires_at) VALUES (?,?,?)').run(`setup:${code}`, req.user.id, now() + 3 * 60_000);
+  const from = ['desktop', 'android'].includes(req.body?.from) ? req.body.from : 'app';
+  const view = req.body?.view === 'security' ? '&view=security' : '';
+  res.json({ url: `${config.publicUrl.replace(/\/$/, '')}/accounts/?passkey=setup&from=${from}${view}#code=${code}`, expiresIn: 180 });
+});
+
+passkeyRouter.post('/setup-link/redeem', (req, res) => {
+  const code = String(req.body?.code || '');
+  const userId = code.length >= 20 && code.length <= 64 ? takeChallenge(`setup:${code}`) : null;
+  if (!userId) return res.status(400).json({ error: 'This setup link has expired. Open passkey setup again from Cairn.' });
+  const u = db.prepare('SELECT * FROM users WHERE id=?').get(userId);
+  if (!u) return res.status(404).json({ error: 'Account not found' });
+  audit(u.id, 'passkey_setup_link');
+  res.json({ user: publicUser(u), ...issueTokens(u.id, { userAgent: req.get('user-agent'), ip: req.ip }) });
+});
+
 passkeyRouter.delete('/:id', requireAuth, (req, res) => {
   db.prepare('DELETE FROM passkeys WHERE id=? AND user_id=?').run(req.params.id, req.user.id);
   res.json({ ok: true });

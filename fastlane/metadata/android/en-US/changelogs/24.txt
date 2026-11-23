@@ -1,0 +1,5 @@
+Cairn 3.6.0
+- Passkeys at sign-up: create a passkey right after making your Cairn Account and sign in next time with your fingerprint or screen lock, no password.
+- New "Sign in with a passkey" button.
+- Chrome-style downloads: grouped by day, search, and a menu on every file to open, share, copy link, download again, remove or delete it.
+- Type cairn://downloads in the address bar to open Downloads.

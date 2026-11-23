@@ -210,13 +210,42 @@ fun DownloadsScreen() {
     val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     val jobs = app.cairn.browser.service.Downloader.jobs
     var cat by rememberSaveable { mutableStateOf("all") }
+    var q by rememberSaveable { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf<app.cairn.browser.data.DownloadItem?>(null) }
     val cats = listOf("all" to "All", "images" to "Images", "videos" to "Videos", "audio" to "Audio", "docs" to "Docs", "apks" to "APKs", "other" to "Other")
-    val shown = list.filter { cat == "all" || app.cairn.browser.service.Downloader.categoryOf(it.name, it.mime) == cat }
+    val shown = list.filter { (cat == "all" || app.cairn.browser.service.Downloader.categoryOf(it.name, it.mime) == cat) && (q.isBlank() || it.name.contains(q.trim(), true) || it.url.contains(q.trim(), true)) }
+    val fileUri = { d: app.cairn.browser.data.DownloadItem -> if (d.uri.isNotEmpty()) Uri.parse(d.uri) else if (d.dmId > 0) runCatching { dm.getUriForDownloadedFile(d.dmId) }.getOrNull() else null }
+    // Chrome-style "Deleted": the file is gone from storage but still in the list
+    val missing = remember(loadedD, tick / 5) { list.filter { jobs[it.id] == null && it.uri.isNotEmpty() }.take(150).filter { d ->
+        val u = Uri.parse(d.uri)
+        if (u.scheme == "file") !java.io.File(u.path ?: "").exists()
+        else runCatching { ctx.contentResolver.openFileDescriptor(u, "r")?.use { false } ?: true }.getOrElse { it is java.io.FileNotFoundException } }.map { it.id }.toSet() }
+    fun deleteFile(d: app.cairn.browser.data.DownloadItem) {
+        runCatching {
+            val u = fileUri(d)
+            when {
+                d.dmId > 0 && d.dmId != app.cairn.browser.service.Downloader.ENGINE -> dm.remove(d.dmId)
+                u?.scheme == "file" -> java.io.File(u.path ?: "").delete()
+                u != null -> ctx.contentResolver.delete(u, null, null)
+            }
+        }.onSuccess { BrowserDb.deleteDownload(d.id); act.toast("Deleted ${d.name}") }.onFailure { act.toast("Couldn't delete this file: ${it.message ?: "permission denied"}") }
+    }
+    confirmDelete?.let { d ->
+        AlertDialog(onDismissRequest = { confirmDelete = null }, containerColor = C.surface2,
+            title = { Text("Delete file?", color = C.text) }, text = { Text("\"${d.name}\" will be removed from your phone.", color = C.muted) },
+            confirmButton = { TextButton(onClick = { deleteFile(d); confirmDelete = null }) { Text("Delete", color = C.err) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel", color = C.muted) } })
+    }
     ScreenHeader("Downloads", { Ui.back() }) {
         if (list.isNotEmpty()) TextButton(onClick = { list.filter { jobs[it.id] == null }.forEach { BrowserDb.deleteDownload(it.id) } }) { Text("Clear list", color = C.muted) }
     }
     if (loadedD == null) { SkeletonRows(6); return }
     if (list.isEmpty()) { EmptyState(Ic.Download, "No downloads", "Files you download, PDFs and screenshots Cairn saves appear here.", Modifier.fillMaxSize()); return }
+    SearchField(q, "Search downloads") { q = it }
+    val active = list.count { jobs[it.id]?.let { j -> j.state == app.cairn.browser.service.Downloader.State.RUNNING || j.state == app.cairn.browser.service.Downloader.State.QUEUED } == true }
+    val onDisk = list.filter { it.id !in missing }.sumOf { it.size.coerceAtLeast(0) }
+    Text(listOf("${list.size} item${if (list.size == 1) "" else "s"}", if (active > 0) "$active downloading" else "", if (onDisk > 0) Formatter.formatShortFileSize(ctx, onDisk) + " on this phone" else "").filter { it.isNotEmpty() }.joinToString(" · "),
+        color = C.faint, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp))
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         cats.forEach { (k, label) ->
             val n = if (k == "all") list.size else list.count { app.cairn.browser.service.Downloader.categoryOf(it.name, it.mime) == k }
@@ -225,9 +254,11 @@ fun DownloadsScreen() {
             }
         }
     }
-    if (shown.isEmpty()) EmptyState(Ic.Download, "Nothing here", "No downloads in this category yet.", Modifier.fillMaxSize())
+    if (shown.isEmpty()) EmptyState(Ic.Download, "Nothing here", if (q.isNotBlank()) "No downloads match \"$q\"." else "No downloads in this category yet.", Modifier.fillMaxSize())
     else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
-        items(shown, key = { it.id }) { d ->
+      shown.groupBy { dayLabel(it.at) }.forEach { (day, group) ->
+        item(key = "day:$day") { Text(day, color = C.muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 20.dp, top = 14.dp, bottom = 4.dp)) }
+        items(group, key = { it.id }) { d ->
             val job = jobs[d.id]
             // Legacy rows from the system DownloadManager (before Cairn 2.3)
             val st = remember(tick, d.dmId) {
@@ -267,7 +298,8 @@ fun DownloadsScreen() {
                             else LinearProgressIndicator(Modifier.fillMaxWidth().height(3.dp).clip(CircleShape), color = C.text, trackColor = C.surface3)
                         }
                         failed -> Text("Failed${job?.error?.let { " · $it" } ?: ""} · ${hostOf(d.url)}", color = C.err, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        else -> Text("${Formatter.formatShortFileSize(ctx, if (d.size > 0) d.size else st?.third ?: 0)} · ${hostOf(d.url).ifBlank { "Cairn" }} · ${dayLabel(d.at)}", color = C.faint, fontSize = 12.sp, maxLines = 1)
+                        d.id in missing -> Text("Deleted · ${hostOf(d.url).ifBlank { "Cairn" }}", color = C.faint, fontSize = 12.sp, maxLines = 1, textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)
+                        else -> Text("${Formatter.formatShortFileSize(ctx, if (d.size > 0) d.size else st?.third ?: 0)} · ${hostOf(d.url).ifBlank { "Cairn" }} · ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(d.at))}", color = C.faint, fontSize = 12.sp, maxLines = 1)
                     }
                 }
                 when {
@@ -278,14 +310,36 @@ fun DownloadsScreen() {
                         if (job != null) app.cairn.browser.service.Downloader.resume(d.id)
                         else { BrowserDb.deleteDownload(d.id); app.cairn.browser.browser.Downloads.enqueue(ctx, d.url, null, null, d.mime, null, false, d.name) }
                     }
-                    else -> IconBtn(Ic.Share, "Share", tint = C.faint, enabled = uri != null) {
-                        runCatching { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(d.mime.ifBlank { "*/*" }).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), null)) }
+                }
+                if (!running && !legacyRunning) {
+                    var menu by remember { mutableStateOf(false) }
+                    val gone = d.id in missing
+                    Box {
+                        IconBtn(Ic.MoreVert, "More actions", tint = C.faint) { menu = true }
+                        DropdownMenu(menu, { menu = false }, containerColor = C.surface2) {
+                            val MI: @Composable (androidx.compose.ui.graphics.vector.ImageVector, String, androidx.compose.ui.graphics.Color?, () -> Unit) -> Unit = { ic, label, tint, f -> DlMenuItem(ic, label, tint ?: C.text) { menu = false; f() } }
+                            if (!failed && !paused && !gone && uri != null) {
+                                MI(Ic.FolderOpen, "Open", null) { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, d.mime.ifBlank { "*/*" }).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }.onFailure { act.toast("No app can open this file") } }
+                                MI(Ic.Share, "Share", null) { runCatching { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(d.mime.ifBlank { "*/*" }).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), null)) } }
+                            }
+                            if (d.url.startsWith("http")) {
+                                MI(Ic.ContentCopy, "Copy download link", null) { copyText(ctx, "Download link", d.url); act.toast("Link copied") }
+                                MI(Ic.Refresh, if (failed || gone) "Retry download" else "Download again", null) { if (job != null) app.cairn.browser.service.Downloader.cancel(d.id); BrowserDb.deleteDownload(d.id); app.cairn.browser.browser.Downloads.enqueue(ctx, d.url, null, null, d.mime, null, false, d.name) }
+                            }
+                            if (!paused) MI(Ic.Close, "Remove from list", null) { BrowserDb.deleteDownload(d.id) }
+                            if (!failed && !paused && !gone && uri != null) MI(Ic.Delete, "Delete file", C.err) { confirmDelete = d }
+                        }
                     }
                 }
             }
         }
+      }
     }
 }
+
+@Composable
+private fun DlMenuItem(ic: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: androidx.compose.ui.graphics.Color, onClick: () -> Unit) =
+    DropdownMenuItem({ Text(label, color = tint) }, onClick, leadingIcon = { Icon(ic, null, Modifier.size(18.dp), tint = tint) })
 
 // ---------------------------------------------------------------- Sync passphrase
 /** mode: "set" | "unlock" | "manage" (change / remove) | "reset" */
@@ -849,7 +903,8 @@ fun AccountScreen(embedded: Boolean = false, startMode: String? = null, prefillN
                 Row2(Ic.Key, "Passwords and passkeys", "Saved sign-ins for websites", onClick = { Ui.go("settings/passwords") }); Divider()
                 Row2(Ic.Devices, "Phone and computer", "Approvals and files", onClick = { Ui.go("settings/pair") }); Divider()
                 if (local) Row2(Ic.Password, "Change password", null, onClick = { pw = ""; name = ""; dialog = "password" })
-                else Row2(Ic.Password, "Security and connected apps", "Password, passkeys, devices, Continue with Cairn", onClick = { openUrl("${Prefs.server}/accounts/") })
+                else { Row2(Ic.Key, "Create a passkey", "Sign in next time with your fingerprint or screen lock, no password", onClick = { PasskeyLogin.openSetup() }); Divider()
+                    Row2(Ic.Password, "Security and connected apps", "Password, passkeys, devices, Continue with Cairn", onClick = { PasskeyLogin.openSetup("security") }) }
             }
             if (local) {
                 Spacer(Modifier.height(12.dp))
@@ -945,6 +1000,8 @@ fun AccountScreen(embedded: Boolean = false, startMode: String? = null, prefillN
                 if (LocalAccount.exists && LocalAccount.email.equals(email.trim(), true)) LocalAccount.delete()  // moved to the Cairn Account
                 AppState.paired.value = true; SyncService.start(ctx); Prefs.syncOn = true; app.cairn.browser.vault.Sync.soon(0)
                 Haptics.confirm(); act.toast(if (mode == "signup") "Welcome to Cairn, ${name.trim().substringBefore(' ')}" else "Signed in. Your stuff is syncing."); if (onDone != null) onDone() else Ui.back()
+                // New account: create a passkey right away so the next sign-in needs no password.
+                if (mode == "signup") PasskeyLogin.openSetup()
             } catch (e: ApiException) {
                 Haptics.reject()
                 when {
@@ -999,6 +1056,14 @@ fun AccountScreen(embedded: Boolean = false, startMode: String? = null, prefillN
         Spacer(Modifier.height(20.dp))
         PrimaryButton(when (mode) { "signup" -> "Create account"; "forgot" -> "Send reset link"; else -> "Sign in" }, Modifier.fillMaxWidth(), busy = busy,
             enabled = email.isNotBlank() && (mode == "forgot" || pw.isNotEmpty()) && (mode != "signup" || name.isNotBlank())) { submit() }
+        if (mode == "signin") {
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, C.line, RoundedCornerShape(14.dp)).clickable { openUrl(PasskeyLogin.signInUrl()) }.padding(vertical = 13.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Icon(Ic.Key, null, Modifier.size(18.dp), tint = C.text); Spacer(Modifier.width(8.dp))
+                Text("Sign in with a passkey", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            }
+        }
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             if (mode == "signin") {

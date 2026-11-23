@@ -1,5 +1,22 @@
 <!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Downloads</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="cairn://downloads/pages/internal.css"></head>
-<body><div class="wrap"><div class="top"><h1>Downloads</h1><input class="input search" id="q" placeholder="Search downloads" type="search"><button class="btn" id="clear">Clear list</button></div><div id="cats" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px"></div><div id="out"></div></div>
+<link rel="stylesheet" href="cairn://downloads/pages/internal.css">
+<style>
+.day{font-family:inherit;font-size:12px;font-weight:600;color:var(--muted);margin:22px 2px 8px}
+.day:first-child{margin-top:4px}
+.fileic{width:38px;height:38px;border-radius:9px;flex:none;display:grid;place-items:center;font-size:10px;font-weight:700;letter-spacing:.02em;background:var(--surface);color:var(--accent)}
+.fileic.c-images{color:#4fa3ff}.fileic.c-videos{color:#e2577a}.fileic.c-audio{color:#b07cff}.fileic.c-docs{color:#e5893a}.fileic.c-apps{color:#3fb37f}
+.dlrow .main small a{color:inherit;text-decoration:none}.dlrow .main small a:hover{text-decoration:underline}
+.dlrow.gone .fileic{opacity:.45}.strike{text-decoration:line-through;color:var(--muted)}
+.bar{height:4px;background:var(--surface-2);border-radius:4px;margin-top:7px;overflow:hidden;max-width:420px}.bar>div{height:100%;background:var(--accent);transition:width .4s}
+.inline{display:flex;gap:6px;margin-top:8px}
+.btn.ghost{background:transparent;border-color:transparent;font-size:16px;line-height:1}
+.dlmenu{position:fixed;z-index:50;min-width:200px;padding:6px;border-radius:12px;background:var(--bg);border:1px solid var(--line);box-shadow:0 12px 32px rgba(0,0,0,.28)}
+.dlmenu button{display:block;width:100%;text-align:left;padding:8px 12px;border:0;background:none;color:var(--text);font:inherit;font-size:13px;border-radius:8px;cursor:pointer}
+.dlmenu button:hover,.dlmenu button:focus{background:var(--hover);outline:none}.dlmenu button.danger{color:#e5534b}
+.dlmenu hr{border:0;border-top:1px solid var(--line);margin:5px 4px}
+#sum{color:var(--muted);font-size:12px;margin:-4px 2px 10px}
+</style></head>
+<body><div class="wrap"><div class="top"><h1>Downloads</h1><input class="input search" id="q" placeholder="Search downloads" type="search"><button class="btn" id="folder" title="Open downloads folder">Open folder</button><button class="btn" id="clear">Clear all</button></div>
+<div id="sum"></div><div id="cats" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px"></div><div id="out"></div></div>
 <script src="cairn://downloads/pages/internal.js"></script><script src="cairn://downloads/pages/downloads.js"></script></body></html>

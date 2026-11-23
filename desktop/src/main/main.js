@@ -178,7 +178,11 @@ function createWindow() {
       if (e.redirect) wc.loadURL(e.redirect).catch(() => {}); else fallback();
     }
   });
-  tabs.on('auth-callback', (url, tab) => { if (cloud.handleAuthCallback(url)) { tab.view.webContents.loadURL('cairn://account').catch(() => {}); send('toast', { text: 'Signed in to Cairn' }); } });
+  tabs.on('auth-callback', (url, tab) => {
+    // Only the Cairn Account page may sign this browser in (a random site must not log you into its own account).
+    let from = ''; try { from = new URL(tab.view.webContents.getURL()).origin; } catch {}
+    if (from !== new URL(cloud.base()).origin) return;
+    if (cloud.handleAuthCallback(url)) { tab.view.webContents.loadURL('cairn://account').catch(() => {}); send('toast', { text: 'Signed in to Cairn' }); } });
   tabs.on('page-key', (e, input) => { if (input.type === 'keyDown' && input.key === 'Escape' && agent?.running) { /* allow page escape */ } });
 
   const restore = st.startup === 'restore' && st.restoreTabs?.length ? st.restoreTabs : null;
@@ -358,6 +362,32 @@ function registerIpc() {
     const ids = new Set(live.map(x => x.id));
     return [...live, ...store.get().downloads.data.filter(x => !ids.has(x.id))];
   });
+  // Chrome-style download manager actions
+  const findRec = (id) => downloads.get(id)?.rec || store.get().downloads.data.find(x => x.id === id);
+  // ids in, booleans out: only paths Cairn itself recorded are ever checked (the page never passes a path)
+  handle('downloads:exists', (_e, ids) => (Array.isArray(ids) ? ids.slice(0, 600) : []).map(id => { try { const r = findRec(id); return !!(r?.path && !r.deleted && fs.existsSync(r.path)); } catch { return false; } }), { internal: true });
+  handle('downloads:remove', (_e, id) => {
+    if (downloads.get(id)?.rec.state === 'progressing') return false;
+    downloads.delete(id);
+    const d = store.get().downloads; const i = d.data.findIndex(x => x.id === id); if (i >= 0) { d.data.splice(i, 1); d.save(); }
+    send('downloads:update', [...downloads.values()].map(x => x.rec)); return true;
+  }, { internal: true });
+  handle('downloads:delete', async (_e, id) => {
+    const r = findRec(id); if (!r?.path || r.state === 'progressing') return false;
+    // r.path comes from Cairn's own download record, never from the page
+    try { await shell.trashItem(r.path); } catch { try { fs.unlinkSync(r.path); } catch (e) { if (e.code !== 'ENOENT') throw e; } }
+    r.deleted = true; const d = store.get().downloads; const s2 = d.data.find(x => x.id === id); if (s2) { s2.deleted = true; d.save(); }
+    return true;
+  }, { internal: true });
+  handle('downloads:retry', (_e, id) => {
+    const r = findRec(id); if (!r?.url || !/^(https?|data|blob):/i.test(r.url)) throw new Error('This download can\'t be restarted');
+    const wc = tabs.active?.view.webContents || win.webContents; wc.downloadURL(r.url); return true;
+  }, { internal: true });
+  handle('downloads:copyLink', (_e, id) => { const r = findRec(id); if (r?.url) clipboard.writeText(r.url); return !!r?.url; }, { internal: true });
+  handle('downloads:openFolder', () => shell.openPath(s().downloadDir || app.getPath('downloads')), { internal: true });
+  handle('downloads:show', () => openDownloads(), { internal: true });
+  handle('downloads:open', (_e, id) => { const r = findRec(id); if (r?.path && fs.existsSync(r.path)) return shell.openPath(r.path); throw new Error('File was moved or deleted'); }, { internal: true });
+  handle('downloads:reveal', (_e, id) => { const r = findRec(id); if (r?.path && fs.existsSync(r.path)) shell.showItemInFolder(r.path); else shell.openPath(s().downloadDir || app.getPath('downloads')); }, { internal: true });
   handle('downloads:cancel', (_e, id) => downloads.get(id)?.item.cancel(), { internal: true });
   handle('downloads:pause', (_e, id) => { const d = downloads.get(id); if (!d) return; if (d.item.isPaused()) { if (d.item.canResume()) d.item.resume(); } else d.item.pause(); d.rec.paused = d.item.isPaused(); d.rec.speed = 0; }, { internal: true });
   handle('downloads:clear', () => { store.get().downloads.data = []; store.get().downloads.save(); downloads = new Map([...downloads].filter(([, d]) => d.rec.state === 'progressing')); }, { internal: true });
@@ -420,6 +450,8 @@ function registerIpc() {
   handle('cloud:deleteAccount', (_e, pw) => cloud.deleteAccount(pw), { internal: true });
   handle('cloud:base', () => cloud.base());
   handle('cloud:passkeyPage', () => { tabs.create(cloud.base() + '/accounts/?handoff=desktop'); });
+  // Right after sign-up (and from Manage passkeys): open the account page already signed in, at passkey setup.
+  handle('cloud:passkeySetup', async (_e, view) => { tabs.create(await cloud.passkeySetupLink(view === 'security' ? 'security' : undefined)); });
 
   // passwords — management (internal pages only)
   handle('pw:all', () => passwords.all(), { internal: true });
@@ -572,6 +604,11 @@ function applyTheme() {
   for (const tab of tabs?.tabs?.values?.() || []) { try { if (tab.view.webContents.getURL().startsWith('cairn://')) tab.view.webContents.send('theme', t); } catch {} }
 }
 
+function openDownloads() {
+  for (const [id, t] of tabs?.tabs || []) { try { if (!t.incognito && /^cairn:\/\/downloads/.test(t.view.webContents.getURL() || t.url)) { tabs.activate(id); return; } } catch {} }
+  tabs.create('cairn://downloads');
+}
+
 function appMenu() {
   const go = (u) => () => tabs.create(u);
   return Menu.buildFromTemplate([
@@ -580,7 +617,7 @@ function appMenu() {
     { type: 'separator' },
     { label: 'History', accelerator: 'CmdOrCtrl+Y', click: go('cairn://history') },
     { label: 'Bookmarks', click: go('cairn://bookmarks') },
-    { label: 'Downloads', click: go('cairn://downloads') },
+    { label: 'Downloads', accelerator: 'CmdOrCtrl+J', click: () => openDownloads() },
     { label: 'Passwords', click: go('cairn://passwords') },
     { type: 'separator' },
     { label: 'Summarize page', click: () => runPageTool('summary') },

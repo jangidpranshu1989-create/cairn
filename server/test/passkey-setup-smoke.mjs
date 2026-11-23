@@ -1,0 +1,22 @@
+// 3.6.0: one-time passkey setup links that apps open right after sign-up. Run against a dev server with CAPTCHA_DEV_ANSWER=1.
+import assert from 'node:assert/strict';
+const B = process.env.BASE || 'http://localhost:8787';
+const j = async (p, o = {}) => { const r = await fetch(B + p, { ...o, headers: { 'Content-Type': 'application/json', ...(o.headers || {}) }, body: o.body ? JSON.stringify(o.body) : undefined }); return { s: r.status, d: await r.json().catch(() => ({})) }; };
+const cap = (await j('/api/auth/captcha')).d;
+const su = await j('/api/auth/signup', { method: 'POST', body: { email: `pk${Date.now()}@example.com`, password: 'Secure-Passw0rd-123', name: 'P', captchaToken: cap.token, captchaAnswer: cap.devAnswer } });
+assert.equal(su.s, 200, JSON.stringify(su.d));
+const A = { Authorization: 'Bearer ' + su.d.accessToken };
+assert.equal((await j('/api/passkeys/setup-link', { method: 'POST', body: {} })).s, 401, 'setup link needs a signed-in app');
+const link = await j('/api/passkeys/setup-link', { method: 'POST', headers: A, body: { from: 'android' } });
+assert.equal(link.s, 200);
+const u = new URL(link.d.url);
+assert.equal(u.searchParams.get('passkey'), 'setup'); assert.equal(u.searchParams.get('from'), 'android');
+assert.ok(!u.search.includes('code='), 'code must only be in the fragment');
+const code = new URLSearchParams(u.hash.slice(1)).get('code');
+const r1 = await j('/api/passkeys/setup-link/redeem', { method: 'POST', body: { code } });
+assert.equal(r1.s, 200); assert.ok(r1.d.accessToken && r1.d.user?.email);
+assert.equal((await j('/api/passkeys/setup-link/redeem', { method: 'POST', body: { code } })).s, 400, 'a setup link works only once');
+assert.equal((await j('/api/passkeys/setup-link/redeem', { method: 'POST', body: { code: 'x'.repeat(32) } })).s, 400);
+const opts = await j('/api/passkeys/register/options', { method: 'POST', headers: { Authorization: 'Bearer ' + r1.d.accessToken } });
+assert.equal(opts.s, 200); assert.ok(opts.d.challenge);
+console.log('Passkey setup smoke test passed');

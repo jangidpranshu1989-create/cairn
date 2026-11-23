@@ -123,7 +123,7 @@ async function execute(name, args, ctx) {
     case 'open_url': {
       let url = String(args.url).trim();
       if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-      ctx.step('nav', `Opening ${new URL(url).hostname}`);
+      ctx.step('nav', `Opening ${navLabel(url)}`);
       const tab = args.new_tab ? ctx.newAgentTab(url) : ctx.agentTab();
       if (!args.new_tab) await tab.webContents.loadURL(url).catch(() => {});
       await settle(tab.webContents, 8000);
@@ -135,7 +135,9 @@ async function execute(name, args, ctx) {
       ctx.step('read', `Reading ${safeHost(w.getURL())}`);
       const s = await dom.snapshot(w);
       const st = await dom.pageState(w).catch(() => ({}));
-      const notes = [st.captcha && 'NOTE: a CAPTCHA/human check is shown — use ask_user to have the user solve it.', st.otp && 'NOTE: page asks for an OTP — use ask_user.', st.hasPassword && 'NOTE: login form present. Saved passwords may autofill; otherwise ask_user to log in.', st.payment && 'NOTE: this looks like a checkout/payment step. request_approval before placing order or paying.'].filter(Boolean).join('\n');
+      const notes = [st.captcha && 'NOTE: a CAPTCHA/human check is shown — use ask_user to have the user solve it.', st.otp && 'NOTE: page asks for an OTP — use ask_user.', st.hasPassword && 'NOTE: login form present. Saved passwords may autofill; otherwise ask_user to log in.', st.payment && 'NOTE: this looks like a checkout/payment step. request_approval before placing order or paying.',
+        st.product && st.stock === 'out' && (st.variantOos ? `NOTE: OUT OF STOCK for the selected variant (${st.variantOos}). Try one other variant on this page that fits the request, else move to the next candidate.` : 'NOTE: OUT OF STOCK. Move to the next candidate; don\'t reopen this page.'),
+        st.product && st.stock === 'in' && 'NOTE: in stock (Add to Cart / Buy available).'].filter(Boolean).join('\n');
       return `URL: ${s.url}\nTitle: ${s.title}\nScroll: ${s.scroll.y}/${s.scroll.max}\n${notes}\nElements:\n${s.elements}\n\nVisible text:\n${s.text}`;
     }
     case 'click': {
@@ -262,3 +264,14 @@ const safeHost = (u) => { try { return new URL(u).hostname.replace(/^www\./, '')
 
 module.exports = {
   _test: { FINAL_ACTION, CONTINUE_ACTION, PAY_URL }, DEFS, execute, webSearch };
+
+/** "flipkart.com · ambrane 20000 mah power bank" / "amazon.in · search: power bank" instead of a bare host. */
+function navLabel(url) {
+  try {
+    const u = new URL(url);
+    const q = ['q', 'k', 'query', 'search_query', 'keyword'].map(k => u.searchParams.get(k)).find(Boolean);
+    const slug = u.pathname.split('/').find(p => p.length > 6 && p.includes('-') && !/^(itm|p|dp|gp)$/i.test(p));
+    const what = q ? 'search: ' + q.slice(0, 40) : slug ? decodeURIComponent(slug).replace(/-/g, ' ').slice(0, 42) : '';
+    return safeHost(url) + (what ? ' · ' + what : '');
+  } catch { return safeHost(url); }
+}

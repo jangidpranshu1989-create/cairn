@@ -89,7 +89,7 @@ const DEFS = [
 ];
 
 const FRESH = /\b(latest|news|today|tonight|yesterday|tomorrow|this (week|month|year)|current(ly)?|right now|live|price|prices|cost|rate|score|scores|match|weather|forecast|stock|share price|sensex|nifty|election|results?|released?|launch(ed|es)?|new update|202[4-9]|aaj|abhi|taaza|khabar|mausam|bhav|daam|kimat|keemat)\b/i;
-const NUDGES = ["Don't stop", 'Before answering, call web_search', 'Do this now in the browser:'];
+const NUDGES = ["Don't stop", 'Before answering, call web_search', 'Do this now in the browser:', 'You are repeating yourself', 'You are stuck.', 'STOP using tools now.'];
 
 /** What was said (user and assistant text only, newest kept) under the chat system prompt. */
 function history(messages) {

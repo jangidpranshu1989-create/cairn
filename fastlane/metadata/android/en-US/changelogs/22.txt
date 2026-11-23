@@ -1,0 +1,1 @@
+3.5.1: The agent never gets stuck. It remembers every page it checked during a task, never reopens out-of-stock or already-checked pages, tries another colour or the next product, and always finishes with the best option it found. Incognito now ends when you swipe Cairn away from Recents: private tabs close, their data is deleted and your last normal tab comes back.

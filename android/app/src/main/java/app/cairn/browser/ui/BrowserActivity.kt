@@ -135,7 +135,12 @@ class BrowserActivity : FragmentActivity() {
         }
     }
 
-    override fun onDestroy() { runCatching { Browser.dropSpare() }; super.onDestroy() }
+    override fun onDestroy() {
+        runCatching { Browser.dropSpare() }
+        // Closing Cairn (swipe from Recents / Close all, or leaving the last screen) ends Incognito, like Chrome.
+        if (isFinishing && !isChangingConfigurations) runCatching { Browser.endPrivateSession() }
+        super.onDestroy()
+    }
 
     override fun onResume() {
         super.onResume()

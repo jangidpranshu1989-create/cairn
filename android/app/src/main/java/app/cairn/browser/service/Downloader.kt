@@ -359,6 +359,9 @@ class DownloadActionReceiver : BroadcastReceiver() {
 
 /** Keeps downloads going while Cairn is in the background. Stops itself when nothing is downloading. */
 class DownloadService : Service() {
+    /** The user swiped Cairn away from Recents: the private session ends even though this service keeps the process alive. */
+    override fun onTaskRemoved(rootIntent: Intent?) { runCatching { app.cairn.browser.browser.Browser.endPrivateSession() }; super.onTaskRemoved(rootIntent) }
+
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val j = Downloader.jobs.values.firstOrNull { it.state == Downloader.State.RUNNING || it.state == Downloader.State.QUEUED }

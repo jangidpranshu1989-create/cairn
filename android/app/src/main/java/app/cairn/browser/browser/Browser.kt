@@ -188,6 +188,21 @@ object Browser {
         persist()
     }
 
+    /**
+     * Ends the private session like Chrome does when the app is closed (swiped away from Recents, or the last screen
+     * finishes): every private tab is closed, its cookies and storage are deleted, a private agent chat is cleared, and
+     * the most recently used normal tab is shown next time. Cairn's process can stay alive after a swipe (background
+     * sync keeps it running), so without this the private tabs would still be there when the app is opened again.
+     */
+    fun endPrivateSession() {
+        val run = Runnable {
+            runCatching { app.cairn.browser.agent.Agent.endPrivate() }
+            if (privateTabs().isNotEmpty()) closeAll(true) else wipePrivate()
+            runCatching { app.cairn.browser.ui.Ui.tabSwitcher = false }
+        }
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) run.run() else android.os.Handler(android.os.Looper.getMainLooper()).post(run)
+    }
+
     private fun destroy(t: Tab) {
         t.web?.let { w -> (t.view?.parent as? ViewGroup)?.removeView(t.view); w.stopLoading(); w.loadUrl("about:blank"); w.destroy() }
         t.web = null; t.view = null
@@ -207,6 +222,7 @@ object Browser {
 
     fun restore() {
         if (tabs.isNotEmpty()) return
+        wipePrivate() // a private session left behind by a killed process never comes back
         if (Prefs.restoreTabs) runCatching {
             val j = JSONObject(Prefs.tabsJson); val a = j.getJSONArray("tabs")
             for (i in 0 until a.length()) tabs.add(Tab(ids.incrementAndGet(), false, a.getJSONObject(i).getString("u")).apply { title = a.getJSONObject(i).optString("t") })

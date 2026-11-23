@@ -1,6 +1,6 @@
 name: website
 on:
-  push: { branches: [main], paths: ['tools/**', 'website/**', '.github/workflows/pages.yml'] }
+  push: { branches: [main], paths: ['tools/**', 'website/**', 'desktop/package.json', '.github/workflows/pages.yml'] }
   workflow_dispatch:
 permissions:
   contents: write

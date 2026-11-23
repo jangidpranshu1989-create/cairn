@@ -6,7 +6,8 @@ import pathlib, datetime, json
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / 'website'
 PAGES = pathlib.Path(__file__).resolve().parent / 'site_pages'
-VERSION = '3.4.0'
+# Always the version being released (desktop/package.json is bumped with every release), so the site never shows an old one.
+VERSION = json.loads((pathlib.Path(__file__).resolve().parent.parent / 'desktop' / 'package.json').read_text())['version']
 # Our own site (GitHub Pages). cairn.app belongs to someone else, so nothing may point there.
 SITE = 'https://jangidpranshu1989-create.github.io/cairn'
 RELEASES = 'https://github.com/jangidpranshu1989-create/cairn/releases/latest/download'

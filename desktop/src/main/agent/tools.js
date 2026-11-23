@@ -32,7 +32,7 @@ const DEFS = [
   fn('download_file', 'Download a file from a URL to the Cairn downloads folder.', { url: S('file URL'), filename: S('optional name') }, ['url']),
   fn('send_to_phone', 'Send a file to the user\'s paired Android phone and save it in a folder there (e.g. "Documents/Wikipedia"). file="last" sends the most recent PDF/screenshot/download.', { file: S('"last" or absolute path'), folder: S('folder on phone') }, ['file']),
   fn('request_approval', 'REQUIRED before placing an order, paying, or any irreversible purchase. Sends an approval pop-up to the user\'s phone (biometric). Returns approved/denied.', { kind: { type: 'string', enum: ['payment', 'purchase', 'sensitive'] }, title: S('short, e.g. "Pay ₹69,900 to Flipkart"'), amount: S('e.g. ₹69,900'), merchant: S('store'), item: S('item name') }, ['kind', 'title']),
-  fn('ask_user', 'Ask the user a question and wait for the answer (e.g. choose a variant, provide OTP, confirm address, or log in manually).', { question: S('question in the user\'s language') }, ['question']),
+  fn('ask_user', 'Ask the user a question and wait for the answer (e.g. choose a variant, confirm address, or ask the user to log in / enter an OTP in the tab themselves and reply "done" — never ask for the OTP itself).', { question: S('question in the user\'s language') }, ['question']),
   fn('show_products', 'Display product comparison cards to the user. Pass indices from the last compare_prices results in the order to show (best first).', { indices: { type: 'array', items: { type: 'number' } }, headline: S('one-line headline') }, ['indices']),
 ];
 
@@ -135,9 +135,10 @@ async function execute(name, args, ctx) {
       ctx.step('read', `Reading ${safeHost(w.getURL())}`);
       const s = await dom.snapshot(w);
       const st = await dom.pageState(w).catch(() => ({}));
-      const notes = [st.captcha && 'NOTE: a CAPTCHA/human check is shown — use ask_user to have the user solve it.', st.otp && 'NOTE: page asks for an OTP — use ask_user.', st.hasPassword && 'NOTE: login form present. Saved passwords may autofill; otherwise ask_user to log in.', st.payment && 'NOTE: this looks like a checkout/payment step. request_approval before placing order or paying.',
+      const notes = [st.captcha && 'NOTE: a CAPTCHA/human check is shown — use ask_user to have the user solve it.', st.otp && 'NOTE: page asks for an OTP — use ask_user to have the user enter it in the tab themselves and reply "done" (never ask for the code in chat).', st.hasPassword && 'NOTE: login form present. Saved passwords may autofill; otherwise ask_user to log in.', st.payment && 'NOTE: this looks like a checkout/payment step. request_approval before placing order or paying.',
         st.product && st.stock === 'out' && (st.variantOos ? `NOTE: OUT OF STOCK for the selected variant (${st.variantOos}). Try one other variant on this page that fits the request, else move to the next candidate.` : 'NOTE: OUT OF STOCK. Move to the next candidate; don\'t reopen this page.'),
-        st.product && st.stock === 'in' && 'NOTE: in stock (Add to Cart / Buy available).'].filter(Boolean).join('\n');
+        st.product && st.stock === 'in' && 'NOTE: in stock (Add to Cart / Buy available).',
+        st.product && !st.stock && 'NOTE: stock not confirmed yet: find the buy box (Add to Cart / Buy Now vs Currently unavailable) on this page before deciding; don\'t assume out of stock.'].filter(Boolean).join('\n');
       return `URL: ${s.url}\nTitle: ${s.title}\nScroll: ${s.scroll.y}/${s.scroll.max}\n${notes}\nElements:\n${s.elements}\n\nVisible text:\n${s.text}`;
     }
     case 'click': {

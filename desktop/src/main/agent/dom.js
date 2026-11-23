@@ -171,22 +171,40 @@ function overlayFn(cmd, x, y, label) {
 // ---------- Login / checkout detection ----------
 function pageStateFn() {
   const t = (document.body?.innerText || '').slice(0, 20000).toLowerCase();
+  // Kept inside pageStateFn because it is serialised into the page. Same logic as Android assets/agent.js stockFn.
+  function stockFn(t) {
+    const href = location.href;
+    let product = /\/(p|dp|gp\/product|gp\/aw\/d|product|products|buy|itm)\/|[?&](pid|productid|sku)=/i.test(href) ||
+      /product/i.test(document.querySelector('meta[property="og:type"]')?.content || '');
+    if (!product) for (const s of document.querySelectorAll('script[type="application/ld+json"]')) { if (/"@type"\s*:\s*"Product"/.test(s.textContent || '')) { product = true; break; } }
+    if (/\/(s|search|q)\b|[?&](k|q|query)=/i.test(href) && !/\/(dp|p|itm)\//i.test(href)) product = false;
+    if (!product) return { product: false, stock: '' };
+    const enabled = (e) => e && !e.disabled && e.getAttribute('aria-disabled') !== 'true' && !/\bdisabled\b/i.test(e.className || '');
+    const shown = (e) => { if (!e) return false; const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden'; };
+    // 1. Store-specific buy boxes (Amazon desktop + mobile, Flipkart, Myntra, Croma, Reliance, Vijay Sales…).
+    const BUY_IDS = '#add-to-cart-button, #add-to-cart-button-ubb, #buy-now-button, #mobileQuantityDropDown, input[name="submit.add-to-cart"], input[name="submit.buy-now"], #addToCart, #add-to-cart, [data-testid*="add-to-cart" i], [data-test*="add-to-cart" i], [id*="addtocart" i], [class*="add-to-cart" i], [class*="addtocart" i], [class*="AddToCart"]';
+    const buyEls = [...document.querySelectorAll(BUY_IDS)].filter(e => enabled(e) && (shown(e) || shown(e.parentElement) || shown(e.closest('span,div'))));
+    // 2. Buttons by label: <button>, links, ARIA buttons, Amazon's spans inside .a-button.
+    const LABEL = /^(add to (cart|bag|basket|trolley)|buy now|buy with[\s\S]{0,20}|go to (cart|bag)|add to cart & checkout|pre-?order|book now)$/i;
+    const labelled = [...document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button],span.a-button-text,span.a-button-inner,li')]
+      .filter(e => LABEL.test(((e.innerText || e.value || e.getAttribute('aria-label') || '') + '').trim()) && enabled(e) && enabled(e.closest('button,[role=button],.a-button')) && !/a-button-disabled/.test(e.closest('.a-button')?.className || '') && shown(e));
+    const live = buyEls.length > 0 || labelled.length > 0;
+    // Explicit "can't buy" signals, read from the buy box or short status labels only.
+    const avail = (document.querySelector('#availability, #outOfStock, #availability_feature_div, [data-testid*="availability" i], [class*="availability" i], [class*="stock-status" i]')?.innerText || '').toLowerCase();
+    const STATUS = /^(out of stock|currently unavailable\.?|sold out|temporarily (out of stock|unavailable)|coming soon|notify me|this item (has been|is) discontinued|discontinued|not available|unavailable)$/i;
+    const shortLabels = [...document.querySelectorAll('button,div,span,p,strong,b,h2,h3,a')].filter(e => e.childElementCount <= 2 && STATUS.test((e.innerText || '').trim()) && shown(e)).slice(0, 3).map(e => e.innerText.trim());
+    const oosBox = /out of stock|currently unavailable|sold out|temporarily unavailable|discontinued|not available/.test(avail);
+    const variantOos = ((t.match(/selected (colou?r|size|capacity|storage|variant|style|ram)[^\n]{0,40}\n?[^\n]{0,20}out of stock/) || [])[0] || '').replace(/\s+/g, ' ').slice(0, 80);
+    // The store's own availability block wins over carousel "Add to cart" buttons of similar products.
+    const stock = oosBox ? 'out' : live ? 'in' : (shortLabels.length || variantOos) ? 'out' : '';
+    return { product: true, stock, variantOos: stock === 'out' ? variantOos : '', evidence: stock === 'in' ? (labelled[0]?.innerText || buyEls[0]?.value || buyEls[0]?.id || 'buy button').toString().trim().slice(0, 40) : (avail.trim().slice(0, 60) || shortLabels[0] || variantOos || '') };
+  }
   return {
     hasPassword: !!document.querySelector('input[type=password]'),
     captcha: !!document.querySelector('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="turnstile"], #captchacharacters, [class*="captcha" i]') || /enter the characters you see|verify you are human|i'm not a robot/.test(t),
-    otp: /\botp\b|one[- ]time password|verification code/.test(t) && !!document.querySelector('input[autocomplete="one-time-code"], input[maxlength="6"], input[name*="otp" i]'),
+    otp: /\botp\b|one[- ]time password|verification code/.test(t) && (!!document.querySelector('input[autocomplete="one-time-code"], input[maxlength="6"], input[maxlength="4"], input[name*="otp" i], input[id*="otp" i]') || document.querySelectorAll('input[maxlength="1"]').length >= 4),
     payment: /payment method|pay ₹|pay now|upi id|card number|cvv|net banking|place (your )?order|enter upi|vpa|expiry|name on card|order summary|amount payable|total payable|भुगतान/.test(t),
-    ...(() => {
-      // Single product page stock state (variant-level on Flipkart/Amazon: "Selected Color: Black · Out of stock").
-      let product = /\/(p|dp|gp\/product|product|products|buy|itm)\/|[?&](pid|productid|sku)=/i.test(location.href) || /product/i.test(document.querySelector('meta[property="og:type"]')?.content || '');
-      if (!product) for (const s of document.querySelectorAll('script[type="application/ld+json"]')) if (/"@type"\s*:\s*"Product"/.test(s.textContent || '')) { product = true; break; }
-      if (!product) return { product: false, stock: '' };
-      const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
-      const live = [...document.querySelectorAll('button,a,input[type=submit],[role=button],li')].some(e => /^(add to (cart|bag|basket)|buy now|buy with|go to cart)$/i.test((e.innerText || e.value || '').trim()) && vis(e) && !e.disabled && e.getAttribute('aria-disabled') !== 'true');
-      const oos = /out of stock|currently unavailable|sold out|temporarily unavailable|notify me|coming soon/.test(t.slice(0, 8000));
-      const v = (t.match(/selected (colou?r|size|capacity|storage|variant|style)[^\n]{0,40}\n?[^\n]{0,20}out of stock/) || [])[0] || '';
-      return { product: true, stock: live ? 'in' : oos ? 'out' : '', variantOos: v.replace(/\s+/g, ' ').slice(0, 80) };
-    })(),
+    ...stockFn(t),
     paymentForm: !!document.querySelector('input[autocomplete^="cc-"], input[name*="card" i], input[name*="cvv" i], input[name*="cvc" i], input[name*="vpa" i], input[name*="upi" i], input[placeholder*="upi" i], input[placeholder*="card number" i], iframe[src*="razorpay"], iframe[src*="stripe"], iframe[src*="paytm"], iframe[src*="payu"], iframe[src*="cashfree"]'),
   };
 }

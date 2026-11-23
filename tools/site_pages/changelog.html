@@ -11,6 +11,13 @@ desc: What's new in Cairn for desktop and Cairn for Android.
 
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
+  <article><h2>v3.5.2 <span>Nov 2026</span></h2><ul>
+  <li>Accurate stock checks: the agent now reads stock only from the product page's own buy box (Add to Cart / Buy Now vs Currently unavailable), including Amazon's buy box, so in-stock products are no longer reported as out of stock from search results.</li>
+  <li>Clean carts: before checkout the agent checks that only the items you asked for in this task are in the cart, and asks you whether to remove or keep anything left over from earlier.</li>
+  <li>OTP and login safety: the agent never asks you to type an OTP, password or CAPTCHA into the chat. It asks you to enter it on the page yourself, waits for "done" and continues from there.</li>
+  <li>Cleaner answers: the final reply shows only the result (what's done, price, store, links) without step-by-step narration, repeated "opening…" lines or internal notes, and only the sources actually cited are listed.</li>
+  <li>The website always shows the latest version, and every download button fetches the newest release.</li>
+  </ul></article>
   <article><h2>v3.5.1 <span>Nov 2026</span></h2><ul>
   <li>The agent no longer goes round in circles: it keeps a journal of every page and check it made during a task, never reopens a page it already checked or one that was out of stock, and notices when it stops making progress. It first changes approach, then takes the most direct route, and if a task still can't be finished it ends with the best option it found and what to do next. No tool can hang a task any more.</li>
   <li>Out-of-stock awareness: product pages are checked for stock, including the selected colour or size, so the agent tries another variant or moves to the next product instead of reopening the same page.</li>

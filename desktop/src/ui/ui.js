@@ -354,7 +354,8 @@
   $('#ctxChip').classList.add('on');
 
   input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(160, input.scrollHeight) + 'px'; send.disabled = !input.value.trim() && !agentBusy; });
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } });
+  // Enter adds a new line (like a phone keyboard); the send button sends. Ctrl/Cmd+Enter is a keyboard shortcut for send.
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } });
   send.onclick = () => agentBusy ? S.invoke('agent:stop') : submit();
   function submit() { const t = input.value.trim(); if (!t || agentBusy) return; input.value = ''; input.style.height = 'auto'; runAgent(t); }
 

@@ -6,7 +6,7 @@
 
 **Just say it. Cairn gets it done.** Ask in English, Hindi, Hinglish or any language. Cairn browses, compares prices across trusted stores, fills your cart and stops at payment so you approve it with your fingerprint.
 
-[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.6.0%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
+[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.6.1%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
 [![Download Desktop](https://img.shields.io/badge/Download%20Desktop-Windows%20·%20macOS%20·%20Linux-EEEDEA?style=for-the-badge&logo=googlechrome&logoColor=161618&labelColor=D9C3A0)](https://jangidpranshu1989-create.github.io/cairn/download.html#desktop)
 
 [Website](https://jangidpranshu1989-create.github.io/cairn/) · [Get it on Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jangidpranshu1989-create/cairn) · [Changelog](https://jangidpranshu1989-create.github.io/cairn/changelog.html) · [Latest release](https://github.com/jangidpranshu1989-create/cairn/releases/latest)
@@ -19,6 +19,7 @@ Full 30-second demos (1080x1920): [Home and answers](https://github.com/jangidpr
 
 ## What's new in 3.6
 
+- **Real conversations, steady chat (3.6.1)** — circling something and asking about it gets a direct answer instead of restarting an old task; replies follow your language, including Hinglish like "ye konsa engine h"; Enter adds a new line and only the send button sends; the chat panel no longer closes from a stray tap or swipe.
 - **Passkeys from day one (3.6.0)** — when you create a Cairn Account, Cairn offers to make a passkey right away, so next time you sign in with your fingerprint, face or screen lock instead of a password. "Sign in with a passkey" works on Android, desktop and the web.
 - **A real download manager (3.6.0)** — downloads are grouped by day with search, live progress, and a ⋮ menu on every file: open, show in folder, share, copy link, download again, remove from list or delete the file. Deleted files show as Deleted. Ctrl+J on desktop, `cairn://downloads` on Android.
 

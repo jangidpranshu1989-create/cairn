@@ -2,6 +2,7 @@ package app.cairn.browser
 
 import app.cairn.browser.agent.Intents
 import app.cairn.browser.agent.PayGate
+import app.cairn.browser.agent.Progress
 import app.cairn.browser.ui.FileChooser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -120,5 +121,56 @@ class ConversationRouteTest {
             "2x + 5 = 15 solve karo", "my email is riya@example.com, remember it", "I'm open to suggestions for a trip", "kya tum mujhse shaadi karoge 😄",
             "fix this kotlin code: val x = listOf(1,2", "which phone should I buy under 20k",
         ).forEach { assertFalse(it, Intents.isTask(it)) }
+    }
+}
+
+/** The Flipkart power-bank loop: the agent kept reopening the same out-of-stock pages and never finished. */
+class ProgressTest {
+    private val urbn = "https://www.flipkart.com/urbn-20000-mah-22-5-w-power-bank/p/itm123?pid=PWBX1&lid=LST9&marketplace=FLIPKART&otracker=search"
+    private val ambrane = "https://www.flipkart.com/ambrane-20000-mah-22-5-w-power-bank/p/itm456?pid=PWBX2&lid=LST1"
+    private fun open(u: String) = "{\"url\":\"$u\"}"
+
+    @Test fun trackingParamsIgnored() {
+        assertEquals(Progress.normUrl(urbn), Progress.normUrl("https://flipkart.com/urbn-20000-mah-22-5-w-power-bank/p/itm123?otracker=x&pid=PWBX1#reviews"))
+        assertTrue(Progress.normUrl(urbn) != Progress.normUrl(ambrane))
+    }
+
+    @Test fun outOfStockPageIsNeverReopened() {
+        val p = Progress()
+        p.record("open_url", open(urbn), urbn, "URBN 20000 mAh", "Opened…\n\nPAGE NOW: x [OUT OF STOCK. Move to the next candidate]")
+        assertTrue(p.shouldSkip("open_url", open(urbn + "&otracker=other"), ambrane))
+        assertTrue(p.journalText().contains("OUT OF STOCK"))
+    }
+
+    @Test fun thirdIdenticalOpenIsSkipped() {
+        val p = Progress()
+        repeat(2) { assertFalse(p.shouldSkip("open_url", open(ambrane), "")); p.record("open_url", open(ambrane), ambrane, "Ambrane", "Opened ₹1,540") }
+        assertTrue(p.shouldSkip("open_url", open(ambrane), ambrane))
+        assertTrue(p.skipMessage("open_url", open(ambrane), ambrane).startsWith("SKIPPED"))
+    }
+
+    @Test fun loopEscalatesToWrapUp() {
+        val p = Progress()
+        val seen = mutableListOf<Progress.Verdict>()
+        p.record("open_url", open(ambrane), ambrane, "Ambrane", "Opened")
+        p.verdict(0, 360_000, 40)
+        for (i in 0 until 12) {
+            p.record("read_page", "{}", ambrane, "Ambrane", "url…")
+            p.verdict(0, 360_000, 40).takeIf { it != Progress.Verdict.OK }?.let { seen += it }
+        }
+        assertEquals(listOf(Progress.Verdict.NUDGE, Progress.Verdict.FIRM, Progress.Verdict.WRAP_UP), seen)
+    }
+
+    @Test fun timeBudgetForcesAnswer() {
+        val p = Progress()
+        p.record("compare_prices", "{\"product\":\"power bank\"}", "", "", "12 listings")
+        assertEquals(Progress.Verdict.WRAP_UP, p.verdict(360_000, 360_000, 40))
+    }
+
+    @Test fun realProgressIsNotPunished() {
+        val p = Progress()
+        listOf(urbn, ambrane, "https://www.amazon.in/dp/B0ABC", "https://www.amazon.in/dp/B0XYZ").forEach {
+            p.record("open_url", open(it), it, "t", "Opened"); assertEquals(Progress.Verdict.OK, p.verdict(10_000, 360_000, 40))
+        }
     }
 }

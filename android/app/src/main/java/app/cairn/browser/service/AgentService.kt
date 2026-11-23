@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  * finishes or is waiting for an approval or answer.
  */
 class AgentService : Service() {
+    /** The user swiped Cairn away from Recents: the private session ends even though this service keeps the process alive. */
+    override fun onTaskRemoved(rootIntent: Intent?) { runCatching { app.cairn.browser.browser.Browser.endPrivateSession() }; super.onTaskRemoved(rootIntent) }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + app.cairn.browser.Crash.handler)
     override fun onBind(intent: Intent?): IBinder? = null
 

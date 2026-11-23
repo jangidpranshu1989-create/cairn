@@ -205,7 +205,22 @@ function pageStateFn() {
     captcha: !!document.querySelector('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="turnstile"], #captchacharacters, [class*="captcha" i]') || /enter the characters you see|verify you are human|i'm not a robot/.test(t),
     otp: /\botp\b|one[- ]time password|verification code/.test(t) && !!document.querySelector('input[autocomplete="one-time-code"], input[maxlength="6"], input[name*="otp" i]'),
     payment: /payment method|pay ₹|pay now|upi id|card number|cvv|net banking|place (your )?order/.test(t),
+    ...stockFn(t),
   };
+}
+// Is this a single product page, and can it be bought right now? Variant-level: Flipkart/Amazon show
+// "Selected Color: Black · Out of stock" while other colours or sizes may still be in stock.
+function stockFn(t) {
+  let product = /\/(p|dp|gp\/product|product|products|buy|itm)\/|[?&](pid|productid|sku)=/i.test(location.href) ||
+    /product/i.test(document.querySelector('meta[property="og:type"]')?.content || '');
+  if (!product) for (const s of document.querySelectorAll('script[type="application/ld+json"]')) { if (/"@type"\s*:\s*"Product"/.test(s.textContent || '')) { product = true; break; } }
+  if (!product) return { product: false, stock: '' };
+  const btns = [...document.querySelectorAll('button,a,input[type=submit],div[role=button],span[role=button],li')].filter(e => visibleEl(e) && (e.innerText || e.value || '').trim().length < 40);
+  const live = btns.some(e => /^(add to (cart|bag|basket)|buy now|buy with|go to cart)$/i.test((e.innerText || e.value || '').trim()) && !e.disabled && e.getAttribute('aria-disabled') !== 'true' && !/disabled/i.test(e.className || ''));
+  const oosText = /out of stock|currently unavailable|sold out|temporarily unavailable|notify me|coming soon/.test(t.slice(0, 8000));
+  const variantOos = (t.match(/selected (colou?r|size|capacity|storage|variant|style)[^\n]{0,40}\n?[^\n]{0,20}out of stock/) || [])[0] || '';
+  const stock = live ? 'in' : oosText ? 'out' : '';
+  return { product: true, stock, variantOos: variantOos.replace(/\s+/g, ' ').slice(0, 80) };
 }
 function extractListingsFn(linkPattern, storeId) {
   const out = [];

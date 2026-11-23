@@ -37,6 +37,9 @@ import kotlin.math.min
  * that arrived while offline via the /pending endpoints.
  */
 class SyncService : Service() {
+    /** The user swiped Cairn away from Recents: the private session ends even though this service keeps the process alive. */
+    override fun onTaskRemoved(rootIntent: Intent?) { runCatching { app.cairn.browser.browser.Browser.endPrivateSession() }; super.onTaskRemoved(rootIntent) }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + app.cairn.browser.Crash.handler)
     private var ws: WebSocket? = null
     private var loop: Job? = null

@@ -193,7 +193,8 @@ object Api {
     fun wsUrl(): String {
         val ticket = runCatching { JSONObject(authed { url(ep("/auth/ws-ticket")).post("{}".toRequestBody(JSON)) }.json()).optString("ticket") }.getOrNull()
         val base = Prefs.server.replaceFirst("http", "ws") + "/ws"
-        return if (!ticket.isNullOrEmpty()) "$base?ticket=$ticket" else "$base?token=" + (Prefs.accessToken ?: "")
+        // No ticket (offline / session expired): never fall back to the access token in the URL; the socket is refused and retried.
+        return "$base?ticket=" + (ticket ?: "")
     }
 
     // ---------- End-to-end encrypted sync (/api/sync/v2) ----------

@@ -25,6 +25,7 @@ jobs:
           curl -fsS http://localhost:8787/.well-known/openid-configuration
           BASE=http://localhost:8787 node test/oidc-smoke.mjs
           BASE=http://localhost:8787 node test/security-smoke.mjs
+          BASE=http://localhost:8787 node test/hardening-smoke.mjs
   desktop:
     strategy:
       fail-fast: false
@@ -78,8 +79,21 @@ jobs:
         with:
           name: cairn-android
           path: android/app/build/outputs/apk/release/*.apk
+      - name: Write in-app update manifest
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: android
+        run: |
+          code=$(grep -m1 -oE 'versionCode = [0-9]+' app/build.gradle.kts | grep -oE '[0-9]+')
+          name=$(grep -m1 -oE 'versionName = "[^"]+"' app/build.gradle.kts | cut -d'"' -f2)
+          apk=app/build/outputs/apk/release/Cairn-Android.apk
+          sha=$(sha256sum "$apk" | cut -d' ' -f1)
+          url="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/Cairn-Android.apk"
+          printf '{"versionCode":%s,"versionName":"%s","url":"%s","sha256":"%s"}\n' "$code" "$name" "$url" "$sha" > app/build/outputs/apk/release/android-update.json
+          cat app/build/outputs/apk/release/android-update.json
       - name: Attach APK to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          files: android/app/build/outputs/apk/release/*.apk
+          files: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/apk/release/android-update.json

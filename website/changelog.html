@@ -61,6 +61,12 @@
 
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
+  <article><h2>v3.4.1 <span>Nov 2026</span></h2><ul>
+  <li>Automatic updates on Android: Cairn now checks for new versions every few hours, downloads them in the background, verifies them and installs them when you're not using the app. On Android 12 and newer this happens without any taps after the first update. Turn it off or check now in Settings → About.</li>
+  <li>Desktop updates: Windows and Linux (AppImage) check for updates every 4 hours, download in the background and install the next time you close Cairn.</li>
+  <li>Cairn Cloud: fixed a crash when an AI answer stream was interrupted, the live connection only accepts short-lived tickets and limits message size, pending phone transfers are capped per account, and the sign-in page no longer reveals which emails have an account.</li>
+  <li>Security: saved cards and addresses are only offered for the main page, never for ads or embedded frames, and internal desktop functions can no longer be called from web pages.</li>
+  </ul></article>
   <article><h2>v3.4.0 <span>Nov 2026</span></h2><ul>
   <li>Chrome-speed page loads on Android: Back and Forward open instantly from memory (back/forward cache), links that sites mark for prerendering open instantly, and Cairn connects to a site early while you type in the address bar or touch a link. The page process starts with the app. Turn it off in Settings → Privacy → Preload pages.</li>
   <li>Smoother loading: history, titles and site icons are saved in the background instead of on the screen thread, and address bar suggestions no longer read the database while you type.</li>

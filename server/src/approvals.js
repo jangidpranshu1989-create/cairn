@@ -69,6 +69,7 @@ approvalsRouter.post('/:id/decision', requireAuth, (req, res) => {
     // Phones with a Keystore key prove the fingerprint/screen lock cryptographically: the key only signs after the
     // user authenticates, so a stolen session token alone can't approve a payment. Older phones fall back to the flag.
     if (phone.approval_key) { if (!verifyApproval(phone.approval_key, a.id, p.data.signature)) return res.status(403).json({ error: 'Approval signature missing or invalid. Approve again with your fingerprint.' }); }
+    else if (config.requireApprovalKey) return res.status(403).json({ error: 'Update Cairn on your phone and pair it again to approve payments with your fingerprint.', code: 'repair_needed' });
     else if (!p.data.verified) return res.status(403).json({ error: 'Payment approval must be confirmed on your paired phone with fingerprint/face/PIN' });
   }
   const status = p.data.approve ? 'approved' : 'denied';

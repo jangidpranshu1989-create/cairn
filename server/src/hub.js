@@ -1,15 +1,16 @@
 import { WebSocketServer } from 'ws';
-import { verifyAccess, redeemTicket } from './auth.js';
+import { redeemTicket } from './auth.js';
 import { db, now } from './db.js';
 
 // userId -> Set<{ ws, deviceId, kind }>
 const clients = new Map();
 
 export function attachHub(server) {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 }) // clients only send small pings;
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url, 'http://x');
-    const p = redeemTicket(url.searchParams.get('ticket')) || verifyAccess(url.searchParams.get('token') || '');
+    // One-time tickets only: access tokens in URLs end up in proxy logs. Every released client fetches a ticket first.
+    const p = redeemTicket(url.searchParams.get('ticket'));
     if (!p) { ws.close(4401, 'unauthorized'); return; }
     const dev = p.did ? db.prepare('SELECT kind FROM devices WHERE id=?').get(p.did) : null;
     const entry = { ws, deviceId: p.did || null, kind: dev?.kind || 'desktop', userId: p.sub };

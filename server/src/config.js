@@ -85,6 +85,9 @@ export const config = {
   // Limits
   maxTransferBytes: Number(process.env.MAX_TRANSFER_MB || 100) * 1024 * 1024,
   transferTtlHours: Number(process.env.TRANSFER_TTL_HOURS || 24),
+  // Payment approvals from phones without a hardware-backed approval key (paired before 3.4) fall back to a client flag.
+  // Set REQUIRE_APPROVAL_KEY=1 once everyone runs 3.4+ to refuse them (the phone is asked to pair again).
+  requireApprovalKey: process.env.REQUIRE_APPROVAL_KEY === '1',
   approvalTtlSec: Number(process.env.APPROVAL_TTL_SEC || 180),
   dailyAiRequestsFree: Number(process.env.DAILY_AI_FREE || 300),
   dailyAiRequestsAnon: Number(process.env.DAILY_AI_ANON || 150),

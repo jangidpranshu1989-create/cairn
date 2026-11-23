@@ -52,6 +52,9 @@ class CairnApp : Application() {
         nm.createNotificationChannel(NotificationChannel(CH_SITES, "Website notifications", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Notifications from websites you allowed in Site settings"
         })
+        nm.createNotificationChannel(NotificationChannel(CH_UPDATES, "App updates", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "A new version of Cairn is ready to install"
+        })
         nm.createNotificationChannel(NotificationChannel(CH_DOWNLOADS, "Downloads", NotificationManager.IMPORTANCE_LOW).apply {
             description = "Download progress, speed and time left"; setShowBadge(false)
         })
@@ -59,6 +62,7 @@ class CairnApp : Application() {
         app.cairn.browser.browser.Favicons.init(this)
         app.cairn.browser.data.CairnSearch.init(this)
         app.cairn.browser.service.PriceWatch.schedule(this)
+        runCatching { app.cairn.browser.service.Updater.init(this) }
         // "Stay signed in" off → start every session signed out (cookies wiped); on → cookies persist and are flushed to disk often.
         if (!Prefs.keepSignedIn) runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
         if (Prefs.isPaired) SyncService.start(this)
@@ -74,5 +78,6 @@ class CairnApp : Application() {
         const val CH_AGENT_DONE = "agent_done"
         const val CH_SITES = "sites"
         const val CH_DOWNLOADS = "downloads"
+        const val CH_UPDATES = "updates"
     }
 }

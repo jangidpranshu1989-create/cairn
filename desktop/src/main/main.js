@@ -284,7 +284,11 @@ async function runPageTool(kind) {
 
 // ---------- IPC ----------
 function isInternal(e) { try { return new URL(e.senderFrame.url).protocol === 'cairn:' || e.sender === win.webContents; } catch { return false; } }
-function handle(ch, fn, { internal = false } = {}) {
+// Channels that the web-page preload (page.js) calls from ordinary https sites. They act on the sender frame's own
+// origin. Everything else is browser UI / cairn:// only, so a compromised web renderer can't change settings, read
+// history or drive tabs.
+const PAGE_CHANNELS = new Set(['pw:query', 'pw:fill', 'pw:generate', 'pw:offer', 'pk:create', 'pk:get', 'af:query', 'af:fill', 'af:offer']);
+function handle(ch, fn, { internal = !PAGE_CHANNELS.has(ch) } = {}) {
   ipcMain.handle(ch, async (e, ...args) => {
     if (internal && !isInternal(e)) throw new Error('forbidden');
     return fn(e, ...args);
@@ -705,7 +709,12 @@ app.whenReady().then(async () => {
       const { autoUpdater } = require('electron-updater');
       autoUpdater.logger = null;
       autoUpdater.on('error', (e) => console.warn('[updater]', String(e?.message || e).split('\n')[0]));
-      autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+      // Updates download in the background and install the next time Cairn quits. People who keep Cairn open for
+      // days still get them: check again every 4 hours, not just at launch.
+      autoUpdater.autoInstallOnAppQuit = true;
+      const check = () => autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+      autoUpdater.on('update-downloaded', (info) => send('toast', { text: `Cairn ${info?.version || 'update'} is ready. It installs when you close Cairn.` }));
+      check(); setInterval(check, 4 * 3600_000).unref?.();
     } catch {}
   }
 });

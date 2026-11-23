@@ -63,7 +63,7 @@ object WebBridge {
                 val l = Vault.loginsFor(origin)
                 if (l.isNotEmpty() && fillOffer.value?.tab != t) fillOffer.value = FillOffer(t, origin, l)
             }
-            "af-focus" -> if (!t.incognito && Prefs.autofillForms) {
+            "af-focus" -> if (isMain && !t.incognito && Prefs.autofillForms) {
                 val kind = m.optString("kind"); if (kind != "cards" && kind != "addresses") return
                 val items = Vault.autofill(kind)
                 if (items.isNotEmpty() && (afOffer.value?.tab != t || afOffer.value?.kind != kind)) afOffer.value = AutofillOffer(t, Vault.origin(w.url ?: ""), kind, items)

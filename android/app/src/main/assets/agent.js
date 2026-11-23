@@ -203,24 +203,40 @@ function pageStateFn() {
   return {
     hasPassword: !!document.querySelector('input[type=password]'),
     captcha: !!document.querySelector('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="turnstile"], #captchacharacters, [class*="captcha" i]') || /enter the characters you see|verify you are human|i'm not a robot/.test(t),
-    otp: /\botp\b|one[- ]time password|verification code/.test(t) && !!document.querySelector('input[autocomplete="one-time-code"], input[maxlength="6"], input[name*="otp" i]'),
+    otp: /\botp\b|one[- ]time password|verification code/.test(t) && (!!document.querySelector('input[autocomplete="one-time-code"], input[maxlength="6"], input[maxlength="4"], input[name*="otp" i], input[id*="otp" i]') || document.querySelectorAll('input[maxlength="1"]').length >= 4),
     payment: /payment method|pay ₹|pay now|upi id|card number|cvv|net banking|place (your )?order/.test(t),
     ...stockFn(t),
   };
 }
-// Is this a single product page, and can it be bought right now? Variant-level: Flipkart/Amazon show
-// "Selected Color: Black · Out of stock" while other colours or sizes may still be in stock.
+// Is this a single product page, and can it be bought right now? Read only from the page's own buy box
+// (never from search pages, snippets, reviews or "similar products"), variant-level when the site says so
+// ("Selected Color: Black · Out of stock" while other colours may be in stock).
 function stockFn(t) {
-  let product = /\/(p|dp|gp\/product|product|products|buy|itm)\/|[?&](pid|productid|sku)=/i.test(location.href) ||
+  const href = location.href;
+  let product = /\/(p|dp|gp\/product|gp\/aw\/d|product|products|buy|itm)\/|[?&](pid|productid|sku)=/i.test(href) ||
     /product/i.test(document.querySelector('meta[property="og:type"]')?.content || '');
   if (!product) for (const s of document.querySelectorAll('script[type="application/ld+json"]')) { if (/"@type"\s*:\s*"Product"/.test(s.textContent || '')) { product = true; break; } }
+  if (/\/(s|search|q)\b|[?&](k|q|query)=/i.test(href) && !/\/(dp|p|itm)\//i.test(href)) product = false;
   if (!product) return { product: false, stock: '' };
-  const btns = [...document.querySelectorAll('button,a,input[type=submit],div[role=button],span[role=button],li')].filter(e => visibleEl(e) && (e.innerText || e.value || '').trim().length < 40);
-  const live = btns.some(e => /^(add to (cart|bag|basket)|buy now|buy with|go to cart)$/i.test((e.innerText || e.value || '').trim()) && !e.disabled && e.getAttribute('aria-disabled') !== 'true' && !/disabled/i.test(e.className || ''));
-  const oosText = /out of stock|currently unavailable|sold out|temporarily unavailable|notify me|coming soon/.test(t.slice(0, 8000));
-  const variantOos = (t.match(/selected (colou?r|size|capacity|storage|variant|style)[^\n]{0,40}\n?[^\n]{0,20}out of stock/) || [])[0] || '';
-  const stock = live ? 'in' : oosText ? 'out' : '';
-  return { product: true, stock, variantOos: variantOos.replace(/\s+/g, ' ').slice(0, 80) };
+  const enabled = (e) => e && !e.disabled && e.getAttribute('aria-disabled') !== 'true' && !/\bdisabled\b/i.test(e.className || '');
+  const shown = (e) => { if (!e) return false; const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden'; };
+  // 1. Store-specific buy boxes (Amazon desktop + mobile, Flipkart, Myntra, Croma, Reliance, Vijay Sales…).
+  const BUY_IDS = '#add-to-cart-button, #add-to-cart-button-ubb, #buy-now-button, #mobileQuantityDropDown, input[name="submit.add-to-cart"], input[name="submit.buy-now"], #addToCart, #add-to-cart, [data-testid*="add-to-cart" i], [data-test*="add-to-cart" i], [id*="addtocart" i], [class*="add-to-cart" i], [class*="addtocart" i], [class*="AddToCart"]';
+  const buyEls = [...document.querySelectorAll(BUY_IDS)].filter(e => enabled(e) && (shown(e) || shown(e.parentElement) || shown(e.closest('span,div'))));
+  // 2. Buttons by label: <button>, links, ARIA buttons, Amazon's spans inside .a-button.
+  const LABEL = /^(add to (cart|bag|basket|trolley)|buy now|buy with[\s\S]{0,20}|go to (cart|bag)|add to cart & checkout|pre-?order|book now)$/i;
+  const labelled = [...document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button],span.a-button-text,span.a-button-inner,li')]
+    .filter(e => LABEL.test(((e.innerText || e.value || e.getAttribute('aria-label') || '') + '').trim()) && enabled(e) && enabled(e.closest('button,[role=button],.a-button')) && !/a-button-disabled/.test(e.closest('.a-button')?.className || '') && shown(e));
+  const live = buyEls.length > 0 || labelled.length > 0;
+  // Explicit "can't buy" signals, read from the buy box or short status labels only.
+  const avail = (document.querySelector('#availability, #outOfStock, #availability_feature_div, [data-testid*="availability" i], [class*="availability" i], [class*="stock-status" i]')?.innerText || '').toLowerCase();
+  const STATUS = /^(out of stock|currently unavailable\.?|sold out|temporarily (out of stock|unavailable)|coming soon|notify me|this item (has been|is) discontinued|discontinued|not available|unavailable)$/i;
+  const shortLabels = [...document.querySelectorAll('button,div,span,p,strong,b,h2,h3,a')].filter(e => e.childElementCount <= 2 && STATUS.test((e.innerText || '').trim()) && shown(e)).slice(0, 3).map(e => e.innerText.trim());
+  const oosBox = /out of stock|currently unavailable|sold out|temporarily unavailable|discontinued|not available/.test(avail);
+  const variantOos = ((t.match(/selected (colou?r|size|capacity|storage|variant|style|ram)[^\n]{0,40}\n?[^\n]{0,20}out of stock/) || [])[0] || '').replace(/\s+/g, ' ').slice(0, 80);
+  // The store's own availability block wins over carousel "Add to cart" buttons of similar products.
+  const stock = oosBox ? 'out' : live ? 'in' : (shortLabels.length || variantOos) ? 'out' : '';
+  return { product: true, stock, variantOos: stock === 'out' ? variantOos : '', evidence: stock === 'in' ? (labelled[0]?.innerText || buyEls[0]?.value || buyEls[0]?.id || 'buy button').toString().trim().slice(0, 40) : (avail.trim().slice(0, 60) || shortLabels[0] || variantOos || '') };
 }
 function extractListingsFn(linkPattern, storeId) {
   const out = [];
@@ -540,9 +556,24 @@ function cartStateFn() {
   const t = (document.body?.innerText || '').slice(0, 30000).toLowerCase();
   const go = [...document.querySelectorAll('a,button')].some(e => visibleEl(e) && /^(go to cart|view cart|go to bag|view bag|cart)$/i.test((e.innerText || '').trim()));
   const added = /added to (your )?(cart|bag|basket)|item added|go to cart/.test(t);
-  const oos = /out of stock|currently unavailable|sold out|notify me/.test(t) && !/add to cart/.test(t);
+  // Same buy-box reading as the PAGE NOW stock note (never the whole page text, which has "similar items" too).
+  const oos = stockFn(t).stock === 'out';
   const badge = [...document.querySelectorAll('[class*="cart" i] [class*="count" i],[id*="cart-count" i],#nav-cart-count')].map(e => parseInt(e.innerText, 10)).find(n => n > 0) || 0;
   return { added: added || go, goToCart: go, outOfStock: oos, count: badge, url: location.href };
+}
+// What is in the cart page right now: item count (from "Subtotal (3 items)" / "Price (2 items)" / per-line rows) and titles.
+function cartSummaryFn() {
+  const t = (document.body?.innerText || '').slice(0, 30000);
+  const m = t.match(/(?:price|subtotal|total|bag total|cart)\s*\((\d+)\s*items?\)/i) || t.match(/my cart\s*\((\d+)\)/i) || t.match(/(\d+)\s*items?\s*in (?:your )?(?:cart|bag)/i);
+  const seen = new Set(); const titles = [];
+  for (const a of document.querySelectorAll('a[href]')) {
+    const h = a.getAttribute('href') || ''; const x = (a.innerText || a.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ');
+    if (!/\/(p|dp|gp\/product|gp\/aw\/d|product|products|itm)\//i.test(h) || x.length < 15 || /^(see|view|shop|buy|save|more)\b/i.test(x)) continue;
+    if (!visibleEl(a)) continue;
+    const k = x.slice(0, 40).toLowerCase(); if (seen.has(k)) continue; seen.add(k); titles.push(x.slice(0, 80));
+    if (titles.length >= 10) break;
+  }
+  return { count: m ? parseInt(m[1], 10) : titles.length, titles };
 }
 // Choose UPI on a payment page and type the user's UPI ID (VPA). The UPI PIN is never typed — it's entered in the UPI app.
 function fillUpiFn(vpa) {
@@ -566,6 +597,6 @@ function orderTotalFn() {
     countLinks: countLinksFn, blocked: blockedFn, metrics: metricsFn, hideFixed: hideFixedFn,
     clickEl: clickElFn, fillProfile: fillProfileFn, offers: offersFn, applyCoupon: applyCouponFn, guard: guardFn, region: regionFn,
     product: productFn, textNodes: textNodesFn, setTexts: setTextsFn, icons: iconsFn,
-    dismiss: dismissFn, pincode: pincodeFn, variant: variantFn, cartState: cartStateFn, fillUpi: fillUpiFn, orderTotal: orderTotalFn };
+    dismiss: dismissFn, pincode: pincodeFn, variant: variantFn, cartState: cartStateFn, cartSummary: cartSummaryFn, fillUpi: fillUpiFn, orderTotal: orderTotalFn };
   Object.defineProperty(window, '__cairn', { value: Object.freeze(api), writable: false, configurable: false });
 })();

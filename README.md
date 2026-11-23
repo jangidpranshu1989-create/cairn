@@ -6,7 +6,7 @@
 
 **Just say it. Cairn gets it done.** Ask in English, Hindi, Hinglish or any language. Cairn browses, compares prices across trusted stores, fills your cart and stops at payment so you approve it with your fingerprint.
 
-[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.5.1%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
+[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.5.2%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
 [![Download Desktop](https://img.shields.io/badge/Download%20Desktop-Windows%20·%20macOS%20·%20Linux-EEEDEA?style=for-the-badge&logo=googlechrome&logoColor=161618&labelColor=D9C3A0)](https://jangidpranshu1989-create.github.io/cairn/download.html#desktop)
 
 [Website](https://jangidpranshu1989-create.github.io/cairn/) · [Get it on Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jangidpranshu1989-create/cairn) · [Changelog](https://jangidpranshu1989-create.github.io/cairn/changelog.html) · [Latest release](https://github.com/jangidpranshu1989-create/cairn/releases/latest)
@@ -19,6 +19,7 @@ Full 30-second demos (1080x1920): [Home and answers](https://github.com/jangidpr
 
 ## What's new in 3.5
 
+- **Honest stock checks and clean carts (3.5.2)** — stock is read from the product page's buy box, never from search results; before checkout Cairn asks about leftover cart items; OTPs are always entered by you on the page, never in chat.
 - **An agent that never gets stuck (3.5.1)** — Cairn keeps a journal of everything it checked during a task, never reopens out-of-stock or already-checked pages, changes approach when it stops making progress, and always ends with the best option it found.
 - **Incognito ends when you close Cairn (3.5.1)** — swiping Cairn away from Recents closes every private tab, deletes its data and brings back your last normal tab.
 - **Chat like ChatGPT** — talk to Cairn about anything: casual chat, explanations, writing, code, maths, advice and planning. Answers stream in word by word, use live web sources for anything current, and Cairn hands real browser work (shopping, carts, forms, page summaries) to the agent on its own.

@@ -1,6 +1,6 @@
 {
   "name": "cairn-browser",
-  "version": "3.5.1",
+  "version": "3.5.2",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",

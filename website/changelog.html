@@ -13,12 +13,12 @@
 <meta property="og:description" content="What's new in Cairn for desktop and Cairn for Android.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://jangidpranshu1989-create.github.io/cairn/changelog.html">
-<meta property="og:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.4.0">
-<meta property="og:image:secure_url" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.4.0">
+<meta property="og:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.5.2">
+<meta property="og:image:secure_url" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.5.2">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Cairn 3.4.0: the AI browser that finds, compares and checks out for you">
+<meta property="og:image:alt" content="Cairn 3.5.2: the AI browser that finds, compares and checks out for you">
 <meta property="og:video" content="https://jangidpranshu1989-create.github.io/cairn/assets/media/cairn-demo-shopping-web.mp4">
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="540">
@@ -26,13 +26,13 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Changelog — Cairn">
 <meta name="twitter:description" content="What's new in Cairn for desktop and Cairn for Android.">
-<meta name="twitter:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.4.0">
-<meta name="twitter:image:alt" content="Cairn 3.4.0: the AI browser that finds, compares and checks out for you">
+<meta name="twitter:image" content="https://jangidpranshu1989-create.github.io/cairn/assets/og.png?v=3.5.2">
+<meta name="twitter:image:alt" content="Cairn 3.5.2: the AI browser that finds, compares and checks out for you">
 <link rel="canonical" href="https://jangidpranshu1989-create.github.io/cairn/changelog.html">
 <link rel="icon" href="favicon.ico" sizes="48x48">
-<link rel="icon" href="assets/favicon.svg?v=3.4.0" type="image/svg+xml">
-<link rel="icon" href="assets/favicon-32.png?v=3.4.0" type="image/png" sizes="32x32">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=3.4.0" sizes="180x180">
+<link rel="icon" href="assets/favicon.svg?v=3.5.2" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png?v=3.5.2" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=3.5.2" sizes="180x180">
 <link rel="manifest" href="site.webmanifest">
 <link rel="preload" href="fonts/InterDisplay-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
@@ -61,6 +61,13 @@
 
 <section class="sec" style="padding-top:16px">
   <div class="wrap log">
+  <article><h2>v3.5.2 <span>Nov 2026</span></h2><ul>
+  <li>Accurate stock checks: the agent now reads stock only from the product page's own buy box (Add to Cart / Buy Now vs Currently unavailable), including Amazon's buy box, so in-stock products are no longer reported as out of stock from search results.</li>
+  <li>Clean carts: before checkout the agent checks that only the items you asked for in this task are in the cart, and asks you whether to remove or keep anything left over from earlier.</li>
+  <li>OTP and login safety: the agent never asks you to type an OTP, password or CAPTCHA into the chat. It asks you to enter it on the page yourself, waits for "done" and continues from there.</li>
+  <li>Cleaner answers: the final reply shows only the result (what's done, price, store, links) without step-by-step narration, repeated "opening…" lines or internal notes, and only the sources actually cited are listed.</li>
+  <li>The website always shows the latest version, and every download button fetches the newest release.</li>
+  </ul></article>
   <article><h2>v3.5.1 <span>Nov 2026</span></h2><ul>
   <li>The agent no longer goes round in circles: it keeps a journal of every page and check it made during a task, never reopens a page it already checked or one that was out of stock, and notices when it stops making progress. It first changes approach, then takes the most direct route, and if a task still can't be finished it ends with the best option it found and what to do next. No tool can hang a task any more.</li>
   <li>Out-of-stock awareness: product pages are checked for stock, including the selected colour or size, so the agent tries another variant or moves to the next product instead of reopening the same page.</li>
@@ -371,7 +378,7 @@
     <div><h4>Company</h4><ul><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li><li><a href="security.html">Security</a></li></ul></div>
     <div><h4>Legal</h4><ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of service</a></li><li><a href="security.html#disclosure">Responsible disclosure</a></li></ul></div>
   </div>
-  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v3.4.0 · Built with Groq &amp; NVIDIA NIM</span></div>
+  <div class="base"><span>© <span data-year>2026</span> Cairn. All rights reserved.</span><span>v3.5.2 · Built with Groq &amp; NVIDIA NIM</span></div>
 </div></footer>
 <script src="assets/site.js" defer></script>
 </body>

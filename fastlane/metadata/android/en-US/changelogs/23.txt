@@ -1,0 +1,1 @@
+3.5.2: Accurate stock checks from the product page buy box (no more in-stock items reported as out of stock), a cart check before checkout that asks about leftover items, OTPs and passwords always entered by you on the page (never in chat), and cleaner final answers with only the sources actually used.

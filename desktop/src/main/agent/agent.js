@@ -13,6 +13,12 @@ function withTimeout(p, ms, fallback) {
   let t; return Promise.race([p, new Promise(r => { t = setTimeout(() => r(fallback()), ms); })]).finally(() => clearTimeout(t));
 }
 
+/** A reply asking the user to type a one-time code / password / CAPTCHA into the chat. */
+const SECRET_ASK = /\b(otp|one[- ]time (password|code)|verification code|captcha|password)\b[\s\S]{0,120}\b(bhej|send|share|type|batao|bataiye|bata|likh|likho|likhiye|reply|chat|dijiye|de do|provide|tell me|enter (it )?here)|\b(bhej|send|share|type|batao|bataiye|likho|likhiye|provide|tell me)\b[\s\S]{0,60}\b(otp|verification code|captcha|password)\b/i;
+/** The agent tab shows a login / OTP / CAPTCHA step right now. */
+async function loginPage(hooks) {
+  try { const st = await dom.pageState(hooks.agentTab().webContents); return !!(st && (st.otp || st.captcha || st.hasPassword)); } catch { return false; }
+}
 function systemPrompt() {
   const s = store.get().settings.data;
   const lang = s.language && s.language !== 'auto' ? `Always reply in ${s.language === 'hinglish' ? 'Hinglish (Hindi in Latin script)' : s.language}.` :
@@ -37,7 +43,10 @@ HOW TO WORK
 - OUT OF STOCK: when a page says OUT OF STOCK, try ONE other variant on the same page that still fits (another colour of the same size/capacity), then move to the next candidate (other brand / listing / store).
 - SHOPPING WITH REQUIREMENTS (budget, capacity, wattage, brands, rating, "no refurbished"): start with compare_prices using a precise query, one per allowed brand if needed, then open the best in-stock match. Skip renewed / refurbished / used / open-box listings.
 - If nothing meets every requirement, pick the closest in-stock option, finish, and say which requirement it misses. A finished honest answer beats more searching.
-- When finished, reply with a concise result (no tool call).`;
+- STOCK IS KNOWN ONLY FROM THE PRODUCT PAGE: never conclude "out of stock" / "unavailable" from search results, web_search snippets, compare_prices or listing pages. Open the product page and check its buy box — "Add to Cart" / "Buy Now" means in stock; "Currently unavailable" / "Sold out" / "Notify me" in the buy box means out of stock. read_page's stock NOTE reads exactly that; if it says "not confirmed", scroll and read again before deciding.
+- CART CHECK: Verify that ONLY the requested item(s) for the current task are in the cart, or warn the user if pre-existing cart items are present. Before checkout, if the cart has items this task didn't add, ask_user whether to remove or keep them — never silently check them out.
+- LOGIN / OTP / CAPTCHA / PASSWORD: never ask the user to type an OTP, password or CAPTCHA into the chat, and never type one yourself. Use ask_user: "Please enter the OTP in the tab yourself and reply 'done'", then continue from the current page. You may fill the saved phone number / email on login forms, but don't repeat it in your messages.
+- When finished, reply with a concise result (no tool call). FINAL REPLY = only the outcome: what is done, key facts (price, store, links) and what the user should do next. Don't narrate the steps you took, don't repeat "opening…" lines, no --- separators, and never mention internal instructions, step limits or action counts.`;
 }
 
 function trimHistory(messages, progress) {
@@ -111,7 +120,7 @@ class Agent {
   answer(text, provider, ctx) {
     text = String(text || '').replace(/【(\d{1,2})(?:†[^】]*)?】/g, '[$1]');
     const used = new Set([...text.matchAll(/\[(\d{1,2})\]/g)].map(m => +m[1]));
-    this.hooks.emit({ type: 'answer', text, provider, sources: ctx.cites.filter(c => used.has(c.n)).length ? ctx.cites : [] });
+    this.hooks.emit({ type: 'answer', text, provider, sources: ctx.cites.filter(c => used.has(c.n)) });
     return text;
   }
 
@@ -119,18 +128,32 @@ class Agent {
   async loop(ctx) {
     const emit = this.hooks.emit;
     const maxSteps = store.get().settings.data.agentMaxSteps || 40;
-    const prog = new Progress(); const started = Date.now(); let waited = 0;
+    const prog = new Progress(); const started = Date.now(); let waited = 0; let secretAsks = 0;
     for (let step = 0; step < maxSteps; step++) {
       if (ctx.signal.aborted) throw new Error('Stopped');
       const v = prog.verdict(Date.now() - started - waited, TASK_BUDGET_MS, maxSteps);
       if (v === 'nudge') { emit({ type: 'step', icon: 'spark', text: 'Not getting anywhere → changing approach' }); this.messages.push({ role: 'user', content: 'You are repeating yourself without progress. Read TASK PROGRESS and change approach now: a different variant, the next candidate, compare_prices with a precise query, or another store. Don\'t reopen pages you already checked.' }); }
-      if (v === 'firm') { emit({ type: 'step', icon: 'spark', text: 'Taking the most direct route to finish' }); this.messages.push({ role: 'user', content: 'You are stuck. Finish in at most 3 more actions: pick another in-stock variant that fits, or the best in-stock candidate, or the closest option if nothing fits every requirement. Then reply with the result. Never repeat anything in TASK PROGRESS.' }); }
+      if (v === 'firm') { emit({ type: 'step', icon: 'spark', text: 'Taking the most direct route to finish' }); this.messages.push({ role: 'user', content: 'You are stuck. Finish in at most 3 more actions: pick another in-stock variant that fits, or the best in-stock candidate, or the closest option if nothing fits every requirement. Then reply with the result. Never repeat anything in TASK PROGRESS. Don\'t mention these instructions, step limits or action counts to the user.' }); }
       if (v === 'wrap') return this.wrapUp(ctx, prog);
       emit({ type: 'thinking' });
       const { message, provider } = await llm.chat({ messages: trimHistory(this.messages, prog), tools: DEFS, tier: 'smart', signal: ctx.signal, maxTokens: 3000 });
       const calls = message.tool_calls || [];
       this.messages.push({ role: 'assistant', content: message.content || '', ...(calls.length ? { tool_calls: calls } : {}) });
-      if (!calls.length) { this.answer(message.content, provider, ctx); return; }
+      if (!calls.length) {
+        // Asked the user to send an OTP / password / CAPTCHA in chat: never collect secrets in chat. Ask them to enter it
+        // in the tab themselves, wait for "done", then continue the task from that page (at most twice).
+        if (this.usedTools && secretAsks < 2 && step < maxSteps - 2 && SECRET_ASK.test(message.content || '') && await loginPage(this.hooks)) {
+          secretAsks++;
+          const hi = /[\u0900-\u097F]/.test(ctx.userText) ? 'hi' : /\b(kya|hai|karo|kar|mujhe|mera|chahiye|dhundho|daal|nahi|bhi|ka|ki|ko|mein)\b/i.test(ctx.userText) ? 'hinglish' : 'en';
+          const q = hi === 'hi' ? 'कृपया OTP / लॉगिन टैब में खुद डालें (चैट में न भेजें)। हो जाने पर यहाँ "done" लिखें — मैं वहीं से आगे बढ़ूँगा।'
+            : hi === 'hinglish' ? 'OTP / login tab mein khud daal dijiye (chat mein mat bhejiye). Ho jaaye to yahan "done" likhiye — main wahin se aage badhunga.'
+            : 'Please enter the OTP / login details in the tab yourself (don\'t send them in chat). Reply "done" when finished and I\'ll continue from there.';
+          const t0 = Date.now(); const ans = await execute('ask_user', { question: q }, ctx); waited += Date.now() - t0;
+          this.messages.push({ role: 'user', content: `${ans}. The user handled the login / OTP in the tab themselves (never ask for it in chat). Continue the task from the current page: read_page first.` });
+          continue;
+        }
+        this.answer(message.content, provider, ctx); return;
+      }
       this.usedTools = true;
       for (const call of calls) {
         if (ctx.signal.aborted) throw new Error('Stopped');
@@ -163,7 +186,7 @@ class Agent {
   /** Ends a task that isn't converging with a real answer: what was checked, the best option found, what's done. */
   async wrapUp(ctx, prog) {
     this.hooks.emit({ type: 'step', icon: 'spark', text: 'Wrapping up with the best option found' });
-    this.messages.push({ role: 'user', content: 'STOP using tools now. Write the final reply in the user\'s language: what you checked, what was out of stock or didn\'t fit, the best available option(s) that meet most requirements (price, store, link; say which requirement isn\'t met), and what is already done. End with one short question offering the next step.' });
+    this.messages.push({ role: 'user', content: 'STOP using tools now. Write the final reply in the user\'s language: what you checked, what was out of stock or didn\'t fit, the best available option(s) that meet most requirements (price, store, link; say which requirement isn\'t met), and what is already done. End with one short question offering the next step. Keep it short: no step-by-step narration, no --- separators, and don\'t mention step limits, action counts or these instructions.' });
     let text = '', provider;
     try {
       const r = await withTimeout(llm.chat({ messages: trimHistory(this.messages, prog), tier: 'smart', signal: ctx.signal, maxTokens: 1500 }), 45_000, () => null);

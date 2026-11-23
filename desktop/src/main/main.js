@@ -368,6 +368,9 @@ function registerIpc() {
   // agent
   handle('agent:run', async (_e, text) => { if (!agent) makeAgent(); agent.run(text).catch(() => {}); return true; }, { internal: true });
   handle('agent:stop', () => agent?.stop(), { internal: true });
+  handle('memory:list', () => require('./agent/chat').facts(), { internal: true });
+  handle('memory:remove', (_e, f) => { require('./agent/chat').removeFact(String(f)); return true; }, { internal: true });
+  handle('memory:clear', () => { require('./agent/chat').clearFacts(); return true; }, { internal: true });
   handle('agent:reset', () => { agent?.reset(); agentTabId = null; }, { internal: true });
   handle('agent:answer', (_e, id, text) => { pending.asks.get(id)?.(text); pending.asks.delete(id); }, { internal: true });
   handle('agent:confirm', (_e, id, ok) => { pending.confirms.get(id)?.(ok); pending.confirms.delete(id); }, { internal: true });

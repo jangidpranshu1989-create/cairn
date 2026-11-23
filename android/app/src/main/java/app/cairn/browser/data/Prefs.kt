@@ -119,6 +119,8 @@ object Prefs {
     var shoppingCountry by str("shoppingCountry", "IN")
     var agentMaxSteps by int("agentMaxStepsV2", 45)
     var agentUseProfile by bool("agentUseProfile", true)
+    var chatMemory by bool("chatMemory", true)            // the assistant remembers facts the user shares (Settings → AI → Memory)
+    var memoryFacts by str("memoryFacts", "[]")
     var savePasswords by bool("savePasswords", true)
     var autofillForms by bool("autofillForms", true)      // offer saved cards and addresses on web forms
     var syncPassphrase by bool("syncPassphrase", false)   // vault key wrapped with a custom passphrase instead of the password

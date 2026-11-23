@@ -272,7 +272,7 @@ object Llm {
     }
 
     /** Cairn Cloud over Server-Sent Events, assembled back into one chat message (content + tool calls). */
-    private fun cloudStreamMessage(payload: String): JSONObject {
+    private fun cloudStreamMessage(payload: String, onText: ((String) -> Unit)? = null): JSONObject {
         val content = StringBuilder()
         val calls = sortedMapOf<Int, JSONObject>()
         cloudCall("/ai/chat") { header("Accept", "text/event-stream"); post(payload.toRequestBody(JSON_T)) }.use { r ->
@@ -284,7 +284,7 @@ object Llm {
                 val d = line.removePrefix("data:").trim()
                 if (d == "[DONE]") break
                 val delta = runCatching { JSONObject(d).getJSONArray("choices").getJSONObject(0).optJSONObject("delta") }.getOrNull() ?: continue
-                delta.optString("content").takeIf { it.isNotEmpty() && it != "null" }?.let { content.append(it) }
+                delta.optString("content").takeIf { it.isNotEmpty() && it != "null" }?.let { content.append(it); onText?.invoke(content.toString()) }
                 delta.optJSONArray("tool_calls")?.let { tc ->
                     for (k in 0 until tc.length()) {
                         val c = tc.getJSONObject(k); val i = c.optInt("index", k)
@@ -332,6 +332,22 @@ object Llm {
 
     suspend fun chat(messages: JSONArray, tools: JSONArray? = null, tier: String = "smart", json: Boolean = false, maxTokens: Int = 3000, temperature: Double = 0.2): JSONObject =
         runInterruptible(Dispatchers.IO) { route(messages, tools, tier, json, maxTokens, temperature) }
+
+    /**
+     * A chat turn whose text streams in live (ChatGPT-style) while tool calls are still collected. [onText] gets the
+     * whole reply so far each time, so a fallback to a non-streamed provider simply replaces it.
+     */
+    suspend fun chatStream(messages: JSONArray, tools: JSONArray?, tier: String = "smart", maxTokens: Int = 3000, temperature: Double = 0.6, onText: (String) -> Unit): JSONObject =
+        runInterruptible(Dispatchers.IO) {
+            var got: JSONObject? = null
+            if (System.currentTimeMillis() > cloudDownUntil) try {
+                got = cloudStreamMessage(body(messages, tools, tier, false, maxTokens, temperature, true).toString(), onText)
+            } catch (e: Exception) { if (cancelled(e)) throw e; if (e is ApiException && e.status == 429 && e.message?.contains("daily", true) == true) throw e }
+            got ?: route(messages, tools, tier, false, maxTokens, temperature).also { m -> m.optString("content").takeIf { it.isNotBlank() && it != "null" }?.let(onText) }
+        }
+
+    /** What to show of a reply that is still streaming: hidden reasoning (<think>…) stays hidden until it closes. */
+    fun visible(partial: String): String = if (partial.contains("<think>") && !partial.contains("</think>")) "" else stripThinking(partial)
 
     private fun readSse(r: okhttp3.Response, onDelta: (String) -> Unit): String {
         val out = StringBuilder()

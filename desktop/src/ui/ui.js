@@ -339,7 +339,7 @@
   function renderEmpty() {
     thread.innerHTML = '';
     const e = h('div', 'empty');
-    e.innerHTML = `<h2>What can I do for you?</h2><p>Ask about this page, or hand me a task. I can browse, compare prices, fill a cart, read aloud and send files to your phone — in any language.</p>`;
+    e.innerHTML = `<h2>What's on your mind?</h2><p>Chat about anything, like you would with a friend, or hand me a task. I can answer with live sources, write, explain, browse, compare prices, fill a cart, read aloud and send files to your phone, in any language.</p>`;
     const g = h('div', 'sugs');
     for (const s of SUGGESTIONS) {
       const b = h('button', 'sug' + (s.ag ? ' ag' : ''), `<span class="si">${icon(s.i)}</span><span>${esc(s.t)}<small>${esc(s.s)}</small></span>`);
@@ -373,7 +373,7 @@
   function ensureTurn() {
     if (cur) return cur;
     const root = h('div', 'msg bot'); thread.appendChild(root);
-    cur = { root, steps: null, list: null, count: 0, body: null };
+    cur = { root, steps: null, list: null, count: 0, body: null, live: null, typing: null };
     return cur;
   }
   const STEP_ICONS = { search: 'search', shop: 'cart', store: 'cart', nav: 'globe', read: 'eye', click: 'click', type: 'type', scroll: 'down', speak: 'speak', sum: 'spark', map: 'map', pdf: 'doc', shot: 'shot', down: 'down', phone: 'phone', lock: 'lock', ok: 'check', stop: 'x', ask: 'info', warn: 'warn' };
@@ -513,7 +513,18 @@
   S.on('agent:event', (ev) => {
     switch (ev.type) {
       case 'start': setBusy(true); break;
-      case 'thinking': { const t = ensureTurn(); if (!t.steps) addStep({ icon: 'spark', text: 'Thinking…' }); break; }
+      case 'thinking': { const t = ensureTurn(); if (t.typing) { t.typing.remove(); t.typing = null; } if (!t.steps) addStep({ icon: 'spark', text: 'Thinking…' }); break; }
+      case 'typing': { const t = ensureTurn(); if (!t.typing && !t.live) { t.typing = h('div', 'md typing', '<span class="shimmer">Thinking…</span>'); t.root.appendChild(t.typing); scrollDown(); } break; }
+      case 'delta': {
+        const t = ensureTurn();
+        if (!ev.text) { if (t.live) { t.live.remove(); t.live = null; } break; }
+        if (t.typing) { t.typing.remove(); t.typing = null; }
+        if (!t.live) { t.live = h('div', 'md streaming'); t.root.appendChild(t.live); }
+        t.live.innerHTML = md(ev.text);
+        if (thread.scrollHeight - thread.scrollTop - thread.clientHeight < 160) scrollDown();
+        break;
+      }
+      case 'memory': { const t = ensureTurn(); t.root.appendChild(h('div', 'memnote', `${icon('check', 12)}<span>${esc(ev.text)}</span>`)); break; }
       case 'step': addStep(ev); break;
       case 'sources': {
         const t = ensureTurn(); const w = h('div', 'sources');
@@ -532,9 +543,10 @@
         if (ev.error && cur?.steps && cur.count <= 1) { cur.steps.remove(); cur.steps = null; }
         finishSteps();
         const t = ensureTurn();
+        if (t.typing) { t.typing.remove(); t.typing = null; }
         const b = h('div', 'md', md(ev.text, ev.sources));
         if (ev.error) b.classList.add('errtxt');
-        t.root.appendChild(b);
+        if (t.live) { t.live.replaceWith(b); t.live = null; } else t.root.appendChild(b);
         if (!ev.error && ev.text) {
           const bar = h('div', 'ans-bar');
           const cp = h('button', 'ab', `${icon('copy', 14)}<span>Copy</span>`);
@@ -555,7 +567,7 @@
         if (ev.provider) t.root.appendChild(h('div', 'prov', `via ${ev.provider === 'groq' ? 'Groq' : 'NVIDIA NIM'}`));
         scrollDown(); break;
       }
-      case 'end': finishSteps(); setBusy(false); cur = null; break;
+      case 'end': if (cur?.typing) cur.typing.remove(); finishSteps(); setBusy(false); cur = null; break;
     }
   });
   thread.addEventListener('click', (e) => { const a = e.target.closest('a[data-ext]'); if (a) { e.preventDefault(); S.invoke('tabs:new', a.href); } });

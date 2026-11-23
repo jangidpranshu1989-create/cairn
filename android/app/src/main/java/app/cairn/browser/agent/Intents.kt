@@ -66,4 +66,23 @@ object Intents {
         return listOf("flipkart" to "flipkart", "amazon" to "amazon", "croma" to "croma", "reliance" to "reliance", "vijay ?sales" to "vijaysales",
             "tata ?cliq" to "tatacliq", "best ?buy" to "bestbuy", "walmart" to "walmart").firstOrNull { Regex("\\b${it.first}\\b").containsMatchIn(l) }?.second
     }
+
+    // Browser actions: things only the agent (with page tools) can do. Everything else is a conversation.
+    private val ACTION = Regex("(?i)(\\b(open(?!\\s+(to|up|minded|source|question|ended|mind)\\b)|kholo|khol ?do|khol ?ke|go to|navigate|visit|book (a |an |the |my )?\\w+|reserve|fill( in| out)?|sign ?in|log ?in|login|sign ?up|register on|download|screenshot|mind ?map|track (the |this |its )?price|price (drop|alert)|back in stock|compare prices|checkout|apply (the )?(coupon|code)|send (it |this )?to (my )?phone|click|tap on|scroll|subscribe|unsubscribe)\\b|save (it |this |the page |as )?(as )?pdf|pdf (bana|bna|save)|summari[sz]e|summary (do|de|bana|bna)|translate (this|the|is|ye|yeh) ?(page|site|article)?|read (it |this |the article )?(aloud|out)|padh ?(ke|kar|kr)? ?sun|suna (do|de|o)\\b|(on|in|par|pe) (amazon|flipkart|myntra|youtube|swiggy|zomato|irctc|makemytrip|booking\\.com)\\b)")
+    private val QUESTION = Regex("(?i)^(what|whats|what's|why|how|who|when|which|is|are|can|could|should|would|do|does|kya|kyu|kyun|kaise|kaun|kab|kahan|kitna|konsa|tell me|explain|samjha\\w*|bata\\w*)\\b")
+    private val PAGE = Regex("(?i)(this page|is page|ye page|yeh page|this (site|article|video|tab)|is (site|article|video|tab)|(^|\\s)@\\w)")
+
+    /**
+     * True when the message asks Cairn to DO something in the browser (shop, open, fill, book, summarize this page …),
+     * false for conversation: chit-chat, advice, explanations, writing, coding, maths, facts. Conversation still gets live
+     * web search, and the chat model can hand a task over to the agent itself, so a wrong guess here never blocks anything.
+     */
+    fun isTask(text: String): Boolean {
+        val t = text.trim()
+        if (t.isEmpty()) return false
+        if (BUY.containsMatchIn(t) || PAGE.containsMatchIn(t)) return true
+        // "how do I download python?", "kya tum book kar sakte ho?" are questions about doing, not requests to do it now.
+        if (QUESTION.containsMatchIn(t)) return false
+        return ACTION.containsMatchIn(t) || (FIND.containsMatchIn(t) && product(t) != null)
+    }
 }

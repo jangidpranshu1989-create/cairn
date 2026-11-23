@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS t_counts (day TEXT NOT NULL, platform TEXT NOT NULL, 
 `);
 
 // Events the apps may send. Anything else is dropped, so the table can't be filled with junk.
-const APP_EVENTS = new Set(['install', 'app_open', 'heartbeat', 'page_load', 'search', 'agent_run', 'agent_done', 'compare', 'voice', 'circle', 'pdf', 'download', 'crash', 'signin', 'shield_off', 'tab_new']);
+const APP_EVENTS = new Set(['install', 'app_open', 'heartbeat', 'page_load', 'search', 'agent_run', 'chat_run', 'agent_done', 'compare', 'voice', 'circle', 'pdf', 'download', 'crash', 'signin', 'shield_off', 'tab_new']);
 const WEB_EVENTS = new Set(['web_view', 'web_download', 'web_click']);
 const PLATFORMS = new Set(['android', 'desktop', 'web']);
 

@@ -66,6 +66,7 @@ const DEFAULT_SETTINGS = {
   speechRate: 1,
   serverAuto: true,
   safeBrowsing: true,
+  chatMemory: true,              // conversation mode remembers lasting facts the user shares
   usageStats: true,              // anonymous counts only (telemetry.js)
   dohMode: 'off',
   dohUrl: '',

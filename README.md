@@ -6,7 +6,7 @@
 
 **Just say it. Cairn gets it done.** Ask in English, Hindi, Hinglish or any language. Cairn browses, compares prices across trusted stores, fills your cart and stops at payment so you approve it with your fingerprint.
 
-[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.4.1%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
+[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.5.0%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
 [![Download Desktop](https://img.shields.io/badge/Download%20Desktop-Windows%20·%20macOS%20·%20Linux-EEEDEA?style=for-the-badge&logo=googlechrome&logoColor=161618&labelColor=D9C3A0)](https://jangidpranshu1989-create.github.io/cairn/download.html#desktop)
 
 [Website](https://jangidpranshu1989-create.github.io/cairn/) · [Get it on Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jangidpranshu1989-create/cairn) · [Changelog](https://jangidpranshu1989-create.github.io/cairn/changelog.html) · [Latest release](https://github.com/jangidpranshu1989-create/cairn/releases/latest)
@@ -16,6 +16,11 @@
 Full 30-second demos (1080x1920): [Home and answers](https://github.com/jangidpranshu1989-create/cairn/releases/download/v3.0.0/Cairn-Demo-Home.mp4) · [Shopping and Circle to Ask](https://github.com/jangidpranshu1989-create/cairn/releases/download/v3.0.0/Cairn-Demo-Shopping.mp4)
 
 </div>
+
+## What's new in 3.5
+
+- **Chat like ChatGPT** — talk to Cairn about anything: casual chat, explanations, writing, code, maths, advice and planning. Answers stream in word by word, use live web sources for anything current, and Cairn hands real browser work (shopping, carts, forms, page summaries) to the agent on its own.
+- **Memory** — Cairn remembers lasting things you tell it (your name, city, preferences) to personalise chats. See, remove or turn it off in Settings → AI → Memory. Never used in Incognito.
 
 ## What's new in 3.4
 

@@ -18,8 +18,22 @@ const safeName = (s) => String(s || 'file').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_
 export const transfersRouter = express.Router();
 
 // Desktop -> phone: upload a file with the folder it should be saved to on the phone
-transfersRouter.post('/', requireAuth, upload.single('file'), (req, res) => {
+// Per-user cap on files waiting for the phone, so one account can't fill the server's disk.
+const MAX_PENDING_FILES = Number(process.env.MAX_PENDING_TRANSFERS || 10);
+const MAX_PENDING_BYTES = Number(process.env.MAX_PENDING_TRANSFER_MB || 300) * 1024 * 1024;
+function pendingCap(req, res, next) {
+  const r = db.prepare("SELECT COUNT(*) n, COALESCE(SUM(size),0) b FROM transfers WHERE user_id=? AND status='pending' AND expires_at>?").get(req.user.id, now());
+  if (r.n >= MAX_PENDING_FILES || r.b >= MAX_PENDING_BYTES)
+    return res.status(429).json({ error: 'Too many files are waiting for your phone. Open Cairn on your phone to receive them, then try again.' });
+  req.pendingBytes = r.b; next();
+}
+
+transfersRouter.post('/', requireAuth, pendingCap, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file missing' });
+  if (req.pendingBytes + req.file.size > MAX_PENDING_BYTES) {
+    fs.rm(req.file.path, { force: true }, () => {});
+    return res.status(429).json({ error: 'Too many files are waiting for your phone. Open Cairn on your phone to receive them, then try again.' });
+  }
   const t = {
     id: path.basename(req.file.path), filename: safeName(req.body.filename || req.file.originalname),
     mime: req.file.mimetype || 'application/octet-stream', size: req.file.size, folder: safeFolder(req.body.folder),

@@ -72,7 +72,7 @@ async function connect() {
   // One-time, 60-second ticket so the long-lived access token never appears in a URL (proxy/server logs).
   let q;
   try { q = 'ticket=' + encodeURIComponent((await api('/auth/ws-ticket', { method: 'POST' })).ticket); }
-  catch { q = 'token=' + encodeURIComponent(session()?.accessToken || ''); }
+  catch { q = 'ticket='; } // no ticket (offline or session expired): the server refuses it and onclose retries with backoff
   if (!isSignedIn() || ws) return;
   const url = base().replace(/^http/, 'ws') + '/ws?' + q;
   const sock = new WebSocket(url);

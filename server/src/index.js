@@ -118,6 +118,11 @@ app.use((err, req, res, _next) => {
   res.status(status).json({ error: msg });
 });
 
+// Last line of defence: log and keep serving instead of exiting on one bad request (Render would restart us and drop
+// every WebSocket and pending approval).
+process.on('uncaughtException', (e) => console.error('[fatal] uncaught', e));
+process.on('unhandledRejection', (e) => console.error('[fatal] unhandled rejection', e));
+
 const server = http.createServer(app);
 attachHub(server);
 server.listen(config.port, () => console.log(`Cairn server on :${config.port} · issuer ${config.publicUrl} · AI providers: groq=${!!config.groqKey} nvidia=${!!config.nvidiaKey}`));

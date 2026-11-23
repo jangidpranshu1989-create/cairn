@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import crypto from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { db, now } from './db.js';
@@ -79,7 +80,10 @@ async function chatHandler(req, res) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('X-Provider', out._provider);
-      Readable.fromWeb(out.body).pipe(res);
+      // pipeline() (not .pipe()) so an upstream drop or the stream timeout ends this response instead of throwing an
+      // unhandled 'error' that would take down the whole server.
+      try { await pipeline(Readable.fromWeb(out.body), res); }
+      catch (e) { if (!res.writableEnded) res.destroy(); if (!/aborted|premature close/i.test(String(e?.code || e?.message))) console.warn('[ai] stream ended early:', e?.name || e?.message); }
     } else res.json(out);
   } catch (e) {
     if (e instanceof AllProvidersFailed) { res.set('Retry-After', String(e.retryAfter)); return res.status(503).json({ error: e.message, code: 'ai_busy', attempts: e.attempts }); }

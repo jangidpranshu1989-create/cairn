@@ -6,7 +6,7 @@
 
 **Just say it. Cairn gets it done.** Ask in English, Hindi, Hinglish or any language. Cairn browses, compares prices across trusted stores, fills your cart and stops at payment so you approve it with your fingerprint.
 
-[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.2%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
+[![Download Android APK](https://img.shields.io/badge/Download%20Android%20APK-v3.4.1%20·%2010%20MB-D9C3A0?style=for-the-badge&logo=android&logoColor=161618&labelColor=EEEDEA)](https://github.com/jangidpranshu1989-create/cairn/releases/latest/download/Cairn-Android.apk)
 [![Download Desktop](https://img.shields.io/badge/Download%20Desktop-Windows%20·%20macOS%20·%20Linux-EEEDEA?style=for-the-badge&logo=googlechrome&logoColor=161618&labelColor=D9C3A0)](https://jangidpranshu1989-create.github.io/cairn/download.html#desktop)
 
 [Website](https://jangidpranshu1989-create.github.io/cairn/) · [Get it on Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jangidpranshu1989-create/cairn) · [Changelog](https://jangidpranshu1989-create.github.io/cairn/changelog.html) · [Latest release](https://github.com/jangidpranshu1989-create/cairn/releases/latest)
@@ -17,15 +17,16 @@ Full 30-second demos (1080x1920): [Home and answers](https://github.com/jangidpr
 
 </div>
 
-## What's new in 3.0
+## What's new in 3.4
 
-- **Home** — personal greeting, one composer with a Search / Agent switch and voice, delivery address chip, top sites and recent journeys.
-- **One-minute setup** — on first launch: your name, contact, delivery address (PIN code fills city and state) and a Cairn Account, so the agent can check out from the first task.
-- **Exact-match shopping** — "sabse sasta iPhone 16" returns the exact model from trusted stores only. Covers, keypad phones and fake listings are filtered out.
-- **Autonomous checkout with a hard stop** — Cairn adds to cart and fills delivery details, then waits for your fingerprint before any payment or UPI step.
-- **Circle to Ask** — circle anything on a page and ask about it.
-- **Rich answers** — tables, comparisons and numbered citations with a sources sheet.
-- **Free and made in India** — no ads, no API key needed: AI runs through Cairn Cloud.
+- **Automatic updates** — Android downloads new versions in the background, verifies them and installs them when you're not using the app (silent on Android 12+ after the first update; Settings → About). Windows and Linux AppImage update on quit.
+- **Chrome-speed loading** — instant Back/Forward, prerendered links and early connections while you type.
+- **Passkeys like Chrome** — sites offer "Sign in with a passkey" and your Cairn passkey shows above the keyboard.
+- **Download manager** — parallel connections for big files, safe resume and automatic retry when the network returns.
+- **Hardware-signed payment approvals** — on Android 11+ approvals are signed by a key in the phone's secure hardware.
+- **Safer Cairn Cloud** — ticket-only live connection, capped transfers and a sign-in page that doesn't reveal which emails exist.
+
+Earlier highlights (3.0): bento Home with Search / Agent switch and voice, one-minute setup, exact-match shopping from trusted stores, checkout that stops for your fingerprint before any payment, Circle to Ask, rich answers with citations. Free and made in India, no API key needed.
 
 ## Inside this repo
 
@@ -85,7 +86,7 @@ Build the APK against your own server with `./gradlew assembleRelease -PcairnSer
 
 ## Quick start (local)
 
-Requirements: Node 22+, (for Android) JDK 17 + Android SDK 35.
+Requirements: Node 20+ (CI uses 22), (for Android) JDK 17 + Android SDK 35.
 
 ```bash
 # 1. Server

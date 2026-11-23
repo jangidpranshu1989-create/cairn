@@ -25,6 +25,17 @@ class PayGateTest {
     @Test fun askAboveDailyLimit() = assertTrue(d(1500.0, 1500.0, limit = 2000, spent = 1000, daily = 2000) is PayGate.Verdict.Ask)
     @Test fun askWhenAutopayOff() = assertTrue(d(100.0, 100.0, autopay = false) is PayGate.Verdict.Ask)
     @Test fun roundingTolerated() = assertTrue(d(84490.4, 84490.0) is PayGate.Verdict.Auto)
+    @Test fun askWhenPageTotalNotFinite() {
+        assertTrue(d(Double.NaN, 499.0) is PayGate.Verdict.Ask)
+        assertTrue(d(Double.POSITIVE_INFINITY, null) is PayGate.Verdict.Ask)
+        assertTrue(d(-499.0, -499.0) is PayGate.Verdict.Ask)
+    }
+    @Test fun askWhenNotAPaymentOrNoUpi() {
+        assertTrue(PayGate.decide(100.0, 100.0, true, hasUpi = true, kind = "purchase", perPaymentLimit = 1000, spentToday = 0, dailyLimit = 5000) is PayGate.Verdict.Ask)
+        assertTrue(PayGate.decide(100.0, 100.0, true, hasUpi = false, kind = "payment", perPaymentLimit = 1000, spentToday = 0, dailyLimit = 5000) is PayGate.Verdict.Ask)
+    }
+    @Test fun exactlyAtLimitsIsAuto() = assertTrue(d(2000.0, 2000.0, limit = 2000, spent = 3000, daily = 5000) is PayGate.Verdict.Auto)
+    @Test fun mismatchJustOverToleranceAsks() = assertTrue(d(1000.0, 1001.5) is PayGate.Verdict.Ask)
 }
 
 class BuyIntentTest {

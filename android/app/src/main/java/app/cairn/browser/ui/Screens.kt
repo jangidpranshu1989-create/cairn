@@ -1213,6 +1213,16 @@ fun AboutScreen() {
         val wv = remember { runCatching { WebView.getCurrentWebViewPackage()?.versionName }.getOrNull() }
         if (wv != null) Text("Web engine: Chromium $wv", color = C.faint, fontSize = 12.sp)
         Spacer(Modifier.height(28.dp))
+        val uctx = LocalContext.current
+        var auto by remember { mutableStateOf(app.cairn.browser.service.Updater.enabled(uctx)) }
+        val ust = app.cairn.browser.service.Updater.state.value
+        Group {
+            Row2(Ic.NewReleases, "Check for updates", ust.ifBlank { null }, onClick = { app.cairn.browser.service.Updater.checkNow(uctx) }); Divider()
+            Toggle(null, "Update automatically", "Download new versions in the background and install them when you're not using Cairn", auto) {
+                auto = it; app.cairn.browser.service.Updater.setEnabled(uctx, it)
+            }
+        }
+        Spacer(Modifier.height(16.dp))
         Group {
             Row2(Ic.Policy, "Privacy Policy", null, onClick = { openUrl("${BuildConfig.SITE}/privacy.html") }); Divider()
             Row2(Ic.Gavel, "Terms of Service", null, onClick = { openUrl("${BuildConfig.SITE}/terms.html") }); Divider()

@@ -74,6 +74,15 @@ const passwordS = z.string().min(10, 'Password must be at least 10 characters').
 
 export const publicUser = (u) => u && ({ id: u.id, email: u.email, name: u.name, plan: u.plan, emailVerified: !!u.email_verified, createdAt: u.created_at });
 
+const DUMMY_HASH = bcrypt.hashSync('cairn-timing-equaliser', 12);
+const ghosts = new Map(); // email -> { n, lockedUntil, at } for addresses with no account
+function ghostFail(email) {
+  let g = ghosts.get(email);
+  if (!g || g.at < now() - 60 * 60_000) { g = { n: 0, lockedUntil: 0, at: now() }; ghosts.set(email, g); }
+  if (ghosts.size > 20_000) for (const [k, v] of ghosts) if (v.at < now() - 60 * 60_000) ghosts.delete(k);
+  return g;
+}
+
 const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 50, standardHeaders: true, legacyHeaders: false });
 
 export const authRouter = express.Router();
@@ -111,17 +120,25 @@ authRouter.post('/login', authLimiter, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'Enter a valid email and password' });
   const { email, password, captchaToken, captchaAnswer } = parsed.data;
   const user = db.prepare('SELECT * FROM users WHERE email=?').get(email);
+  // Unknown emails get the same captcha / lockout answers as real ones, so login can't be used to test which emails
+  // have an account (/forgot already hides this).
+  if (!user) {
+    const g = ghostFail(email);
+    if (g.lockedUntil > now()) return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
+    if (g.n >= 3 && !checkCaptcha(captchaToken, captchaAnswer)) return res.status(400).json({ error: 'Please solve the captcha', captcha: true });
+    g.n++; if (g.n >= 10) g.lockedUntil = now() + 15 * 60_000;
+    await bcrypt.compare(password, DUMMY_HASH); // same timing as a real check
+    return res.status(401).json({ error: 'Email or password is incorrect', captcha: g.n >= 3 });
+  }
   // After 3 failures a captcha is required; after 10 the account is locked for 15 minutes.
-  if (user && user.locked_until > now()) return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
-  if (user && user.failed_logins >= 3 && !checkCaptcha(captchaToken, captchaAnswer)) return res.status(400).json({ error: 'Please solve the captcha', captcha: true });
-  const ok = user && user.password_hash && await bcrypt.compare(password, user.password_hash);
+  if (user.locked_until > now()) return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
+  if (user.failed_logins >= 3 && !checkCaptcha(captchaToken, captchaAnswer)) return res.status(400).json({ error: 'Please solve the captcha', captcha: true });
+  const ok = user.password_hash && await bcrypt.compare(password, user.password_hash);
   if (!ok) {
-    if (user) {
-      const f = user.failed_logins + 1;
-      db.prepare('UPDATE users SET failed_logins=?, locked_until=? WHERE id=?').run(f, f >= 10 ? now() + 15 * 60_000 : 0, user.id);
-      audit(user.id, 'login_failed', { ip: req.ip });
-    }
-    return res.status(401).json({ error: 'Email or password is incorrect', captcha: !!user && user.failed_logins + 1 >= 3 });
+    const f = user.failed_logins + 1;
+    db.prepare('UPDATE users SET failed_logins=?, locked_until=? WHERE id=?').run(f, f >= 10 ? now() + 15 * 60_000 : 0, user.id);
+    audit(user.id, 'login_failed', { ip: req.ip });
+    return res.status(401).json({ error: 'Email or password is incorrect', captcha: user.failed_logins + 1 >= 3 });
   }
   db.prepare('UPDATE users SET failed_logins=0, locked_until=0 WHERE id=?').run(user.id);
   audit(user.id, 'login', { ip: req.ip });

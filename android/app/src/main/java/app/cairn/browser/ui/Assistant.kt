@@ -135,13 +135,19 @@ fun AssistantSheet() {
         LaunchedEffect(Ui.chats) { if (Ui.chats && Ui.assistant) y.animateTo(top, spring) }
         LaunchedEffect(ime, Agent.items.size) { if (Ui.assistant && (ime || Agent.items.size > 2) && y.value > top + 1) y.animateTo(top, spring) }
         if (!visible) return@BoxWithConstraints
-        BackHandler { Ui.assistant = false }
+        // Stable sheet: a conversation is never closed by accident. Back first steps down to half height, a stray tap
+        // outside only minimises, and closing by drag needs a deliberate, long pull (or the X button).
+        val busy = Agent.items.isNotEmpty() || Agent.running
+        BackHandler { if (busy && y.value <= top + 2) scope.launch { y.animateTo(half, spring) } else Ui.assistant = false }
         val frac = ((h - y.value) / (h - half)).coerceIn(0f, 1f)
-        Box(Modifier.fillMaxSize().background(C.scrim.copy(alpha = C.scrim.alpha * frac * .8f)).pointerInput(Unit) { detectTapGestures { Ui.assistant = false } })
+        Box(Modifier.fillMaxSize().background(C.scrim.copy(alpha = C.scrim.alpha * frac * .8f)).pointerInput(busy) {
+            detectTapGestures { if (!busy) Ui.assistant = false else if (y.value <= top + 2) scope.launch { y.animateTo(half, spring) } }
+        })
         val drag = rememberDraggableState { d -> scope.launch { y.snapTo((y.value + d).coerceIn(top, h)) } }
         fun settle(v: Float) {
             val target = when {
-                v > 1800f || y.value > half + (h - half) * .35f -> h
+                busy && y.value < half + (h - half) * .6f && v < 4200f -> if (v < -1800f || y.value < (top + half) / 2) top else half
+                v > 3000f || y.value > half + (h - half) * .5f -> h
                 v < -1800f || y.value < (top + half) / 2 -> top
                 else -> half
             }
@@ -174,11 +180,20 @@ fun AssistantSheet() {
                     Spacer(Modifier.weight(1f))
                     IconBtn(Ic.EditNote, "New chat", tint = C.muted, size = 40.dp, enabled = Agent.items.isNotEmpty() && !Agent.running) { Haptics.tick(); Agent.newChat(); Ui.mentions.clear() }
                     IconBtn(if (full) Ic.Minimize else Ic.Maximize, if (full) "Half height" else "Full height", tint = C.muted, size = 40.dp) { scope.launch { y.animateTo(if (full) half else top, spring) } }
+                    Spacer(Modifier.width(6.dp))
                     IconBtn(Ic.Close, "Close", tint = C.muted, size = 40.dp) { Ui.assistant = false }
                 }
             }
             val list = rememberLazyListState()
-            LaunchedEffect(Agent.items.size) { if (Agent.items.isNotEmpty()) list.animateScrollToItem(Agent.items.size - 1) }
+            // Follow the answer while it streams, like ChatGPT, unless the user scrolled up to read something.
+            var follow by remember { mutableStateOf(true) }
+            LaunchedEffect(list) { snapshotFlow { list.isScrollInProgress }.collect { moving -> if (!moving) follow = !list.canScrollForward } }
+            LaunchedEffect(Agent.items.size) { if (Agent.items.isNotEmpty()) { follow = true; list.animateScrollToItem(Agent.items.size - 1) } }
+            LaunchedEffect(list) {
+                snapshotFlow { (Agent.items.lastOrNull() as? AiMsg)?.markdown?.length ?: 0 }.collect {
+                    if (follow && Agent.streaming && Agent.items.isNotEmpty() && !list.isScrollInProgress) list.scrollToItem(Agent.items.size - 1, 100_000)
+                }
+            }
             if (Agent.items.isEmpty()) EmptyAssistant(Modifier.weight(1f))
             else LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(Agent.items, key = { it.key }) { Box(Modifier.animateItem(fadeInSpec = tween(220), placementSpec = spring(stiffness = 500f))) { ItemView(it) } }
@@ -356,7 +371,8 @@ private fun Composer() {
             }
             BasicTextField(tf, { tf = it }, Modifier.weight(1f).padding(vertical = 13.dp), maxLines = 6,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.text, fontSize = 15.5.sp, lineHeight = 21.sp), cursorBrush = SolidColor(C.agent),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { send() }),
+                // Enter adds a new line; messages are sent only with the send button.
+                keyboardOptions = KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
                 decorationBox = { inner -> if (text.isEmpty()) Text(if (ask != null) "Type your answer…" else if (Agent.running) "Cairn is working…" else if (Ui.attachments.isNotEmpty()) "Ask about ${if (Ui.attachments.size == 1) "this" else "these"}…" else "Ask anything", color = C.faint, fontSize = 15.5.sp, maxLines = 1); inner() })
             Crossfade(when { Agent.running && ask == null && text.isEmpty() -> 0; canSend -> 1; else -> 2 }, label = "act") { k ->
                 when (k) {

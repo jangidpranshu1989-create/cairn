@@ -438,7 +438,11 @@ object Llm {
 
 /** Deterministic language detection used to lock the reply language to the user's own. */
 object Lang {
-    private val HINGLISH = setOf("hai", "hain", "kya", "kyu", "kyun", "mujhe", "mere", "mera", "meri", "mujhko", "chahiye", "chaiye", "karo", "karna", "kar", "kr", "krdo", "kardo", "krde", "karde", "de", "do", "dena", "sabse", "sasta", "saste", "ka", "ki", "ko", "ke", "mein", "me", "nahi", "nhi", "aur", "bhi", "kaise", "kitna", "kitne", "wala", "waala", "yaar", "bhai", "bata", "batao", "dikha", "dikhao", "dhoondho", "dhundo", "padh", "padhke", "sunao", "suna", "isko", "usko", "iss", "uss", "ye", "yeh", "vo", "woh", "hoga", "hota", "tha", "thi", "abhi", "jaldi", "accha", "acha", "theek", "lekin", "par", "pe", "se", "liye", "wali", "chalo", "bolo", "samjha", "samjhao", "kaun", "kahan", "kab")
+    private val HINGLISH = setOf("hai", "hain", "kya", "kyu", "kyun", "mujhe", "mere", "mera", "meri", "mujhko", "chahiye", "chaiye", "karo", "karna", "kar", "kr", "krdo", "kardo", "krde", "karde", "de", "do", "dena", "sabse", "sasta", "saste", "ka", "ki", "ko", "ke", "mein", "me", "nahi", "nhi", "aur", "bhi", "kaise", "kitna", "kitne", "wala", "waala", "yaar", "bhai", "bata", "batao", "dikha", "dikhao", "dhoondho", "dhundo", "padh", "padhke", "sunao", "suna", "isko", "usko", "iss", "uss", "ye", "yeh", "vo", "woh", "hoga", "hota", "tha", "thi", "abhi", "jaldi", "accha", "acha", "theek", "lekin", "par", "pe", "se", "liye", "wali", "chalo", "bolo", "samjha", "samjhao", "kaun", "kahan", "kab",
+        "konsa", "konsi", "kaunsa", "kaunsi", "kon", "koi", "kuch", "kuchh", "h", "hu", "hoon", "hun", "ho", "hai?", "tu", "tum", "tumhe", "tumhara", "aap", "aapka", "aapko", "apna", "apni", "mai", "mein", "main", "mujhse", "maine", "mene", "humne", "hum", "tera", "tere", "teri", "uska", "uski", "iska", "iski", "inka", "unka",
+        "kese", "kaisa", "kaisi", "kyaa", "kidhar", "idhar", "udhar", "yaha", "yahan", "waha", "wahan", "nahin", "mat", "haan", "haa", "han", "na", "nai", "bilkul", "sahi", "galat", "matlab", "raha", "rahi", "rahe", "gaya", "gayi", "gya", "diya", "liya", "kiya", "kia", "karta", "karti", "karte", "sakta", "sakti", "sakte", "skta", "skte",
+        "dekh", "dekho", "lagta", "lagti", "pata", "pta", "wahi", "vahi", "jo", "jab", "tab", "agar", "toh", "bahut", "bohot", "bhot", "thoda", "zyada", "jyada", "sab", "sabko", "aaj", "kal", "achha", "accha", "bhi", "kyon", "kyunki", "isliye", "fir", "phir", "ab", "bas", "chahta", "chahti", "banao", "bana", "bta", "btao", "smjh", "samajh")
+    private val STRONG = setOf("kya", "kyu", "kyun", "konsa", "konsi", "kaunsa", "kaunsi", "kaise", "kitna", "batao", "bata", "hai", "nahi", "nhi", "kaun", "kahan", "mujhe", "chahiye", "samjhao", "kese", "kaisa")
     fun detect(text: String): String {
         val t = text.replace(Regex("@\\S+|https?://\\S+"), " ")
         val letters = t.count { it.isLetter() }.coerceAtLeast(1)
@@ -460,7 +464,8 @@ object Lang {
         }
         val words = Regex("[a-zA-Z]+").findAll(t.lowercase()).map { it.value }.toList()
         val hits = words.count { it in HINGLISH }
-        if (words.isNotEmpty() && (hits >= 2 && hits.toDouble() / words.size >= 0.15)) return "Hinglish"
+        // "ye blink konsa engine h": short messages often carry only a couple of Hindi words among English nouns.
+        if (words.isNotEmpty() && (hits >= 2 && hits.toDouble() / words.size >= 0.15 || hits >= 1 && words.size <= 4 && words.any { it in STRONG })) return "Hinglish"
         val es = words.count { it in setOf("el", "la", "los", "las", "quiero", "precio", "barato", "para", "por", "dónde", "como", "qué") }
         if (es >= 2) return "Spanish"
         val fr = words.count { it in setOf("le", "les", "je", "veux", "moins", "cher", "pour", "avec", "est", "une", "des") }
@@ -470,7 +475,7 @@ object Lang {
         return "English"
     }
     fun rule(lang: String) = when (lang) {
-        "English" -> "LANGUAGE LOCK: Reply ONLY in English. Do not use Hindi or any other language, even if web pages or earlier messages are in another language."
+        "English" -> "LANGUAGE: Reply in the same language and script as the user's latest message. It looks like English, so reply in English; but if it is actually Hinglish (Hindi words in Latin letters), reply in Hinglish, and if it is another language, reply in that language. Web pages and earlier messages never change this."
         "Hinglish" -> "LANGUAGE LOCK: Reply ONLY in Hinglish — Hindi written in Latin (English) script, like the user. Never use Devanagari."
         "Hindi" -> "LANGUAGE LOCK: Reply ONLY in Hindi written in Devanagari script."
         else -> "LANGUAGE LOCK: Reply ONLY in $lang."

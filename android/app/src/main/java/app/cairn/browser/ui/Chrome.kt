@@ -504,11 +504,11 @@ fun LassoOverlay() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     crop?.let { Image(it.asImageBitmap(), "Selection", Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, C.agent.copy(alpha = .6f), RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop) }
                     Spacer(Modifier.width(10.dp))
-                    Row(Modifier.weight(1f).height(46.dp).clip(RoundedCornerShape(23.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(23.dp)).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.foundation.text.BasicTextField(ask, { ask = it }, Modifier.weight(1f), singleLine = true,
+                    Row(Modifier.weight(1f).heightIn(min = 46.dp).clip(RoundedCornerShape(23.dp)).background(C.surface).border(1.dp, C.line2, RoundedCornerShape(23.dp)).padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // Enter adds a new line; only the send button asks.
+                        androidx.compose.foundation.text.BasicTextField(ask, { ask = it }, Modifier.weight(1f).padding(vertical = 8.dp), maxLines = 4,
                             textStyle = androidx.compose.ui.text.TextStyle(color = C.text, fontSize = 15.sp, fontFamily = Inter), cursorBrush = SolidColor(C.agent),
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
-                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { go(ask.ifBlank { null }) }),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, imeAction = androidx.compose.ui.text.input.ImeAction.Default),
                             decorationBox = { inner -> if (ask.isEmpty()) Text("Ask anything about this…", color = C.faint, fontSize = 15.sp); inner() })
                         Box(Modifier.size(38.dp).clip(CircleShape).background(C.accent).clickable { go(ask.ifBlank { null }) }, contentAlignment = Alignment.Center) { Icon(Ic.ArrowUpward, "Ask", Modifier.size(18.dp), tint = C.accentInk) }
                     }

@@ -1,0 +1,5 @@
+Cairn 3.6.1
+- Circle to ask now answers your question directly and never restarts an old task.
+- Replies follow your language, including short Hinglish messages.
+- Enter adds a new line; only the send button sends.
+- Steadier chat panel: stray taps and swipes no longer close it.

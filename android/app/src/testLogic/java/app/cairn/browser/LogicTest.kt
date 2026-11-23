@@ -104,3 +104,21 @@ class OfflineProductTest {
         assertEquals("Hello, find iPhone on Flipkart", Intents.cleanTranscript(" Hello, find iPhone on Flipkart."))
     }
 }
+
+class ConversationRouteTest {
+    @Test fun browserWorkGoesToTheAgent() {
+        listOf(
+            "iphone 16 sabse sasta cart mein daal do", "add to cart", "open youtube", "flipkart kholo", "summarize this page",
+            "ye page translate karo", "save this as pdf", "book a cab to the airport", "track the price of this", "iphone 16 price",
+            "read this article aloud", "padh ke sunao", "search iphone 16 on amazon", "sign in to github",
+        ).forEach { assertTrue(it, Intents.isTask(it)) }
+    }
+    @Test fun conversationStaysAConversation() {
+        listOf(
+            "hi", "kaise ho bhai", "how are you?", "tell me a joke", "mujhe aaj bahut bura lag raha hai", "write a birthday wish for my mom",
+            "explain quantum computing simply", "what is the price of gold today?", "how do I download python?", "can you help me with my resume",
+            "2x + 5 = 15 solve karo", "my email is riya@example.com, remember it", "I'm open to suggestions for a trip", "kya tum mujhse shaadi karoge 😄",
+            "fix this kotlin code: val x = listOf(1,2", "which phone should I buy under 20k",
+        ).forEach { assertFalse(it, Intents.isTask(it)) }
+    }
+}

@@ -77,6 +77,14 @@
     let v = $('#permAdd').value.trim(); if (!v.includes('.')) return toast('Enter a site like example.com');
     try { const o = new URL(/^https?:/.test(v) ? v : 'https://' + v).origin; const sp = { ...(S.sitePermissions || {}) }; sp[o] = sp[o] || {}; await api('settings:set', { sitePermissions: sp }); S.sitePermissions = sp; $('#permAdd').value = ''; renderPerms(); } catch { toast('That address is not valid'); }
   };
+  async function loadMemory() {
+    const list = await api('memory:list').catch(() => []);
+    $('#memList').innerHTML = list.length ? list.map((f, i) => `<div class="opt"><div class="l"><b style="font-weight:500">${esc(f)}</b></div><button class="btn sm" data-mem="${i}">Remove</button></div>`).join('')
+      : '<div class="opt"><div class="l muted">Nothing remembered yet.</div></div>';
+    $$('[data-mem]').forEach(b => b.onclick = async () => { await api('memory:remove', list[+b.dataset.mem]); loadMemory(); });
+  }
+  $('#memClear').onclick = async () => { if (!confirm('Forget everything Cairn remembers about you?')) return; await api('memory:clear'); loadMemory(); toast('Memory cleared'); };
+  loadMemory();
   api('cloud:base').then(b => { $('#privacyLink').href = 'https://jangidpranshu1989-create.github.io/cairn/privacy.html'; });
 
   // downloads

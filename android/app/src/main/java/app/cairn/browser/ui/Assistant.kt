@@ -183,7 +183,7 @@ fun AssistantSheet() {
             else LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(Agent.items, key = { it.key }) { Box(Modifier.animateItem(fadeInSpec = tween(220), placementSpec = spring(stiffness = 500f))) { ItemView(it) } }
                 if (Agent.running && app.cairn.browser.agent.PageTools.live.isNotEmpty() && Prefs.agentLivePreview) item(key = "live") { Box(Modifier.animateItem()) { LivePreview(inline = true) } }
-                if (Agent.running) item(key = "working") { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp).animateItem()) {
+                if (Agent.running && !Agent.streaming) item(key = "working") { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp).animateItem()) {
                     AgentDots(); Spacer(Modifier.width(10.dp))
                     AnimatedContent(Agent.status.ifBlank { "Thinking…" }, label = "status", transitionSpec = { (fadeIn(tween(220)) + slideInVertically { it / 2 }) togetherWith fadeOut(tween(140)) }) { st ->
                         ShimmerText(st)
@@ -220,7 +220,7 @@ private fun EmptyAssistant(modifier: Modifier) {
         }
         Text(if (att) "Ask about ${if (Ui.attachments.size == 1) "your attachment" else "your attachments"}" else if (onPage) "How can I help with this page?" else "What can I do for you?", color = C.text, fontSize = if (att) 20.sp else 24.sp, fontFamily = InterDisplay, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 30.sp)
         Spacer(Modifier.height(if (att) 12.dp else 6.dp))
-        if (!att) { Text("Ask in any language. Cairn browses, compares, reads aloud and acts for you — and always stops before you pay.", color = C.muted, fontSize = 14.sp, lineHeight = 20.sp); Spacer(Modifier.height(18.dp)) }
+        if (!att) { Text("Chat about anything in any language, or ask Cairn to browse, compare and act for you. It always stops before you pay.", color = C.muted, fontSize = 14.sp, lineHeight = 20.sp); Spacer(Modifier.height(18.dp)) }
         if (Ui.attachments.isNotEmpty()) {
             // Attachments added: the generic suggestions don't apply — offer attachment actions instead.
             val img = Ui.attachments.all { it.isImage }
@@ -506,7 +506,7 @@ private fun AnswerView(m: AiMsg) {
             IconBtn(Ic.Copy, "Copy", tint = C.faint, size = 34.dp) { copyText(ctx, "Cairn", m.markdown) }
             IconBtn(Ic.Replay, "Retry", tint = C.faint, size = 34.dp, enabled = !Agent.running) { Haptics.tick(); Agent.retry() }
         }
-        AnimatedVisibility(m.revealed && !m.error && !m.setup, enter = fadeIn(tween(260))) {
+        AnimatedVisibility(m.revealed && !m.streaming && !m.error && !m.setup, enter = fadeIn(tween(260))) {
             Column {
                 Row(Modifier.padding(top = 8.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     val plain = { m.markdown.replace(Regex("\\s?\\[(\\d{1,2})]"), "").replace(Regex("[*#`]"), "") }

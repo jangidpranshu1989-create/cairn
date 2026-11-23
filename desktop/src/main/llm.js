@@ -147,6 +147,43 @@ async function stream(messages, onDelta, opts = {}) {
   onDelta(message.content || ''); return message.content || '';
 }
 
+/** Streams a chat turn that may call tools. onText(full) gets the visible text so far. Returns { message, provider }. */
+async function chatStream(opts, onText) {
+  const { signal, ...rest } = opts;
+  let content = '', streamed = false;
+  try {
+    const r = await serverFetch('/ai/chat', { json: { ...rest, stream: true }, accept: 'text/event-stream', signal });
+    if (r.ok && /event-stream/.test(r.headers.get('content-type') || '')) {
+      const calls = []; const dec = new TextDecoder(); let buf = '', provider = r.headers.get('x-cairn-provider') || 'cairn';
+      for await (const chunk of r.body) {
+        buf += dec.decode(chunk, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!line.startsWith('data:')) continue;
+          const d = line.slice(5).trim(); if (!d || d === '[DONE]') continue;
+          let j; try { j = JSON.parse(d); } catch { continue; }
+          if (j._provider) provider = j._provider;
+          const delta = j.choices?.[0]?.delta || {};
+          if (delta.content) { content += delta.content; streamed = true; onText(content); }
+          for (const tc of delta.tool_calls || []) {
+            const k = tc.index ?? calls.length;
+            const c = calls[k] || (calls[k] = { id: '', type: 'function', function: { name: '', arguments: '' } });
+            if (tc.id) c.id = tc.id;
+            if (tc.function?.name) c.function.name += tc.function.name;
+            if (tc.function?.arguments) c.function.arguments += tc.function.arguments;
+          }
+        }
+      }
+      const tool_calls = calls.filter(c => c && c.function.name).map((c, n) => ({ ...c, id: c.id || 'call_' + n + '_' + Date.now().toString(36) }));
+      if (content || tool_calls.length) return { message: { role: 'assistant', content, ...(tool_calls.length ? { tool_calls } : {}) }, provider };
+    }
+  } catch (e) { if (signal?.aborted) throw e; if (streamed) return { message: { role: 'assistant', content }, provider: 'cairn' }; }
+  const out = await chat(opts);
+  if (out.message?.content) onText(out.message.content);
+  return out;
+}
+
 /** Plain text helper */
 async function complete(system, user, opts = {}) {
   const { message } = await chat({ messages: [{ role: 'system', content: system }, { role: 'user', content: user }], ...opts });
@@ -174,4 +211,4 @@ async function transcribe(buffer, mime, language) {
 // Cloud TTS isn't offered; Cairn reads aloud with the system's voices.
 async function speech() { throw new Error('No voice installed for this language. Install a system voice for it in your OS settings.'); }
 
-module.exports = { chat, stream, complete, completeJSON, transcribe, speech, status, warm };
+module.exports = { chat, chatStream, stream, complete, completeJSON, transcribe, speech, status, warm };

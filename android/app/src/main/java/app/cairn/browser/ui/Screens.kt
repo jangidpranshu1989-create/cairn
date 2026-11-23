@@ -749,6 +749,17 @@ fun AiSettings() {
             Toggle(Ic.PanTool, "Ask before every click", "Slower, but you confirm each action", Prefs.agentConfirmEach) { Prefs.agentConfirmEach = it }; Divider()
             Toggle(Ic.Pip, "Live preview of background work", "A small floating window shows the pages Cairn is working on", Prefs.agentLivePreview) { Prefs.agentLivePreview = it }
         }
+        SectionLabel("Memory")
+        var memOn by remember { mutableStateOf(Prefs.chatMemory) }
+        val facts = remember { mutableStateListOf<String>().apply { addAll(app.cairn.browser.agent.Memory.facts()) } }
+        Group {
+            Toggle(Ic.Brain, "Remember things I tell you", "Cairn remembers facts you share in chats, like your city, studies or diet, to make replies more personal. Stored only on this phone, never in private tabs.", memOn) { memOn = it; Prefs.chatMemory = it }
+            facts.toList().forEach { f ->
+                Divider()
+                Row2(null, f, null, trailing = { IconBtn(Ic.Close, "Forget", tint = C.faint, size = 36.dp) { app.cairn.browser.agent.Memory.remove(f); facts.remove(f) } })
+            }
+            if (facts.isNotEmpty()) { Divider(); Row2(Ic.DeleteSweep, "Clear all memory", null, tint = C.err, onClick = { app.cairn.browser.agent.Memory.clear(); facts.clear() }) }
+        }
         SectionLabel("Agent payments (UPI)")
         var auto by remember { mutableStateOf(Prefs.autopay) }
         var upi by remember { mutableStateOf(Prefs.upiId) }

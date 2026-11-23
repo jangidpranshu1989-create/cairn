@@ -3,6 +3,7 @@ const llm = require('../llm');
 const store = require('../store');
 const { DEFS, execute } = require('./tools');
 const dom = require('./dom');
+const chat = require('./chat');
 
 function systemPrompt() {
   const s = store.get().settings.data;
@@ -51,7 +52,7 @@ class Agent {
   reset() { this.stop(); this.messages = [{ role: 'system', content: systemPrompt() }]; }
   stop() { this.controller?.abort(); }
 
-  async run(userText, { attachPage = true } = {}) {
+  async run(userText, { attachPage = true, force } = {}) {
     if (this.running) throw new Error('Agent is busy');
     this.running = true;
     this.controller = new AbortController();
@@ -76,53 +77,130 @@ class Agent {
       cite(title, url) { const f = this.cites.find(c => c.url === url); if (f) return f.n; const n = this.cites.length + 1; this.cites.push({ n, title: String(title || url).slice(0, 140), url }); return n; },
     };
 
-    const maxSteps = store.get().settings.data.agentMaxSteps || 40;
     emit({ type: 'start' });
-    let usedTools = false;
+    const task = force === 'task' || (force !== 'chat' && chat.isTask(userText));
+    this.usedTools = false;
     try {
-      for (let step = 0; step < maxSteps; step++) {
-        if (ctx.signal.aborted) throw new Error('Stopped');
-        emit({ type: 'thinking' });
-        const { message, provider } = await llm.chat({ messages: trimHistory(this.messages), tools: DEFS, tier: 'smart', signal: ctx.signal, maxTokens: 3000 });
-        const calls = message.tool_calls || [];
-        this.messages.push({ role: 'assistant', content: message.content || '', ...(calls.length ? { tool_calls: calls } : {}) });
-        if (!calls.length) {
-          const text = String(message.content || '').replace(/【(\d{1,2})(?:†[^】]*)?】/g, '[$1]');
-          const used = new Set([...text.matchAll(/\[(\d{1,2})\]/g)].map(m => +m[1]));
-          emit({ type: 'answer', text, provider, sources: ctx.cites.filter(c => used.has(c.n)).length ? ctx.cites : [] });
-          break;
-        }
-        usedTools = true;
-        for (const call of calls) {
-          if (ctx.signal.aborted) throw new Error('Stopped');
-          let args = {};
-          try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* malformed */ }
-          let result;
-          try {
-            if (store.get().settings.data.agentConfirm === 'every-action' && /^(click|click_text|type|open_url|select_option)$/.test(call.function.name)) {
-              const ok = await this.hooks.confirmAction(`${call.function.name} ${JSON.stringify(args).slice(0, 120)}`, ctx.signal);
-              if (!ok) { result = 'User declined this action.'; }
-            }
-            if (!result) result = await execute(call.function.name, args, ctx);
-          } catch (e) {
-            if (ctx.signal.aborted) throw new Error('Stopped');
-            result = `ERROR: ${e.message}`;
-            emit({ type: 'step', icon: 'warn', text: e.message.slice(0, 140) });
-          }
-          this.messages.push({ role: 'tool', tool_call_id: call.id, content: String(result).slice(0, 14000) });
-        }
-        if (step === maxSteps - 1) emit({ type: 'answer', text: 'I reached the step limit for this task. Tell me how you\'d like to continue.' });
-      }
+      if (task) await this.loop(ctx);
+      else await this.talk(ctx);
     } catch (e) {
       const msg = e.message === 'NO_AI'
         ? "Cairn's AI isn't reachable right now. Check your internet connection and try again."
-        : e.message === 'Stopped' || e.name === 'AbortError' ? 'Stopped.' : `Something went wrong: ${e.message}`;
+        : e.message === 'Stopped' || e.name === 'AbortError' || ctx.signal.aborted ? 'Stopped.' : `Something went wrong: ${e.message}`;
       emit({ type: 'answer', text: msg, error: true, setup: e.message === 'NO_AI' });
     } finally {
       this.running = false;
-      if (usedTools) { try { await dom.overlay(this.hooks.agentTab().webContents, 'remove'); } catch {} }
+      if (this.usedTools) { try { await dom.overlay(this.hooks.agentTab().webContents, 'remove'); } catch {} }
       emit({ type: 'end' });
     }
+  }
+
+  answer(text, provider, ctx) {
+    text = String(text || '').replace(/【(\d{1,2})(?:†[^】]*)?】/g, '[$1]');
+    const used = new Set([...text.matchAll(/\[(\d{1,2})\]/g)].map(m => +m[1]));
+    this.hooks.emit({ type: 'answer', text, provider, sources: ctx.cites.filter(c => used.has(c.n)).length ? ctx.cites : [] });
+    return text;
+  }
+
+  /** Browser agent: plan, call tools, observe, repeat. */
+  async loop(ctx) {
+    const emit = this.hooks.emit;
+    const maxSteps = store.get().settings.data.agentMaxSteps || 40;
+    for (let step = 0; step < maxSteps; step++) {
+      if (ctx.signal.aborted) throw new Error('Stopped');
+      emit({ type: 'thinking' });
+      const { message, provider } = await llm.chat({ messages: trimHistory(this.messages), tools: DEFS, tier: 'smart', signal: ctx.signal, maxTokens: 3000 });
+      const calls = message.tool_calls || [];
+      this.messages.push({ role: 'assistant', content: message.content || '', ...(calls.length ? { tool_calls: calls } : {}) });
+      if (!calls.length) { this.answer(message.content, provider, ctx); return; }
+      this.usedTools = true;
+      for (const call of calls) {
+        if (ctx.signal.aborted) throw new Error('Stopped');
+        let args = {};
+        try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* malformed */ }
+        let result;
+        try {
+          if (store.get().settings.data.agentConfirm === 'every-action' && /^(click|click_text|type|open_url|select_option)$/.test(call.function.name)) {
+            const ok = await this.hooks.confirmAction(`${call.function.name} ${JSON.stringify(args).slice(0, 120)}`, ctx.signal);
+            if (!ok) { result = 'User declined this action.'; }
+          }
+          if (!result) result = await execute(call.function.name, args, ctx);
+        } catch (e) {
+          if (ctx.signal.aborted) throw new Error('Stopped');
+          result = `ERROR: ${e.message}`;
+          emit({ type: 'step', icon: 'warn', text: e.message.slice(0, 140) });
+        }
+        this.messages.push({ role: 'tool', tool_call_id: call.id, content: String(result).slice(0, 14000) });
+      }
+      if (step === maxSteps - 1) emit({ type: 'answer', text: 'I reached the step limit for this task. Tell me how you\'d like to continue.' });
+    }
+  }
+
+  /** Conversation: a streamed, ChatGPT-style reply with web search and memory; hands browser work to loop(). */
+  async talk(ctx) {
+    const emit = this.hooks.emit;
+    const memOn = store.get().settings.data.chatMemory !== false && !ctx.private;
+    const defs = chat.DEFS.filter(d => memOn || !/^(remember|forget)$/.test(d.function.name));
+    const scratch = chat.history(this.messages);
+    let searched = false;
+    emit({ type: 'typing' });
+    for (let round = 0; round < 6; round++) {
+      if (ctx.signal.aborted) throw new Error('Stopped');
+      let shown = '', last = 0;
+      const hold = !searched && round === 0 && chat.FRESH.test(ctx.userText);
+      const { message, provider } = await llm.chatStream({ messages: scratch, tools: defs, tier: 'smart', signal: ctx.signal, maxTokens: 4000, temperature: 0.7 }, (full) => {
+        const v = chat.visible(full); if (hold || !v || v === shown) return;
+        shown = v; const now = Date.now(); if (now - last < 40) return; last = now;
+        emit({ type: 'delta', text: v });
+      });
+      const calls = message.tool_calls || [];
+      if (!calls.length) {
+        // Fresh facts must come from the web: one nudge if the model answered a "latest/price/score" question from memory.
+        if (!searched && round === 0 && chat.FRESH.test(ctx.userText) && !ctx.cites.length) {
+          scratch.push({ role: 'assistant', content: message.content || '' });
+          scratch.push({ role: 'user', content: 'Before answering, call web_search: this needs current information. Then answer my previous message with inline [n] citations.' });
+          searched = true; emit({ type: 'delta', text: '' }); emit({ type: 'step', icon: 'search', text: 'Checking the web for the latest' });
+          continue;
+        }
+        const text = this.answer(chat.visible(message.content || ''), provider, ctx);
+        this.messages.push({ role: 'assistant', content: text });
+        return;
+      }
+      scratch.push({ role: 'assistant', content: message.content || '', tool_calls: calls });
+      if (shown) emit({ type: 'delta', text: '' });
+      for (const call of calls) {
+        let args = {}; try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
+        const name = call.function.name;
+        if (name === 'start_task') {
+          const t = String(args.task || ctx.userText).trim();
+          this.messages.push({ role: 'user', content: 'Do this now in the browser: ' + t });
+          emit({ type: 'step', icon: 'spark', text: 'Starting: ' + (t.length > 60 ? t.slice(0, 60) + '…' : t) });
+          return this.loop(ctx);
+        }
+        let result;
+        try {
+          if (name === 'remember') {
+            const f = chat.remember(args.fact);
+            result = f ? 'Saved.' : 'Nothing saved.';
+            if (f) emit({ type: 'memory', text: 'Memory updated: ' + f });
+          } else if (name === 'forget') {
+            const n = chat.forget(args.what);
+            result = n ? `Forgot ${n} fact(s).` : 'Nothing matched.';
+            if (n) emit({ type: 'memory', text: 'Memory updated: forgot ' + args.what });
+          } else if (name === 'web_search' || name === 'read_article') {
+            if (name === 'web_search') searched = true;
+            if (name === 'read_article' && !args.url) result = 'ERROR: url is required.';
+            else result = await execute(name, args, ctx);
+          } else result = 'ERROR: unknown tool.';
+        } catch (e) {
+          if (ctx.signal.aborted) throw new Error('Stopped');
+          result = `ERROR: ${e.message}`;
+        }
+        scratch.push({ role: 'tool', tool_call_id: call.id, content: String(result).slice(0, 12000) });
+      }
+    }
+    const { message, provider } = await llm.chat({ messages: scratch, tier: 'smart', signal: ctx.signal, maxTokens: 3000 });
+    this.messages.push({ role: 'assistant', content: this.answer(chat.visible(message.content || ''), provider, ctx) });
   }
 }
 

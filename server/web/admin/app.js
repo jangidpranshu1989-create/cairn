@@ -19,7 +19,7 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const dayLabel = (d) => { const [y, mo, da] = d.split('-').map(Number); return new Date(Date.UTC(y, mo - 1, da)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' }); };
   const COUNTRY = { IN: 'India', US: 'United States', GB: 'United Kingdom', AE: 'UAE', SG: 'Singapore', NP: 'Nepal', BD: 'Bangladesh', PK: 'Pakistan', LK: 'Sri Lanka', CA: 'Canada', AU: 'Australia', DE: 'Germany', SA: 'Saudi Arabia' };
-  const LABEL = { android: 'Android', desktop: 'Desktop', web: 'Website', install: 'Installs', app_open: 'Sessions', heartbeat: 'Active minutes', page_load: 'Pages loaded', search: 'Searches', agent_run: 'Agent runs', agent_done: 'Agent finished', compare: 'Price compares', voice: 'Voice', circle: 'Circle to search', pdf: 'PDF', download: 'File downloads', crash: 'Crashes', signin: 'Sign-ins', shield_off: 'Shield turned off', tab_new: 'New tabs', unknown: 'Unknown' };
+  const LABEL = { android: 'Android', desktop: 'Desktop', web: 'Website', install: 'Installs', app_open: 'Sessions', heartbeat: 'Active minutes', page_load: 'Pages loaded', search: 'Searches', agent_run: 'Agent runs', chat_run: 'Chats', agent_done: 'Agent finished', compare: 'Price compares', voice: 'Voice', circle: 'Circle to search', pdf: 'PDF', download: 'File downloads', crash: 'Crashes', signin: 'Sign-ins', shield_off: 'Shield turned off', tab_new: 'New tabs', unknown: 'Unknown' };
   const label = (k, kind) => kind === 'country' ? (COUNTRY[k] || k || 'Unknown') : (LABEL[k] || k || 'Unknown');
 
   // ---------- auth ----------

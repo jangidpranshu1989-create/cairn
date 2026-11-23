@@ -41,6 +41,11 @@
     <div class="opt"><div class="l"><b>Shopping country</b><small>Which stores the agent compares.</small></div><select class="input" data-k="shoppingCountry"><option value="IN">India</option><option value="US">United States</option><option value="GB">United Kingdom</option></select></div>
     <div class="opt"><div class="l"><b>Reply language</b><small>Auto replies in the language you write in.</small></div><select class="input" data-k="language"><option value="auto">Auto</option><option value="en">English</option><option value="hi">हिन्दी</option><option value="hinglish">Hinglish</option><option value="bn">বাংলা</option><option value="ta">தமிழ்</option><option value="te">తెలుగు</option><option value="mr">मराठी</option><option value="gu">ગુજરાતી</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="ar">العربية</option><option value="ja">日本語</option></select></div>
   </div>
+  <div class="group"><h3>Memory</h3>
+    <div class="opt"><div class="l"><b>Remember things I tell Cairn</b><small>Lasting facts like your name, city or preferences, used to personalise chats. Stored only on this device.</small></div><label class="sw"><input type="checkbox" data-k="chatMemory"><span></span></label></div>
+    <div id="memList"></div>
+    <div class="opt"><div class="l"><small class="muted">Say "forget my job" in chat, or remove facts here.</small></div><button class="btn sm danger" id="memClear">Clear all</button></div>
+  </div>
   <div class="group"><h3>Read aloud</h3>
     <div class="opt"><div class="l"><b>Voice</b></div><select class="input" data-k="voiceName" id="voices" style="width:300px"><option value="">Automatic (matches the language)</option></select></div>
     <div class="opt"><div class="l"><b>Speed</b></div><input type="range" min="0.6" max="1.8" step="0.1" data-k="speechRate" data-num style="width:200px"><span class="small muted" id="rateV"></span></div>
